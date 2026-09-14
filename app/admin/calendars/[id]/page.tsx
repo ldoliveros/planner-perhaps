@@ -1,20 +1,19 @@
 import { notFound } from "next/navigation";
 import { CalendarScreen } from "@/components/calendar/calendar-screen";
-import { AIONIS_CLIENT, AIONIS_PUBLICATIONS, AIONIS_SEPTEMBER } from "@/lib/mock/aionis";
-
-const CALENDARS = [AIONIS_SEPTEMBER];
-const CLIENTS = [AIONIS_CLIENT];
+import { getCalendarById, getClientById, getLookups, listPublicationsForCalendar } from "@/lib/supabase/queries";
 
 export default async function CalendarPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
-  const calendar = CALENDARS.find((c) => c.id === id);
+  const calendar = await getCalendarById(id);
   if (!calendar) notFound();
 
-  const client = CLIENTS.find((c) => c.id === calendar.clientId);
+  const [client, publications, lookups] = await Promise.all([
+    getClientById(calendar.clientId),
+    listPublicationsForCalendar(calendar.id),
+    getLookups(),
+  ]);
   if (!client) notFound();
 
-  const publications = AIONIS_PUBLICATIONS.filter((p) => p.calendarId === calendar.id);
-
-  return <CalendarScreen client={client} calendar={calendar} publications={publications} />;
+  return <CalendarScreen client={client} calendar={calendar} publications={publications} lookups={lookups} />;
 }

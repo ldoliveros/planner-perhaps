@@ -2,22 +2,26 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { addMonths, addWeeks } from "date-fns";
+import { addMonths, addWeeks, format } from "date-fns";
 import { CalendarHeader, type CalendarView } from "@/components/calendar/calendar-header";
 import { CalendarFiltersBar, EMPTY_FILTERS, type CalendarFiltersState } from "@/components/calendar/calendar-filters";
 import { WeekView } from "@/components/calendar/week-view";
 import { MonthView } from "@/components/calendar/month-view";
 import { PublicationDrawer } from "@/components/publication/publication-drawer";
+import { PublicationForm } from "@/components/publication/publication-form";
+import { LookupsProvider } from "@/components/providers/lookups-provider";
 import { formatMonthYear, formatWeekRange, getWeekDays } from "@/lib/date-utils";
+import type { Lookups } from "@/lib/supabase/queries";
 import type { Calendar, Client, Publication } from "@/types";
 
 interface CalendarScreenProps {
   client: Client;
   calendar: Calendar;
   publications: Publication[];
+  lookups: Lookups;
 }
 
-export function CalendarScreen({ client, calendar, publications }: CalendarScreenProps) {
+export function CalendarScreen({ client, calendar, publications, lookups }: CalendarScreenProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -49,6 +53,10 @@ export function CalendarScreen({ client, calendar, publications }: CalendarScree
   const [anchorDate, setAnchorDate] = useState(initialAnchor);
   const [filters, setFilters] = useState<CalendarFiltersState>(EMPTY_FILTERS);
   const [selectedPublication, setSelectedPublication] = useState<Publication | null>(null);
+  const [formState, setFormState] = useState<{ open: boolean; publication?: Publication; defaultDate?: string }>({
+    open: false,
+  });
+  const [formKey, setFormKey] = useState(0);
 
   const weekDays = useMemo(() => getWeekDays(anchorDate), [anchorDate]);
   const periodLabel = view === "month" ? formatMonthYear(anchorDate) : formatWeekRange(weekDays);
@@ -65,7 +73,7 @@ export function CalendarScreen({ client, calendar, publications }: CalendarScree
       }
       if (
         filters.accountTypeIds.length > 0 &&
-        !p.destinations.some((d) => filters.accountTypeIds.includes(d.accountTypeId))
+        !p.destinations.some((d) => d.accountTypeId !== null && filters.accountTypeIds.includes(d.accountTypeId))
       ) {
         return false;
       }
@@ -82,32 +90,61 @@ export function CalendarScreen({ client, calendar, publications }: CalendarScree
     });
   }, [publications, filters]);
 
+  function openCreateForm(day?: Date) {
+    setFormKey((k) => k + 1);
+    setFormState({ open: true, publication: undefined, defaultDate: day ? format(day, "yyyy-MM-dd") : undefined });
+  }
+
+  function openEditForm(publication: Publication) {
+    setSelectedPublication(null);
+    setFormKey((k) => k + 1);
+    setFormState({ open: true, publication });
+  }
+
   return (
-    <div className="flex min-h-screen flex-col">
-      <CalendarHeader
-        client={client}
-        calendar={calendar}
-        periodLabel={periodLabel}
-        view={view}
-        onViewChange={setView}
-        onPrev={() => setAnchorDate((d) => (view === "month" ? addMonths(d, -1) : addWeeks(d, -1)))}
-        onNext={() => setAnchorDate((d) => (view === "month" ? addMonths(d, 1) : addWeeks(d, 1)))}
-        onToday={() => setAnchorDate(new Date())}
-      />
-      <CalendarFiltersBar value={filters} onChange={setFilters} availableCampaigns={availableCampaigns} />
-      {view === "week" ? (
-        <WeekView weekDays={weekDays} publications={filteredPublications} onOpenPublication={setSelectedPublication} />
-      ) : (
-        <MonthView
-          anchorDate={anchorDate}
-          publications={filteredPublications}
-          onOpenPublication={setSelectedPublication}
+    <LookupsProvider {...lookups}>
+      <div className="flex min-h-screen flex-col">
+        <CalendarHeader
+          client={client}
+          calendar={calendar}
+          periodLabel={periodLabel}
+          view={view}
+          onViewChange={setView}
+          onPrev={() => setAnchorDate((d) => (view === "month" ? addMonths(d, -1) : addWeeks(d, -1)))}
+          onNext={() => setAnchorDate((d) => (view === "month" ? addMonths(d, 1) : addWeeks(d, 1)))}
+          onToday={() => setAnchorDate(new Date())}
+          onCreate={() => openCreateForm()}
         />
-      )}
-      <PublicationDrawer
-        publication={selectedPublication}
-        onOpenChange={(open) => !open && setSelectedPublication(null)}
-      />
-    </div>
+        <CalendarFiltersBar value={filters} onChange={setFilters} availableCampaigns={availableCampaigns} />
+        {view === "week" ? (
+          <WeekView
+            weekDays={weekDays}
+            publications={filteredPublications}
+            onOpenPublication={setSelectedPublication}
+            onCreateForDay={openCreateForm}
+          />
+        ) : (
+          <MonthView
+            anchorDate={anchorDate}
+            publications={filteredPublications}
+            onOpenPublication={setSelectedPublication}
+            onCreateForDay={openCreateForm}
+          />
+        )}
+        <PublicationDrawer
+          publication={selectedPublication}
+          onOpenChange={(open) => !open && setSelectedPublication(null)}
+          onEdit={openEditForm}
+        />
+        <PublicationForm
+          key={formKey}
+          open={formState.open}
+          onOpenChange={(open) => setFormState((prev) => ({ ...prev, open }))}
+          calendarId={calendar.id}
+          publication={formState.publication}
+          defaultDate={formState.defaultDate}
+        />
+      </div>
+    </LookupsProvider>
   );
 }

@@ -1,11 +1,12 @@
 "use client";
 
 import Image from "next/image";
+import { Plus } from "lucide-react";
 import { cn } from "cn";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { PLATFORM_ICONS } from "@/components/icons/brand-icons";
-import { getPlatform, getStatus } from "@/lib/constants";
+import { PlatformIcon } from "@/components/icons/brand-icons";
+import { useLookups } from "@/components/providers/lookups-provider";
 import {
   formatDayNumber,
   formatFullDateFromDate,
@@ -25,6 +26,7 @@ interface MonthChipProps {
 }
 
 function MonthChip({ publication, onOpen }: MonthChipProps) {
+  const { getPlatform, getStatus } = useLookups();
   const status = getStatus(publication.statusId);
   const primaryAsset = publication.assets.find((a) => a.isPrimary) ?? publication.assets[0];
   const uniquePlatformIds = Array.from(new Set(publication.destinations.map((d) => d.platformId)));
@@ -50,8 +52,14 @@ function MonthChip({ publication, onOpen }: MonthChipProps) {
         {uniquePlatformIds.slice(0, 2).map((platformId) => {
           const platform = getPlatform(platformId);
           if (!platform) return null;
-          const Icon = PLATFORM_ICONS[platform.key];
-          return <Icon key={platformId} className="size-2.5" style={{ color: platform.color }} />;
+          return (
+            <PlatformIcon
+              key={platformId}
+              platformKey={platform.key}
+              className="size-2.5"
+              style={{ color: platform.color }}
+            />
+          );
         })}
         {status && (
           <Tooltip>
@@ -71,9 +79,10 @@ interface MonthDayCellProps {
   publications: Publication[];
   inCurrentMonth: boolean;
   onOpenPublication: (publication: Publication) => void;
+  onCreateForDay: (day: Date) => void;
 }
 
-function MonthDayCell({ day, publications, inCurrentMonth, onOpenPublication }: MonthDayCellProps) {
+function MonthDayCell({ day, publications, inCurrentMonth, onOpenPublication, onCreateForDay }: MonthDayCellProps) {
   const today = isToday(day);
   const visible = publications.slice(0, MAX_VISIBLE_PER_DAY);
   const overflowCount = publications.length - visible.length;
@@ -81,22 +90,33 @@ function MonthDayCell({ day, publications, inCurrentMonth, onOpenPublication }: 
   return (
     <div
       className={cn(
-        "flex min-h-[112px] flex-col gap-0.5 border-r border-b border-border p-1.5",
+        "group/day flex min-h-[112px] flex-col gap-0.5 border-r border-b border-border p-1.5",
         !inCurrentMonth && "bg-muted/30"
       )}
     >
-      <span
-        className={cn(
-          "flex size-5 shrink-0 items-center justify-center self-start rounded-full text-[11px] font-medium",
-          today
-            ? "bg-primary text-primary-foreground"
-            : inCurrentMonth
-              ? "text-foreground"
-              : "text-muted-foreground/40"
-        )}
-      >
-        {formatDayNumber(day)}
-      </span>
+      <div className="flex items-center justify-between">
+        <span
+          className={cn(
+            "flex size-5 shrink-0 items-center justify-center rounded-full text-[11px] font-medium",
+            today
+              ? "bg-primary text-primary-foreground"
+              : inCurrentMonth
+                ? "text-foreground"
+                : "text-muted-foreground/40"
+          )}
+        >
+          {formatDayNumber(day)}
+        </span>
+        <button
+          type="button"
+          onClick={() => onCreateForDay(day)}
+          className="flex size-5 items-center justify-center rounded-md text-muted-foreground opacity-0 transition hover:bg-muted hover:text-foreground group-hover/day:opacity-100"
+          aria-label="Nuevo contenido este día"
+          title="Nuevo contenido este día"
+        >
+          <Plus className="size-3.5" />
+        </button>
+      </div>
 
       <div className="flex flex-col gap-0.5">
         {visible.map((publication) => (
@@ -138,9 +158,10 @@ interface MonthViewProps {
   anchorDate: Date;
   publications: Publication[];
   onOpenPublication: (publication: Publication) => void;
+  onCreateForDay: (day: Date) => void;
 }
 
-export function MonthView({ anchorDate, publications, onOpenPublication }: MonthViewProps) {
+export function MonthView({ anchorDate, publications, onOpenPublication, onCreateForDay }: MonthViewProps) {
   const gridDays = getMonthGridDays(anchorDate);
   const weekCount = gridDays.length / 7;
 
@@ -172,6 +193,7 @@ export function MonthView({ anchorDate, publications, onOpenPublication }: Month
               publications={dayPublications}
               inCurrentMonth={isSameMonthAs(day, anchorDate)}
               onOpenPublication={onOpenPublication}
+              onCreateForDay={onCreateForDay}
             />
           );
         })}

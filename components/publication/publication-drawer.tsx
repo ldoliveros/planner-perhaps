@@ -1,9 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import Image from "next/image";
-import { ExternalLink, File, FileText, FolderOpen, ImageIcon, Video } from "lucide-react";
+import { ExternalLink, File, FileText, FolderOpen, ImageIcon, Pencil, Video } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { buttonVariants } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import {
   Sheet,
   SheetContent,
@@ -12,8 +14,8 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { CopyBlock } from "@/components/publication/copy-block";
-import { PLATFORM_ICONS } from "@/components/icons/brand-icons";
-import { getAccountType, getContentType, getPlatform, getStatus } from "@/lib/constants";
+import { PlatformIcon } from "@/components/icons/brand-icons";
+import { useLookups } from "@/components/providers/lookups-provider";
 import { formatFullDate } from "@/lib/date-utils";
 import { cn } from "cn";
 import type { AssetType, Publication } from "@/types";
@@ -36,47 +38,94 @@ function formatFileSize(bytes: number | null): string {
 interface PublicationDrawerProps {
   publication: Publication | null;
   onOpenChange: (open: boolean) => void;
+  onEdit: (publication: Publication) => void;
 }
 
-export function PublicationDrawer({ publication, onOpenChange }: PublicationDrawerProps) {
+export function PublicationDrawer({ publication, onOpenChange, onEdit }: PublicationDrawerProps) {
+  const { getAccountType, getContentType, getPlatform, getStatus } = useLookups();
+  const [lightboxOpen, setLightboxOpen] = useState(false);
   const contentType = publication ? getContentType(publication.contentTypeId) : undefined;
   const status = publication ? getStatus(publication.statusId) : undefined;
-  const primaryAsset = publication?.assets.find((a) => a.isPrimary) ?? publication?.assets[0];
+  const primaryAsset = publication?.assets.find((a) => a.isPrimary) ?? null;
+  const heroAsset = primaryAsset ?? publication?.assets[0] ?? null;
+  const fileAssets = publication?.assets.filter((a) => !a.isPrimary) ?? [];
 
   return (
     <Sheet open={publication !== null} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full gap-0 overflow-y-auto p-0 sm:max-w-lg">
         {publication && (
           <>
-            <div className="relative aspect-16/10 w-full shrink-0 bg-muted">
-              {primaryAsset?.thumbnailUrl ? (
-                <Image src={primaryAsset.thumbnailUrl} alt="" fill sizes="480px" className="object-cover" />
+            <button
+              type="button"
+              onClick={() => heroAsset?.thumbnailUrl && setLightboxOpen(true)}
+              disabled={!heroAsset?.thumbnailUrl}
+              className="relative aspect-16/10 w-full shrink-0 bg-muted disabled:cursor-default"
+            >
+              {heroAsset?.thumbnailUrl ? (
+                <Image
+                  src={heroAsset.thumbnailUrl}
+                  alt=""
+                  fill
+                  sizes="480px"
+                  className="cursor-zoom-in object-cover"
+                />
               ) : (
                 <div className="flex h-full items-center justify-center text-muted-foreground/40">
                   <ImageIcon className="size-10" />
                 </div>
               )}
-            </div>
+              {primaryAsset?.driveFileUrl && (
+                <a
+                  href={primaryAsset.driveFileUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="absolute bottom-2 right-2 rounded-md bg-black/60 px-2 py-1 text-xs font-medium text-white backdrop-blur-sm hover:bg-black/75"
+                >
+                  Abrir en Drive
+                </a>
+              )}
+            </button>
+
+            {heroAsset?.thumbnailUrl && (
+              <Dialog open={lightboxOpen} onOpenChange={setLightboxOpen}>
+                <DialogContent className="max-w-3xl border-none bg-transparent p-0 shadow-none ring-0 sm:max-w-3xl">
+                  <div className="relative aspect-video w-full overflow-hidden rounded-lg bg-black">
+                    <Image src={heroAsset.thumbnailUrl} alt="" fill sizes="90vw" className="object-contain" />
+                  </div>
+                </DialogContent>
+              </Dialog>
+            )}
 
             <div className="flex flex-col gap-5 p-5">
-              <SheetHeader className="gap-1 p-0 text-left">
-                <SheetTitle className="text-lg">{publication.title}</SheetTitle>
-                <SheetDescription>
-                  {formatFullDate(publication.publicationDate)}
-                  {publication.publicationTime ? ` · ${publication.publicationTime}` : ""}
-                </SheetDescription>
+              <SheetHeader className="flex-row items-start justify-between gap-3 p-0 text-left">
+                <div className="flex flex-col gap-1">
+                  <SheetTitle className="text-lg">{publication.title}</SheetTitle>
+                  <SheetDescription>
+                    {formatFullDate(publication.publicationDate)}
+                    {publication.publicationTime ? ` · ${publication.publicationTime}` : ""}
+                  </SheetDescription>
+                </div>
+                <Button size="sm" variant="outline" className="shrink-0 gap-1.5" onClick={() => onEdit(publication)}>
+                  <Pencil className="size-3.5" />
+                  Editar
+                </Button>
               </SheetHeader>
 
               <div className="flex flex-wrap items-center gap-1.5">
                 {publication.destinations.map((destination, index) => {
                   const platform = getPlatform(destination.platformId);
-                  const accountType = getAccountType(destination.accountTypeId);
-                  if (!platform || !accountType) return null;
-                  const Icon = PLATFORM_ICONS[platform.key];
+                  if (!platform) return null;
+                  const accountType = destination.accountTypeId ? getAccountType(destination.accountTypeId) : null;
                   return (
-                    <Badge key={`${destination.platformId}-${destination.accountTypeId}-${index}`} variant="outline" className="gap-1.5 py-1">
-                      <Icon className="size-3" style={{ color: platform.color }} />
-                      {platform.name} · {accountType.name}
+                    <Badge
+                      key={`${destination.platformId}-${destination.accountTypeId}-${index}`}
+                      variant="outline"
+                      className="gap-1.5 py-1"
+                    >
+                      <PlatformIcon platformKey={platform.key} className="size-3" style={{ color: platform.color }} />
+                      {platform.name}
+                      {accountType ? ` · ${accountType.name}` : ""}
                     </Badge>
                   );
                 })}
@@ -141,11 +190,11 @@ export function PublicationDrawer({ publication, onOpenChange }: PublicationDraw
                   )}
                 </div>
 
-                {publication.assets.length === 0 ? (
+                {fileAssets.length === 0 ? (
                   <p className="text-sm text-muted-foreground">Todavía no hay archivos asociados.</p>
                 ) : (
                   <div className="flex flex-col divide-y divide-border rounded-lg border border-border">
-                    {publication.assets.map((asset) => {
+                    {fileAssets.map((asset) => {
                       const Icon = ASSET_ICONS[asset.type];
                       return (
                         <div key={asset.id} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
@@ -156,9 +205,9 @@ export function PublicationDrawer({ publication, onOpenChange }: PublicationDraw
                               <span className="shrink-0 text-xs text-muted-foreground">{formatFileSize(asset.fileSize)}</span>
                             )}
                           </span>
-                          {asset.driveUrl ? (
+                          {asset.driveFileUrl ? (
                             <a
-                              href={asset.driveUrl}
+                              href={asset.driveFileUrl}
                               target="_blank"
                               rel="noreferrer"
                               className="shrink-0 text-xs font-medium text-primary hover:underline"

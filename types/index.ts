@@ -23,26 +23,23 @@ export interface Calendar {
   driveFolderUrl: string | null;
 }
 
-export type PlatformKey = "instagram" | "facebook" | "linkedin";
-
 export interface Platform {
   id: string;
-  key: PlatformKey;
+  key: string;
   name: string;
   color: string;
+  requiresAccountType: boolean;
 }
-
-export type AccountTypeKey = "empresa" | "personal";
 
 export interface AccountType {
   id: string;
-  key: AccountTypeKey;
+  key: string;
   name: string;
 }
 
 export interface PublicationDestination {
   platformId: string;
-  accountTypeId: string;
+  accountTypeId: string | null;
 }
 
 export interface ContentType {
@@ -67,9 +64,9 @@ export interface PublicationAsset {
   publicationId: string;
   type: AssetType;
   filename: string;
-  mimeType: string;
+  mimeType: string | null;
   driveFileId: string | null;
-  driveUrl: string | null;
+  driveFileUrl: string | null;
   thumbnailUrl: string | null;
   fileSize: number | null;
   sortOrder: number;

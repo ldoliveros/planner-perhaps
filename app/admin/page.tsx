@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
-import { AIONIS_SEPTEMBER } from "@/lib/mock/aionis";
+import { getMostRecentCalendarId } from "@/lib/supabase/queries";
 
-export default function AdminIndexPage() {
-  redirect(`/admin/calendars/${AIONIS_SEPTEMBER.id}`);
+export default async function AdminIndexPage() {
+  const calendarId = await getMostRecentCalendarId();
+  redirect(calendarId ? `/admin/calendars/${calendarId}` : "/admin/clients");
 }

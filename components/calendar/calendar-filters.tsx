@@ -4,7 +4,7 @@ import { ChevronDown, ListFilter, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ACCOUNT_TYPES, CONTENT_TYPES, PLATFORMS, STATUSES } from "@/lib/constants";
+import { useLookups } from "@/components/providers/lookups-provider";
 
 export interface CalendarFiltersState {
   platformIds: string[];
@@ -83,6 +83,7 @@ interface CalendarFiltersProps {
 }
 
 export function CalendarFiltersBar({ value, onChange, availableCampaigns }: CalendarFiltersProps) {
+  const { platforms, accountTypes, contentTypes, statuses } = useLookups();
   const hasActiveFilters =
     value.platformIds.length > 0 ||
     value.accountTypeIds.length > 0 ||
@@ -95,26 +96,26 @@ export function CalendarFiltersBar({ value, onChange, availableCampaigns }: Cale
       <ListFilter className="mr-1 size-4 text-muted-foreground" />
 
       <FilterPopover
-        label="Plataforma"
-        options={PLATFORMS.map((p) => ({ id: p.id, label: p.name }))}
+        label="Canal"
+        options={platforms.map((p) => ({ id: p.id, label: p.name }))}
         selected={value.platformIds}
         onChange={(platformIds) => onChange({ ...value, platformIds })}
       />
       <FilterPopover
         label="Cuenta"
-        options={ACCOUNT_TYPES.map((a) => ({ id: a.id, label: a.name }))}
+        options={accountTypes.map((a) => ({ id: a.id, label: a.name }))}
         selected={value.accountTypeIds}
         onChange={(accountTypeIds) => onChange({ ...value, accountTypeIds })}
       />
       <FilterPopover
         label="Tipo"
-        options={CONTENT_TYPES.map((c) => ({ id: c.id, label: c.label }))}
+        options={contentTypes.map((c) => ({ id: c.id, label: c.label }))}
         selected={value.contentTypeIds}
         onChange={(contentTypeIds) => onChange({ ...value, contentTypeIds })}
       />
       <FilterPopover
         label="Estado"
-        options={STATUSES.map((s) => ({ id: s.id, label: s.label }))}
+        options={statuses.map((s) => ({ id: s.id, label: s.label }))}
         selected={value.statusIds}
         onChange={(statusIds) => onChange({ ...value, statusIds })}
       />

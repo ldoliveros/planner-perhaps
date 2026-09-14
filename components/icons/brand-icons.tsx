@@ -1,3 +1,4 @@
+import { Radio } from "lucide-react";
 import type { SVGProps } from "react";
 
 export function InstagramIcon(props: SVGProps<SVGSVGElement>) {
@@ -24,8 +25,17 @@ export function LinkedinIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
-export const PLATFORM_ICONS: Record<string, (props: SVGProps<SVGSVGElement>) => React.JSX.Element> = {
+const PLATFORM_ICONS: Record<string, (props: SVGProps<SVGSVGElement>) => React.JSX.Element> = {
   instagram: InstagramIcon,
   facebook: FacebookIcon,
   linkedin: LinkedinIcon,
 };
+
+/**
+ * Ícono de marca para un canal. Los canales agregados a futuro (TikTok, X, Blog,
+ * Newsletter, ...) no tienen necesariamente un SVG propio: cae a un ícono genérico.
+ */
+export function PlatformIcon({ platformKey, ...props }: { platformKey: string } & SVGProps<SVGSVGElement>) {
+  const Icon = PLATFORM_ICONS[platformKey] ?? Radio;
+  return <Icon {...props} />;
+}

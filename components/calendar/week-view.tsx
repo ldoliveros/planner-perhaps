@@ -1,5 +1,6 @@
 "use client";
 
+import { Plus } from "lucide-react";
 import { cn } from "cn";
 import { formatDayAbbr, formatDayNumber, isSameDayAs, isToday } from "@/lib/date-utils";
 import { PublicationCard } from "@/components/calendar/publication-card";
@@ -9,9 +10,10 @@ interface WeekViewProps {
   weekDays: Date[];
   publications: Publication[];
   onOpenPublication: (publication: Publication) => void;
+  onCreateForDay: (day: Date) => void;
 }
 
-export function WeekView({ weekDays, publications, onOpenPublication }: WeekViewProps) {
+export function WeekView({ weekDays, publications, onOpenPublication, onCreateForDay }: WeekViewProps) {
   return (
     <div className="grid flex-1 grid-cols-7 divide-x divide-border">
       {weekDays.map((day) => {
@@ -21,8 +23,11 @@ export function WeekView({ weekDays, publications, onOpenPublication }: WeekView
         const today = isToday(day);
 
         return (
-          <div key={day.toISOString()} className={cn("flex min-h-0 flex-col", today && "bg-primary/[0.03]")}>
-            <div className="flex flex-col items-center gap-1 border-b border-border py-2.5">
+          <div
+            key={day.toISOString()}
+            className={cn("group/day flex min-h-0 flex-col", today && "bg-primary/[0.03]")}
+          >
+            <div className="relative flex flex-col items-center gap-1 border-b border-border py-2.5">
               <span className="text-[11px] font-medium tracking-wide text-muted-foreground">{formatDayAbbr(day)}</span>
               <span
                 className={cn(
@@ -32,6 +37,15 @@ export function WeekView({ weekDays, publications, onOpenPublication }: WeekView
               >
                 {formatDayNumber(day)}
               </span>
+              <button
+                type="button"
+                onClick={() => onCreateForDay(day)}
+                className="absolute right-1.5 top-1.5 flex size-6 items-center justify-center rounded-md text-muted-foreground opacity-0 transition hover:bg-muted hover:text-foreground group-hover/day:opacity-100"
+                aria-label="Nuevo contenido este día"
+                title="Nuevo contenido este día"
+              >
+                <Plus className="size-4" />
+              </button>
             </div>
             <div className="flex flex-1 flex-col gap-2 p-2">
               {dayPublications.map((publication) => (

@@ -2,8 +2,8 @@
 
 import Image from "next/image";
 import { ImageIcon, Paperclip } from "lucide-react";
-import { PLATFORM_ICONS } from "@/components/icons/brand-icons";
-import { getAccountType, getContentType, getPlatform, getStatus } from "@/lib/constants";
+import { PlatformIcon } from "@/components/icons/brand-icons";
+import { useLookups } from "@/components/providers/lookups-provider";
 import type { Publication } from "@/types";
 
 interface PublicationCardProps {
@@ -12,13 +12,20 @@ interface PublicationCardProps {
 }
 
 export function PublicationCard({ publication, onOpen }: PublicationCardProps) {
+  const { getAccountType, getContentType, getPlatform, getStatus } = useLookups();
   const contentType = getContentType(publication.contentTypeId);
   const status = getStatus(publication.statusId);
-  const primaryAsset = publication.assets.find((a) => a.isPrimary) ?? publication.assets[0];
+  const primaryAsset = publication.assets.find((a) => a.isPrimary) ?? null;
+  const heroAsset = primaryAsset ?? publication.assets[0] ?? null;
+  const fileAssetCount = publication.assets.filter((a) => !a.isPrimary).length;
 
   const uniquePlatformIds = Array.from(new Set(publication.destinations.map((d) => d.platformId)));
   const uniqueAccountNames = Array.from(
-    new Set(publication.destinations.map((d) => getAccountType(d.accountTypeId)?.name).filter(Boolean))
+    new Set(
+      publication.destinations
+        .map((d) => (d.accountTypeId ? getAccountType(d.accountTypeId)?.name : undefined))
+        .filter(Boolean)
+    )
   );
 
   return (
@@ -28,9 +35,9 @@ export function PublicationCard({ publication, onOpen }: PublicationCardProps) {
       className="group flex w-full flex-col overflow-hidden rounded-lg border border-border bg-card text-left shadow-xs transition hover:-translate-y-0.5 hover:border-foreground/15 hover:shadow-md"
     >
       <div className="relative h-48 w-full shrink-0 overflow-hidden bg-muted">
-        {primaryAsset?.thumbnailUrl ? (
+        {heroAsset?.thumbnailUrl ? (
           <Image
-            src={primaryAsset.thumbnailUrl}
+            src={heroAsset.thumbnailUrl}
             alt=""
             fill
             sizes="220px"
@@ -47,14 +54,13 @@ export function PublicationCard({ publication, onOpen }: PublicationCardProps) {
           {uniquePlatformIds.map((platformId) => {
             const platform = getPlatform(platformId);
             if (!platform) return null;
-            const Icon = PLATFORM_ICONS[platform.key];
             return (
               <span
                 key={platformId}
                 className="flex size-5 items-center justify-center rounded-full bg-white/95 shadow-sm"
                 title={platform.name}
               >
-                <Icon className="size-3" style={{ color: platform.color }} />
+                <PlatformIcon platformKey={platform.key} className="size-3" style={{ color: platform.color }} />
               </span>
             );
           })}
@@ -66,10 +72,10 @@ export function PublicationCard({ publication, onOpen }: PublicationCardProps) {
           </span>
         )}
 
-        {publication.assets.length > 0 && (
+        {fileAssetCount > 0 && (
           <span className="absolute bottom-1.5 right-1.5 flex items-center gap-0.5 rounded-full bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white">
             <Paperclip className="size-2.5" />
-            {publication.assets.length}
+            {fileAssetCount}
           </span>
         )}
       </div>

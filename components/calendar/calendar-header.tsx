@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronLeft, ChevronRight, FolderOpen } from "lucide-react";
+import { ChevronLeft, ChevronRight, FolderOpen, Plus } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "cn";
 import type { Calendar, Client } from "@/types";
@@ -16,6 +16,7 @@ interface CalendarHeaderProps {
   onPrev: () => void;
   onNext: () => void;
   onToday: () => void;
+  onCreate: () => void;
 }
 
 export function CalendarHeader({
@@ -27,6 +28,7 @@ export function CalendarHeader({
   onPrev,
   onNext,
   onToday,
+  onCreate,
 }: CalendarHeaderProps) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-background px-6 py-4">
@@ -92,6 +94,11 @@ export function CalendarHeader({
             Abrir en Drive
           </a>
         )}
+
+        <Button size="sm" className="gap-1.5" onClick={onCreate}>
+          <Plus />
+          Nuevo contenido
+        </Button>
       </div>
     </div>
   );
