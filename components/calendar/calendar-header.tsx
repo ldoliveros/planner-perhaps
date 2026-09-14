@@ -3,11 +3,12 @@
 import Image from "next/image";
 import { ChevronLeft, ChevronRight, FolderOpen, Plus } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { getContrastTextColor } from "@/lib/color-contrast";
 import { cn } from "cn";
 import type { Client } from "@/types";
 
-export type CalendarView = "week" | "month";
+export type CalendarView = "week" | "month" | "list";
 
 interface CalendarHeaderProps {
   client: Client;
@@ -19,7 +20,9 @@ interface CalendarHeaderProps {
   onPrev: () => void;
   onNext: () => void;
   onToday: () => void;
-  onCreate: () => void;
+  onCreate?: () => void;
+  allClients?: { id: string; name: string }[];
+  onSwitchClient?: (clientId: string) => void;
 }
 
 export function CalendarHeader({
@@ -33,6 +36,8 @@ export function CalendarHeader({
   onNext,
   onToday,
   onCreate,
+  allClients,
+  onSwitchClient,
 }: CalendarHeaderProps) {
   const initialTextColor = getContrastTextColor(client.color);
 
@@ -58,9 +63,28 @@ export function CalendarHeader({
             )}
           </div>
           <div className="leading-tight">
-            <div className="text-xs font-medium" style={{ color: client.color }}>
-              {client.name}
-            </div>
+            {allClients && allClients.length > 1 && onSwitchClient ? (
+              <Select
+                value={client.id}
+                onValueChange={(value) => onSwitchClient(value as string)}
+                items={Object.fromEntries(allClients.map((c) => [c.id, c.name]))}
+              >
+                <SelectTrigger className="h-auto gap-1 border-none bg-transparent p-0 text-xs font-medium shadow-none" style={{ color: client.color }}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {allClients.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <div className="text-xs font-medium" style={{ color: client.color }}>
+                {client.name}
+              </div>
+            )}
             <h1 className="text-base font-semibold text-foreground">{calendarLabel}</h1>
           </div>
         </div>
@@ -101,6 +125,16 @@ export function CalendarHeader({
             >
               Mes
             </button>
+            <button
+              type="button"
+              onClick={() => onViewChange("list")}
+              className={cn(
+                "rounded-md px-2.5 py-1 font-medium transition-colors",
+                view === "list" ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              Lista
+            </button>
           </div>
 
           {driveFolderUrl && (
@@ -115,10 +149,12 @@ export function CalendarHeader({
             </a>
           )}
 
-          <Button size="sm" className="gap-1.5" onClick={onCreate}>
-            <Plus />
-            Nuevo contenido
-          </Button>
+          {onCreate && (
+            <Button size="sm" className="gap-1.5" onClick={onCreate}>
+              <Plus />
+              Nuevo contenido
+            </Button>
+          )}
         </div>
       </div>
     </div>

@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { saveClient, type ClientFormState } from "@/lib/actions/clients";
+import { toast } from "@/lib/toast";
 import type { Client } from "@/types";
 
 const INITIAL_STATE: ClientFormState = { error: null, savedAt: null };
@@ -75,8 +76,9 @@ function ClientFormBody({ client, onDone }: { client?: Client; onDone: () => voi
     if (state.savedAt && state.savedAt !== lastSavedAt.current) {
       lastSavedAt.current = state.savedAt;
       onDone();
+      toast.success(client ? "Cliente guardado" : "Cliente creado");
     }
-  }, [state.savedAt, onDone]);
+  }, [state.savedAt, onDone, client]);
 
   function handleLogoChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];

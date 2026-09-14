@@ -97,7 +97,7 @@ interface MonthDayCellProps {
   publications: Publication[];
   inCurrentMonth: boolean;
   onOpenPublication: (publication: Publication) => void;
-  onCreateForDay: (day: Date) => void;
+  onCreateForDay?: (day: Date) => void;
   clientColor: string;
   showCalendarLabel: boolean;
 }
@@ -138,15 +138,17 @@ function MonthDayCell({
         >
           {formatDayNumber(day)}
         </span>
-        <button
-          type="button"
-          onClick={() => onCreateForDay(day)}
-          className="flex size-5 items-center justify-center rounded-md text-muted-foreground opacity-0 transition hover:bg-muted hover:text-foreground group-hover/day:opacity-100"
-          aria-label="Nuevo contenido este día"
-          title="Nuevo contenido este día"
-        >
-          <Plus className="size-3.5" />
-        </button>
+        {onCreateForDay && (
+          <button
+            type="button"
+            onClick={() => onCreateForDay(day)}
+            className="flex size-5 items-center justify-center rounded-md text-muted-foreground opacity-0 transition hover:bg-muted hover:text-foreground group-hover/day:opacity-100"
+            aria-label="Nuevo contenido este día"
+            title="Nuevo contenido este día"
+          >
+            <Plus className="size-3.5" />
+          </button>
+        )}
       </div>
 
       <div className="flex flex-col gap-0.5">
@@ -195,7 +197,7 @@ interface MonthViewProps {
   anchorDate: Date;
   publications: Publication[];
   onOpenPublication: (publication: Publication) => void;
-  onCreateForDay: (day: Date) => void;
+  onCreateForDay?: (day: Date) => void;
   clientColor: string;
   showCalendarLabel: boolean;
 }

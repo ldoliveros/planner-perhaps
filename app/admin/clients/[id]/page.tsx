@@ -1,7 +1,13 @@
 import { notFound } from "next/navigation";
 import { ClientDetailPageClient } from "@/components/admin/client-detail-page-client";
 import { createClient } from "@/lib/supabase/server";
-import { getClientById, getLookups, listCalendarsForClient, listClientAccountsForClient } from "@/lib/supabase/queries";
+import {
+  getClientById,
+  getLookups,
+  listCalendarsForClient,
+  listClientAccountsForClient,
+  listUsersForClient,
+} from "@/lib/supabase/queries";
 
 export default async function ClientDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -9,9 +15,10 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
   const client = await getClientById(id);
   if (!client) notFound();
 
-  const [calendars, clientAccounts, lookups, supabase] = await Promise.all([
+  const [calendars, clientAccounts, clientUsers, lookups, supabase] = await Promise.all([
     listCalendarsForClient(client.id),
     listClientAccountsForClient(client.id),
+    listUsersForClient(client.id),
     getLookups(),
     createClient(),
   ]);
@@ -35,6 +42,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
       clientAccounts={clientAccounts}
       platforms={lookups.platforms}
       accountTypes={lookups.accountTypes}
+      clientUsers={clientUsers}
     />
   );
 }

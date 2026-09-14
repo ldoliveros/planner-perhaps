@@ -25,7 +25,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         <p className="text-sm text-muted-foreground">
           Tu cuenta ({user.email}) no tiene permisos de administrador todavía.
         </p>
-        <form action={signOut}>
+        <form action={signOut.bind(null, "/login")}>
           <Button variant="outline" size="sm" type="submit">
             Cerrar sesión
           </Button>
@@ -36,18 +36,18 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
   return (
     <div className="flex min-h-screen flex-1 flex-col bg-background">
-      <div className="flex items-center justify-between gap-4 border-b border-border px-4 py-1.5">
-        <div className="flex items-center gap-4">
-          <Link href="/admin" className="flex items-center gap-2">
+      <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-1.5 sm:gap-4 sm:px-4">
+        <div className="flex min-w-0 items-center gap-2 overflow-x-auto sm:gap-4">
+          <Link href="/admin" className="flex shrink-0 items-center gap-2">
             <PerhapsLogo height={16} />
-            <span className="text-xs font-medium text-muted-foreground">Planificador Editorial</span>
+            <span className="hidden text-xs font-medium text-muted-foreground sm:inline">Planificador Editorial</span>
           </Link>
           <AdminNav />
         </div>
-        <form action={signOut}>
+        <form action={signOut.bind(null, "/login")} className="shrink-0">
           <Button variant="ghost" size="sm" type="submit" className="gap-1.5 text-xs text-muted-foreground">
             <LogOut className="size-3.5" />
-            {user.email}
+            <span className="hidden sm:inline">{user.email}</span>
           </Button>
         </form>
       </div>

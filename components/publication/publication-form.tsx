@@ -27,6 +27,7 @@ import { PlatformIcon } from "@/components/icons/brand-icons";
 import { useLookups } from "@/components/providers/lookups-provider";
 import { deletePublication, savePublication, type PublicationFormState } from "@/lib/actions/publications";
 import { formatTime } from "@/lib/date-utils";
+import { toast } from "@/lib/toast";
 import type { AssetType, Calendar, ClientAccount, Publication, PublicationDestination } from "@/types";
 
 const INITIAL_STATE: PublicationFormState = { error: null, savedAt: null };
@@ -54,6 +55,8 @@ interface PublicationFormProps {
   clientAccounts: ClientAccount[];
   defaultCalendarId?: string;
   publication?: Publication;
+  /** Publicación de origen al duplicar: precarga campos pero siempre crea una fila nueva. */
+  duplicateFrom?: Publication;
   defaultDate?: string;
 }
 
@@ -65,6 +68,7 @@ export function PublicationForm({
   clientAccounts,
   defaultCalendarId,
   publication,
+  duplicateFrom,
   defaultDate,
 }: PublicationFormProps) {
   const { platforms, contentTypes, statuses } = useLookups();
@@ -77,9 +81,14 @@ export function PublicationForm({
   // este estado en un efecto.
   const primaryAsset = publication?.assets.find((a) => a.isPrimary) ?? null;
   const otherAssets = publication?.assets.filter((a) => !a.isPrimary) ?? [];
+  const firstStatusId = statuses.find((s) => s.order === 1)?.id;
 
-  const [calendarId, setCalendarId] = useState(publication?.calendarId ?? defaultCalendarId ?? "");
-  const [destinations, setDestinations] = useState<PublicationDestination[]>(publication?.destinations ?? []);
+  const [calendarId, setCalendarId] = useState(
+    publication?.calendarId ?? duplicateFrom?.calendarId ?? defaultCalendarId ?? ""
+  );
+  const [destinations, setDestinations] = useState<PublicationDestination[]>(
+    publication?.destinations ?? duplicateFrom?.destinations ?? []
+  );
   const [manualAssets, setManualAssets] = useState<ManualAssetRow[]>(() =>
     otherAssets.map((a) => ({ id: a.id, type: a.type, filename: a.filename, driveFileUrl: a.driveFileUrl }))
   );
@@ -94,8 +103,9 @@ export function PublicationForm({
       lastSavedAt.current = state.savedAt;
       onOpenChange(false);
       router.refresh();
+      toast.success(publication ? "Publicación guardada" : duplicateFrom ? "Publicación duplicada" : "Publicación creada");
     }
-  }, [state.savedAt, onOpenChange, router]);
+  }, [state.savedAt, onOpenChange, router, publication, duplicateFrom]);
 
   const selectedAccountIds = new Set(destinations.map((d) => d.clientAccountId));
 
@@ -144,18 +154,20 @@ export function PublicationForm({
     const result = await deletePublication(publication.id, clientId);
     if (result.error) {
       setDeleteError(result.error);
+      toast.error("No se pudo eliminar", result.error);
       return;
     }
     setDeleteOpen(false);
     onOpenChange(false);
     router.refresh();
+    toast.success("Publicación eliminada");
   }
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full gap-0 overflow-y-auto sm:max-w-xl">
         <SheetHeader>
-          <SheetTitle>{publication ? "Editar contenido" : "Nuevo contenido"}</SheetTitle>
+          <SheetTitle>{publication ? "Editar contenido" : duplicateFrom ? "Duplicar contenido" : "Nuevo contenido"}</SheetTitle>
         </SheetHeader>
 
         <form action={formAction} className="flex flex-col gap-6 px-4 pb-6">
@@ -193,18 +205,24 @@ export function PublicationForm({
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="title">Título</Label>
-              <Input id="title" name="title" defaultValue={publication?.title} required autoFocus />
+              <Input
+                id="title"
+                name="title"
+                defaultValue={publication?.title ?? (duplicateFrom ? `${duplicateFrom.title} (copia)` : undefined)}
+                required
+                autoFocus
+              />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="campaign">Campaña</Label>
-                <Input id="campaign" name="campaign" defaultValue={publication?.campaign ?? ""} />
+                <Input id="campaign" name="campaign" defaultValue={publication?.campaign ?? duplicateFrom?.campaign ?? ""} />
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="contentTypeId">Tipo de contenido</Label>
                 <Select
                   name="contentTypeId"
-                  defaultValue={publication?.contentTypeId}
+                  defaultValue={publication?.contentTypeId ?? duplicateFrom?.contentTypeId}
                   items={Object.fromEntries(contentTypes.map((ct) => [ct.id, ct.label]))}
                 >
                   <SelectTrigger id="contentTypeId" className="w-full">
@@ -292,15 +310,20 @@ export function PublicationForm({
             <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Contenido</h3>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="copy">Copy</Label>
-              <Textarea id="copy" name="copy" rows={5} defaultValue={publication?.copy ?? ""} />
+              <Textarea id="copy" name="copy" rows={5} defaultValue={publication?.copy ?? duplicateFrom?.copy ?? ""} />
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="cta">CTA</Label>
-              <Input id="cta" name="cta" defaultValue={publication?.cta ?? ""} />
+              <Input id="cta" name="cta" defaultValue={publication?.cta ?? duplicateFrom?.cta ?? ""} />
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="externalUrl">URL</Label>
-              <Input id="externalUrl" name="externalUrl" type="url" defaultValue={publication?.externalUrl ?? ""} />
+              <Input
+                id="externalUrl"
+                name="externalUrl"
+                type="url"
+                defaultValue={publication?.externalUrl ?? duplicateFrom?.externalUrl ?? ""}
+              />
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="internalNotes">Notas internas</Label>
@@ -314,7 +337,7 @@ export function PublicationForm({
             <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Estado</h3>
             <Select
               name="statusId"
-              defaultValue={publication?.statusId ?? statuses.find((s) => s.order === 1)?.id}
+              defaultValue={publication?.statusId ?? firstStatusId}
               items={Object.fromEntries(statuses.map((s) => [s.id, s.label]))}
             >
               <SelectTrigger className="w-full">

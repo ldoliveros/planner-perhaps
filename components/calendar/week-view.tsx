@@ -12,7 +12,7 @@ interface WeekViewProps {
   weekDays: Date[];
   publications: Publication[];
   onOpenPublication: (publication: Publication) => void;
-  onCreateForDay: (day: Date) => void;
+  onCreateForDay?: (day: Date) => void;
   clientColor: string;
   showCalendarLabel: boolean;
 }
@@ -50,15 +50,17 @@ export function WeekView({
               >
                 {formatDayNumber(day)}
               </span>
-              <button
-                type="button"
-                onClick={() => onCreateForDay(day)}
-                className="absolute right-1.5 top-1.5 flex size-6 items-center justify-center rounded-md text-muted-foreground opacity-0 transition hover:bg-muted hover:text-foreground group-hover/day:opacity-100"
-                aria-label="Nuevo contenido este día"
-                title="Nuevo contenido este día"
-              >
-                <Plus className="size-4" />
-              </button>
+              {onCreateForDay && (
+                <button
+                  type="button"
+                  onClick={() => onCreateForDay(day)}
+                  className="absolute right-1.5 top-1.5 flex size-6 items-center justify-center rounded-md text-muted-foreground opacity-0 transition hover:bg-muted hover:text-foreground group-hover/day:opacity-100"
+                  aria-label="Nuevo contenido este día"
+                  title="Nuevo contenido este día"
+                >
+                  <Plus className="size-4" />
+                </button>
+              )}
             </div>
             <div className="flex flex-1 flex-col gap-2 p-2">
               {dayPublications.map((publication) => (

@@ -1,5 +1,16 @@
 export type CalendarStatus = "draft" | "active" | "archived";
 
+export type UserRole = "admin" | "client";
+
+export interface ClientUser {
+  id: string;
+  email: string | null;
+  fullName: string | null;
+  role: UserRole;
+  clientId: string | null;
+  createdAt: string;
+}
+
 export interface Client {
   id: string;
   name: string;

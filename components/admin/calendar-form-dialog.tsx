@@ -19,6 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { saveCalendar, type CalendarFormState } from "@/lib/actions/calendars";
 import { CALENDAR_STATUS_LABELS } from "@/lib/calendar-labels";
+import { toast } from "@/lib/toast";
 import type { Calendar, CalendarStatus, Client } from "@/types";
 
 const INITIAL_STATE: CalendarFormState = { error: null, savedAt: null, calendarId: null };
@@ -100,9 +101,10 @@ function CalendarFormBody({
     if (state.savedAt && state.savedAt !== lastSavedAt.current) {
       lastSavedAt.current = state.savedAt;
       router.refresh();
+      toast.success(calendar ? "Calendario guardado" : "Calendario creado");
       if (state.calendarId) onSaved(state.calendarId);
     }
-  }, [state.savedAt, state.calendarId, onSaved, router]);
+  }, [state.savedAt, state.calendarId, onSaved, router, calendar]);
 
   return (
     <form action={formAction} className="flex flex-col gap-4">

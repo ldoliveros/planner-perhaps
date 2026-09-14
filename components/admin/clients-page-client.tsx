@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { Pencil } from "lucide-react";
+import { CalendarDays } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -28,7 +28,6 @@ export function ClientsPageClient({ clients, calendarCountByClientId }: ClientsP
           <TableHeader>
             <TableRow>
               <TableHead>Cliente</TableHead>
-              <TableHead>Color</TableHead>
               <TableHead>Calendarios</TableHead>
               <TableHead>Estado</TableHead>
               <TableHead className="text-right">Acciones</TableHead>
@@ -37,7 +36,7 @@ export function ClientsPageClient({ clients, calendarCountByClientId }: ClientsP
           <TableBody>
             {clients.length === 0 && (
               <TableRow>
-                <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
+                <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">
                   Todavía no hay clientes. Creá el primero con &quot;Nuevo cliente&quot;.
                 </TableCell>
               </TableRow>
@@ -63,12 +62,6 @@ export function ClientsPageClient({ clients, calendarCountByClientId }: ClientsP
                     <span className="font-medium text-foreground">{client.name}</span>
                   </Link>
                 </TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <span className="size-3 shrink-0 rounded-full border border-border/50" style={{ backgroundColor: client.color }} />
-                    {client.color}
-                  </div>
-                </TableCell>
                 <TableCell className="text-muted-foreground">{calendarCountByClientId[client.id] ?? 0}</TableCell>
                 <TableCell>
                   <Badge variant={client.active ? "secondary" : "outline"}>
@@ -80,15 +73,16 @@ export function ClientsPageClient({ clients, calendarCountByClientId }: ClientsP
                     <Button variant="ghost" size="sm" nativeButton={false} render={<Link href={`/admin/clients/${client.id}`} />}>
                       Ver
                     </Button>
-                    <ClientFormDialog
-                      client={client}
-                      trigger={
-                        <Button variant="ghost" size="sm" className="gap-1.5">
-                          <Pencil className="size-3.5" />
-                          Editar
-                        </Button>
-                      }
-                    />
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="gap-1.5"
+                      nativeButton={false}
+                      render={<Link href={`/admin/clients/${client.id}/planner`} />}
+                    >
+                      <CalendarDays className="size-3.5" />
+                      Ver planner
+                    </Button>
                   </div>
                 </TableCell>
               </TableRow>

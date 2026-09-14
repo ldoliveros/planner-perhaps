@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Image from "next/image";
-import { ExternalLink, File, FileText, FolderOpen, ImageIcon, Pencil, Video } from "lucide-react";
+import { Copy, ExternalLink, File, FileText, FolderOpen, ImageIcon, Pencil, Video } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -38,10 +38,11 @@ function formatFileSize(bytes: number | null): string {
 interface PublicationDrawerProps {
   publication: Publication | null;
   onOpenChange: (open: boolean) => void;
-  onEdit: (publication: Publication) => void;
+  onEdit?: (publication: Publication) => void;
+  onDuplicate?: (publication: Publication) => void;
 }
 
-export function PublicationDrawer({ publication, onOpenChange, onEdit }: PublicationDrawerProps) {
+export function PublicationDrawer({ publication, onOpenChange, onEdit, onDuplicate }: PublicationDrawerProps) {
   const { getClientAccount, getContentType, getPlatform, getStatus } = useLookups();
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const contentType = publication ? getContentType(publication.contentTypeId) : undefined;
@@ -106,10 +107,22 @@ export function PublicationDrawer({ publication, onOpenChange, onEdit }: Publica
                     {publication.publicationTime ? ` · ${formatTime(publication.publicationTime)}` : ""}
                   </SheetDescription>
                 </div>
-                <Button size="sm" variant="outline" className="shrink-0 gap-1.5" onClick={() => onEdit(publication)}>
-                  <Pencil className="size-3.5" />
-                  Editar
-                </Button>
+                {(onEdit || onDuplicate) && (
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    {onDuplicate && (
+                      <Button size="sm" variant="outline" className="gap-1.5" onClick={() => onDuplicate(publication)}>
+                        <Copy className="size-3.5" />
+                        Duplicar
+                      </Button>
+                    )}
+                    {onEdit && (
+                      <Button size="sm" variant="outline" className="gap-1.5" onClick={() => onEdit(publication)}>
+                        <Pencil className="size-3.5" />
+                        Editar
+                      </Button>
+                    )}
+                  </div>
+                )}
               </SheetHeader>
 
               <div className="flex flex-wrap items-center gap-1.5">
@@ -162,7 +175,7 @@ export function PublicationDrawer({ publication, onOpenChange, onEdit }: Publica
                 </div>
               )}
 
-              {publication.internalNotes && (
+              {onEdit && publication.internalNotes && (
                 <div className="rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground">
                   <div className="mb-1 text-xs font-medium uppercase tracking-wide">Notas internas</div>
                   {publication.internalNotes}

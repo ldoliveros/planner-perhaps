@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -27,7 +27,9 @@ export async function middleware(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
   const isAdminRoute = pathname.startsWith("/admin");
-  const isLoginRoute = pathname.startsWith("/login");
+  const isClientRoute = pathname.startsWith("/client") && pathname !== "/client/login";
+  const isAdminLoginRoute = pathname === "/login";
+  const isClientLoginRoute = pathname === "/client/login";
 
   if (isAdminRoute && !user) {
     const url = request.nextUrl.clone();
@@ -36,9 +38,17 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (isLoginRoute && user) {
+  if (isClientRoute && !user) {
     const url = request.nextUrl.clone();
-    url.pathname = "/admin";
+    url.pathname = "/client/login";
+    url.searchParams.set("next", pathname);
+    return NextResponse.redirect(url);
+  }
+
+  if ((isAdminLoginRoute || isClientLoginRoute) && user) {
+    const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
+    const url = request.nextUrl.clone();
+    url.pathname = profile?.role === "admin" ? "/admin" : "/client";
     url.search = "";
     return NextResponse.redirect(url);
   }
@@ -47,5 +57,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|auth/callback|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
 };

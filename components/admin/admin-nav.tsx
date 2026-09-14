@@ -7,6 +7,7 @@ import { cn } from "cn";
 const NAV_ITEMS = [
   { href: "/admin/clients", label: "Clientes" },
   { href: "/admin/calendars", label: "Calendarios" },
+  { href: "/admin/publications", label: "Publicaciones" },
 ];
 
 export function AdminNav() {

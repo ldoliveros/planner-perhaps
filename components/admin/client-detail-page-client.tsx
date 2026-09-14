@@ -27,7 +27,10 @@ import { getContrastTextColor } from "@/lib/color-contrast";
 import { CALENDAR_STATUS_LABELS } from "@/lib/calendar-labels";
 import { deleteCalendar } from "@/lib/actions/calendars";
 import { setClientAccountActive } from "@/lib/actions/client-accounts";
-import type { AccountType, Calendar, Client, ClientAccount, Platform } from "@/types";
+import { deleteClientUser } from "@/lib/actions/client-users";
+import { toast } from "@/lib/toast";
+import { ClientUserFormDialog } from "@/components/admin/client-user-form-dialog";
+import type { AccountType, Calendar, Client, ClientAccount, ClientUser, Platform } from "@/types";
 
 interface ClientDetailPageClientProps {
   client: Client;
@@ -36,6 +39,7 @@ interface ClientDetailPageClientProps {
   clientAccounts: ClientAccount[];
   platforms: Platform[];
   accountTypes: AccountType[];
+  clientUsers: ClientUser[];
 }
 
 export function ClientDetailPageClient({
@@ -45,6 +49,7 @@ export function ClientDetailPageClient({
   clientAccounts,
   platforms,
   accountTypes,
+  clientUsers,
 }: ClientDetailPageClientProps) {
   const platformMap = new Map(platforms.map((p) => [p.id, p]));
   const accountTypeMap = new Map(accountTypes.map((a) => [a.id, a]));
@@ -194,6 +199,38 @@ export function ClientDetailPageClient({
           </Table>
         </div>
       </div>
+
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-foreground">Usuarios</h2>
+          <ClientUserFormDialog clientId={client.id} />
+        </div>
+
+        <div className="overflow-hidden rounded-lg border border-border bg-card">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Email</TableHead>
+                <TableHead>Nombre</TableHead>
+                <TableHead>Invitado</TableHead>
+                <TableHead className="text-right">Acciones</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {clientUsers.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">
+                    Todavía no hay usuarios invitados. Invitá al primero con &quot;Invitar usuario&quot;.
+                  </TableCell>
+                </TableRow>
+              )}
+              {clientUsers.map((user) => (
+                <ClientUserTableRow key={user.id} clientId={client.id} user={user} />
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      </div>
     </div>
   );
 }
@@ -222,6 +259,7 @@ function CalendarTableRow({
       }
       setDeleteOpen(false);
       router.refresh();
+      toast.success("Calendario eliminado");
     });
   }
 
@@ -283,6 +321,58 @@ function CalendarTableRow({
   );
 }
 
+function ClientUserTableRow({ clientId, user }: { clientId: string; user: ClientUser }) {
+  const router = useRouter();
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [isPending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+
+  function handleConfirmDelete() {
+    setError(null);
+    startTransition(async () => {
+      const result = await deleteClientUser(user.id, clientId);
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+      setDeleteOpen(false);
+      router.refresh();
+      toast.success("Usuario eliminado");
+    });
+  }
+
+  return (
+    <TableRow>
+      <TableCell className="font-medium text-foreground">{user.email}</TableCell>
+      <TableCell className="text-muted-foreground">{user.fullName ?? "—"}</TableCell>
+      <TableCell className="text-muted-foreground">{new Date(user.createdAt).toLocaleDateString("es-AR")}</TableCell>
+      <TableCell className="text-right">
+        <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+          <AlertDialogTrigger render={<Button variant="ghost" size="sm" className="gap-1.5 text-destructive" />}>
+            <Trash2 className="size-3.5" />
+            Eliminar
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>¿Eliminar a &quot;{user.email}&quot;?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Esta acción no se puede deshacer. La cuenta pierde el acceso inmediatamente.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            {error && <p className="text-sm text-destructive">{error}</p>}
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction variant="destructive" disabled={isPending} onClick={handleConfirmDelete}>
+                Eliminar
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </TableCell>
+    </TableRow>
+  );
+}
+
 function ClientAccountTableRow({
   clientId,
   account,
@@ -311,6 +401,7 @@ function ClientAccountTableRow({
         return;
       }
       router.refresh();
+      toast.success(account.active ? "Cuenta desactivada" : "Cuenta activada");
     });
   }
 

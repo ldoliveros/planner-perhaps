@@ -5,6 +5,7 @@ import type {
   ClientRow,
   ContentTypeRow,
   PlatformRow,
+  ProfileRow,
   PublicationAssetRow,
   PublicationDestinationRow,
   PublicationRow,
@@ -15,6 +16,7 @@ import type {
   Calendar,
   Client,
   ClientAccount,
+  ClientUser,
   ContentType,
   Platform,
   Publication,
@@ -61,6 +63,17 @@ export function mapPlatform(row: PlatformRow): Platform {
 
 export function mapAccountType(row: AccountTypeRow): AccountType {
   return { id: row.id, key: row.slug, name: row.name };
+}
+
+export function mapClientUser(row: ProfileRow): ClientUser {
+  return {
+    id: row.id,
+    email: row.email,
+    fullName: row.full_name,
+    role: row.role,
+    clientId: row.client_id,
+    createdAt: row.created_at,
+  };
 }
 
 export function mapClientAccount(row: ClientAccountRow): ClientAccount {

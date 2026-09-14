@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { saveClientAccount, type ClientAccountFormState } from "@/lib/actions/client-accounts";
+import { toast } from "@/lib/toast";
 import type { AccountType, ClientAccount, Platform } from "@/types";
 
 const INITIAL_STATE: ClientAccountFormState = { error: null, savedAt: null };
@@ -104,8 +105,9 @@ function ClientAccountFormBody({
       lastSavedAt.current = state.savedAt;
       router.refresh();
       onDone();
+      toast.success(account ? "Cuenta guardada" : "Cuenta creada");
     }
-  }, [state.savedAt, onDone, router]);
+  }, [state.savedAt, onDone, router, account]);
 
   return (
     <form action={formAction} className="flex flex-col gap-4">

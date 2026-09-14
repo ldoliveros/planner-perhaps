@@ -2,25 +2,25 @@ import { notFound } from "next/navigation";
 import { CalendarScreen } from "@/components/calendar/calendar-screen";
 import {
   getClientById,
+  getCurrentProfile,
   getLookups,
   listCalendarsForClient,
   listClientAccountsForClient,
-  listClients,
   listPublicationsForClient,
 } from "@/lib/supabase/queries";
 
-export default async function ClientPlannerPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
+export default async function ClientPlannerPage() {
+  const profile = await getCurrentProfile();
+  if (!profile?.clientId) notFound();
 
-  const client = await getClientById(id);
+  const client = await getClientById(profile.clientId);
   if (!client) notFound();
 
-  const [calendars, publications, clientAccounts, lookups, allClients] = await Promise.all([
+  const [calendars, publications, clientAccounts, lookups] = await Promise.all([
     listCalendarsForClient(client.id),
     listPublicationsForClient(client.id),
     listClientAccountsForClient(client.id),
     getLookups(),
-    listClients(),
   ]);
 
   return (
@@ -30,7 +30,7 @@ export default async function ClientPlannerPage({ params }: { params: Promise<{ 
       publications={publications}
       clientAccounts={clientAccounts}
       lookups={lookups}
-      allClients={allClients.map((c) => ({ id: c.id, name: c.name }))}
+      readOnly
     />
   );
 }
