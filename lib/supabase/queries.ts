@@ -68,15 +68,15 @@ export async function getCalendarById(id: string): Promise<Calendar | null> {
   return data ? mapCalendar(data) : null;
 }
 
-export async function getMostRecentCalendarId(): Promise<string | null> {
+export async function listCalendarsForClient(clientId: string): Promise<Calendar[]> {
   const supabase = await createClient();
   const { data } = await supabase
     .from("calendars")
-    .select("id")
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  return data?.id ?? null;
+    .select("*")
+    .eq("client_id", clientId)
+    .order("year", { ascending: false })
+    .order("month", { ascending: false });
+  return (data ?? []).map(mapCalendar);
 }
 
 export async function listPublicationsForCalendar(calendarId: string): Promise<Publication[]> {

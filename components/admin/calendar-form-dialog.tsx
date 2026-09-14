@@ -17,39 +17,22 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { saveCalendar, type CalendarFormState } from "@/lib/actions/calendars";
+import { CALENDAR_STATUS_LABELS, MONTH_LABELS } from "@/lib/calendar-labels";
 import type { Calendar, CalendarStatus, Client } from "@/types";
 
 const INITIAL_STATE: CalendarFormState = { error: null, savedAt: null, calendarId: null };
 
-const MONTH_LABELS = [
-  "Enero",
-  "Febrero",
-  "Marzo",
-  "Abril",
-  "Mayo",
-  "Junio",
-  "Julio",
-  "Agosto",
-  "Septiembre",
-  "Octubre",
-  "Noviembre",
-  "Diciembre",
-];
-
-const STATUS_ITEMS: Record<CalendarStatus, string> = {
-  draft: "Borrador",
-  active: "Activo",
-  archived: "Archivado",
-};
-
-interface CalendarFormDialogProps {
-  clients: Client[];
+interface CalendarFormDialogBaseProps {
   calendar?: Calendar;
   trigger?: React.ReactElement;
   onSaved?: (calendarId: string) => void;
 }
 
-export function CalendarFormDialog({ clients, calendar, trigger, onSaved }: CalendarFormDialogProps) {
+type CalendarFormDialogProps =
+  | (CalendarFormDialogBaseProps & { clients: Client[]; lockedClient?: undefined })
+  | (CalendarFormDialogBaseProps & { clients?: undefined; lockedClient: Client });
+
+export function CalendarFormDialog({ clients, lockedClient, calendar, trigger, onSaved }: CalendarFormDialogProps) {
   const [open, setOpen] = useState(false);
   // Se incrementa cada vez que el diálogo se abre, para remontar CalendarFormBody
   // (un guardado anterior fallido no debe dejar el error/campos pegados).
@@ -79,6 +62,7 @@ export function CalendarFormDialog({ clients, calendar, trigger, onSaved }: Cale
         <CalendarFormBody
           key={sessionKey}
           clients={clients}
+          lockedClient={lockedClient}
           calendar={calendar}
           onSaved={(calendarId) => {
             setOpen(false);
@@ -92,10 +76,12 @@ export function CalendarFormDialog({ clients, calendar, trigger, onSaved }: Cale
 
 function CalendarFormBody({
   clients,
+  lockedClient,
   calendar,
   onSaved,
 }: {
-  clients: Client[];
+  clients?: Client[];
+  lockedClient?: Client;
   calendar?: Calendar;
   onSaved: (calendarId: string) => void;
 }) {
@@ -104,7 +90,7 @@ function CalendarFormBody({
   const router = useRouter();
   const today = new Date();
 
-  const [clientId, setClientId] = useState(calendar?.clientId ?? "");
+  const [clientId, setClientId] = useState(lockedClient?.id ?? calendar?.clientId ?? "");
   const [name, setName] = useState(calendar?.name ?? "");
   const [month, setMonth] = useState(String(calendar?.month ?? today.getMonth() + 1));
   const [year, setYear] = useState(calendar?.year ?? today.getFullYear());
@@ -125,23 +111,33 @@ function CalendarFormBody({
 
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="clientId">Cliente</Label>
-        <Select
-          name="clientId"
-          value={clientId}
-          onValueChange={(value) => setClientId(value as string)}
-          items={Object.fromEntries(clients.map((c) => [c.id, c.name]))}
-        >
-          <SelectTrigger id="clientId" className="w-full">
-            <SelectValue placeholder="Elegí un cliente" />
-          </SelectTrigger>
-          <SelectContent>
-            {clients.map((c) => (
-              <SelectItem key={c.id} value={c.id}>
-                {c.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {lockedClient ? (
+          <>
+            <input type="hidden" name="clientId" value={lockedClient.id} />
+            <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-2.5 py-1.5 text-sm text-foreground">
+              <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: lockedClient.color }} />
+              {lockedClient.name}
+            </div>
+          </>
+        ) : (
+          <Select
+            name="clientId"
+            value={clientId}
+            onValueChange={(value) => setClientId(value as string)}
+            items={Object.fromEntries((clients ?? []).map((c) => [c.id, c.name]))}
+          >
+            <SelectTrigger id="clientId" className="w-full">
+              <SelectValue placeholder="Elegí un cliente" />
+            </SelectTrigger>
+            <SelectContent>
+              {(clients ?? []).map((c) => (
+                <SelectItem key={c.id} value={c.id}>
+                  {c.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
       </div>
 
       <div className="flex flex-col gap-1.5">
@@ -196,7 +192,7 @@ function CalendarFormBody({
           name="status"
           value={status}
           onValueChange={(value) => setStatus(value as CalendarStatus)}
-          items={STATUS_ITEMS}
+          items={CALENDAR_STATUS_LABELS}
         >
           <SelectTrigger id="status" className="w-full">
             <SelectValue />

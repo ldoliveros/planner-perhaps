@@ -6,28 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { CalendarFormDialog } from "@/components/admin/calendar-form-dialog";
+import { CALENDAR_STATUS_LABELS, MONTH_LABELS } from "@/lib/calendar-labels";
 import type { Calendar, Client } from "@/types";
-
-const MONTH_LABELS = [
-  "Enero",
-  "Febrero",
-  "Marzo",
-  "Abril",
-  "Mayo",
-  "Junio",
-  "Julio",
-  "Agosto",
-  "Septiembre",
-  "Octubre",
-  "Noviembre",
-  "Diciembre",
-];
-
-const STATUS_LABELS: Record<Calendar["status"], string> = {
-  draft: "Borrador",
-  active: "Activo",
-  archived: "Archivado",
-};
 
 interface CalendarsPageClientProps {
   calendars: Calendar[];
@@ -71,7 +51,16 @@ export function CalendarsPageClient({ calendars, clients, publicationCountByCale
               const client = clientById.get(calendar.clientId);
               return (
                 <TableRow key={calendar.id}>
-                  <TableCell className="text-foreground">{client?.name ?? "—"}</TableCell>
+                  <TableCell className="text-foreground">
+                    {client ? (
+                      <Link href={`/admin/clients/${client.id}`} className="flex items-center gap-1.5 hover:underline">
+                        <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: client.color }} />
+                        {client.name}
+                      </Link>
+                    ) : (
+                      "—"
+                    )}
+                  </TableCell>
                   <TableCell className="font-medium text-foreground">{calendar.name}</TableCell>
                   <TableCell className="text-muted-foreground">
                     {MONTH_LABELS[calendar.month - 1]} {calendar.year}
@@ -80,7 +69,7 @@ export function CalendarsPageClient({ calendars, clients, publicationCountByCale
                     {publicationCountByCalendarId[calendar.id] ?? 0}
                   </TableCell>
                   <TableCell>
-                    <Badge variant="outline">{STATUS_LABELS[calendar.status]}</Badge>
+                    <Badge variant="outline">{CALENDAR_STATUS_LABELS[calendar.status]}</Badge>
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">
