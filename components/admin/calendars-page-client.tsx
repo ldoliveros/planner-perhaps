@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { CalendarFormDialog } from "@/components/admin/calendar-form-dialog";
-import { CALENDAR_STATUS_LABELS, MONTH_LABELS } from "@/lib/calendar-labels";
+import { CALENDAR_STATUS_LABELS } from "@/lib/calendar-labels";
 import type { Calendar, Client } from "@/types";
 
 interface CalendarsPageClientProps {
@@ -31,7 +31,6 @@ export function CalendarsPageClient({ calendars, clients, publicationCountByCale
             <TableRow>
               <TableHead>Cliente</TableHead>
               <TableHead>Calendario</TableHead>
-              <TableHead>Período</TableHead>
               <TableHead>Publicaciones</TableHead>
               <TableHead>Estado</TableHead>
               <TableHead className="text-right">Acciones</TableHead>
@@ -40,7 +39,7 @@ export function CalendarsPageClient({ calendars, clients, publicationCountByCale
           <TableBody>
             {calendars.length === 0 && (
               <TableRow>
-                <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
+                <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
                   {clients.length === 0
                     ? "Primero creá un cliente en /admin/clients."
                     : 'Todavía no hay calendarios. Creá el primero con "Nuevo calendario".'}
@@ -63,9 +62,6 @@ export function CalendarsPageClient({ calendars, clients, publicationCountByCale
                   </TableCell>
                   <TableCell className="font-medium text-foreground">{calendar.name}</TableCell>
                   <TableCell className="text-muted-foreground">
-                    {MONTH_LABELS[calendar.month - 1]} {calendar.year}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
                     {publicationCountByCalendarId[calendar.id] ?? 0}
                   </TableCell>
                   <TableCell>
@@ -77,7 +73,7 @@ export function CalendarsPageClient({ calendars, clients, publicationCountByCale
                         variant="ghost"
                         size="sm"
                         nativeButton={false}
-                        render={<Link href={`/admin/calendars/${calendar.id}`} />}
+                        render={<Link href={`/admin/clients/${calendar.clientId}/planner?calendars=${calendar.id}`} />}
                       >
                         Ver
                       </Button>

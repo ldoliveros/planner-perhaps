@@ -26,7 +26,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { PlatformIcon } from "@/components/icons/brand-icons";
 import { useLookups } from "@/components/providers/lookups-provider";
 import { deletePublication, savePublication, type PublicationFormState } from "@/lib/actions/publications";
-import type { AssetType, Publication, PublicationDestination } from "@/types";
+import { formatTime } from "@/lib/date-utils";
+import type { AssetType, Calendar, ClientAccount, Publication, PublicationDestination } from "@/types";
 
 const INITIAL_STATE: PublicationFormState = { error: null, savedAt: null };
 
@@ -48,17 +49,25 @@ interface ManualAssetRow {
 interface PublicationFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  calendarId: string;
+  clientId: string;
+  calendars: Calendar[];
+  clientAccounts: ClientAccount[];
+  defaultCalendarId?: string;
   publication?: Publication;
   defaultDate?: string;
 }
 
-function destinationKey(platformId: string, accountTypeId: string | null): string {
-  return `${platformId}::${accountTypeId ?? ""}`;
-}
-
-export function PublicationForm({ open, onOpenChange, calendarId, publication, defaultDate }: PublicationFormProps) {
-  const { platforms, accountTypes, contentTypes, statuses } = useLookups();
+export function PublicationForm({
+  open,
+  onOpenChange,
+  clientId,
+  calendars,
+  clientAccounts,
+  defaultCalendarId,
+  publication,
+  defaultDate,
+}: PublicationFormProps) {
+  const { platforms, contentTypes, statuses } = useLookups();
   const router = useRouter();
   const [state, formAction, isPending] = useActionState(savePublication, INITIAL_STATE);
   const lastSavedAt = useRef<number | null>(null);
@@ -69,6 +78,7 @@ export function PublicationForm({ open, onOpenChange, calendarId, publication, d
   const primaryAsset = publication?.assets.find((a) => a.isPrimary) ?? null;
   const otherAssets = publication?.assets.filter((a) => !a.isPrimary) ?? [];
 
+  const [calendarId, setCalendarId] = useState(publication?.calendarId ?? defaultCalendarId ?? "");
   const [destinations, setDestinations] = useState<PublicationDestination[]>(publication?.destinations ?? []);
   const [manualAssets, setManualAssets] = useState<ManualAssetRow[]>(() =>
     otherAssets.map((a) => ({ id: a.id, type: a.type, filename: a.filename, driveFileUrl: a.driveFileUrl }))
@@ -87,15 +97,24 @@ export function PublicationForm({ open, onOpenChange, calendarId, publication, d
     }
   }, [state.savedAt, onOpenChange, router]);
 
-  const selectedKeys = new Set(destinations.map((d) => destinationKey(d.platformId, d.accountTypeId)));
+  const selectedAccountIds = new Set(destinations.map((d) => d.clientAccountId));
 
-  function toggleDestination(platformId: string, accountTypeId: string | null) {
-    const key = destinationKey(platformId, accountTypeId);
+  function toggleDestination(clientAccountId: string) {
     setDestinations((prev) =>
-      selectedKeys.has(key)
-        ? prev.filter((d) => destinationKey(d.platformId, d.accountTypeId) !== key)
-        : [...prev, { platformId, accountTypeId }]
+      selectedAccountIds.has(clientAccountId)
+        ? prev.filter((d) => d.clientAccountId !== clientAccountId)
+        : [...prev, { clientAccountId }]
     );
+  }
+
+  // Cuentas activas + cualquier cuenta ya seleccionada aunque haya sido desactivada
+  // después (para no "perder" el destino silenciosamente al editar).
+  const selectableAccounts = clientAccounts.filter((a) => a.active || selectedAccountIds.has(a.id));
+  const accountsByPlatform = new Map<string, ClientAccount[]>();
+  for (const account of selectableAccounts) {
+    const list = accountsByPlatform.get(account.platformId) ?? [];
+    list.push(account);
+    accountsByPlatform.set(account.platformId, list);
   }
 
   function handleThumbnailChange(event: React.ChangeEvent<HTMLInputElement>) {
@@ -122,7 +141,7 @@ export function PublicationForm({ open, onOpenChange, calendarId, publication, d
   async function handleConfirmDelete() {
     if (!publication) return;
     setDeleteError(null);
-    const result = await deletePublication(publication.id, calendarId);
+    const result = await deletePublication(publication.id, clientId);
     if (result.error) {
       setDeleteError(result.error);
       return;
@@ -141,7 +160,6 @@ export function PublicationForm({ open, onOpenChange, calendarId, publication, d
 
         <form action={formAction} className="flex flex-col gap-6 px-4 pb-6">
           {publication && <input type="hidden" name="id" value={publication.id} />}
-          <input type="hidden" name="calendarId" value={calendarId} />
           <input type="hidden" name="destinations" value={JSON.stringify(destinations)} readOnly />
           <input
             type="hidden"
@@ -153,6 +171,26 @@ export function PublicationForm({ open, onOpenChange, calendarId, publication, d
 
           <section className="flex flex-col gap-3">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Información</h3>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="calendarId">Calendario</Label>
+              <Select
+                name="calendarId"
+                value={calendarId}
+                onValueChange={(value) => setCalendarId(value as string)}
+                items={Object.fromEntries(calendars.map((c) => [c.id, c.name]))}
+              >
+                <SelectTrigger id="calendarId" className="w-full">
+                  <SelectValue placeholder="Elegí un calendario" />
+                </SelectTrigger>
+                <SelectContent>
+                  {calendars.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="title">Título</Label>
               <Input id="title" name="title" defaultValue={publication?.title} required autoFocus />
@@ -205,7 +243,7 @@ export function PublicationForm({ open, onOpenChange, calendarId, publication, d
                   id="publicationTime"
                   name="publicationTime"
                   type="time"
-                  defaultValue={publication?.publicationTime ?? ""}
+                  defaultValue={formatTime(publication?.publicationTime ?? null)}
                 />
               </div>
             </div>
@@ -214,41 +252,38 @@ export function PublicationForm({ open, onOpenChange, calendarId, publication, d
           <Separator />
 
           <section className="flex flex-col gap-3">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Destinos / Canales</h3>
-            <div className="flex flex-col gap-2">
-              {platforms.map((platform) => (
-                <div
-                  key={platform.id}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border px-3 py-2"
-                >
-                  <div className="flex items-center gap-2">
-                    <PlatformIcon platformKey={platform.key} className="size-4" style={{ color: platform.color }} />
-                    <span className="text-sm font-medium text-foreground">{platform.name}</span>
-                  </div>
-                  {platform.requiresAccountType ? (
-                    <div className="flex flex-wrap gap-3">
-                      {accountTypes.map((accountType) => (
-                        <label key={accountType.id} className="flex items-center gap-1.5 text-sm text-foreground">
-                          <Checkbox
-                            checked={selectedKeys.has(destinationKey(platform.id, accountType.id))}
-                            onCheckedChange={() => toggleDestination(platform.id, accountType.id)}
-                          />
-                          {accountType.name}
-                        </label>
-                      ))}
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Destinos</h3>
+            {selectableAccounts.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Este cliente todavía no tiene cuentas configuradas. Agregá una desde la ficha del cliente.
+              </p>
+            ) : (
+              <div className="flex flex-col gap-3">
+                {platforms
+                  .filter((platform) => accountsByPlatform.has(platform.id))
+                  .map((platform) => (
+                    <div key={platform.id} className="flex flex-col gap-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <PlatformIcon platformKey={platform.key} className="size-3.5" style={{ color: platform.color }} />
+                        <span className="text-xs font-medium text-foreground">{platform.name}</span>
+                      </div>
+                      <div className="flex flex-col gap-1 rounded-lg border border-border px-3 py-2">
+                        {accountsByPlatform.get(platform.id)!.map((account) => (
+                          <label key={account.id} className="flex items-center gap-2 text-sm text-foreground">
+                            <Checkbox
+                              checked={selectedAccountIds.has(account.id)}
+                              onCheckedChange={() => toggleDestination(account.id)}
+                            />
+                            {account.name}
+                            {account.handle && <span className="text-muted-foreground">{account.handle}</span>}
+                            {!account.active && <span className="text-xs text-muted-foreground">(inactiva)</span>}
+                          </label>
+                        ))}
+                      </div>
                     </div>
-                  ) : (
-                    <label className="flex items-center gap-1.5 text-sm text-foreground">
-                      <Checkbox
-                        checked={selectedKeys.has(destinationKey(platform.id, null))}
-                        onCheckedChange={() => toggleDestination(platform.id, null)}
-                      />
-                      Incluir
-                    </label>
-                  )}
-                </div>
-              ))}
-            </div>
+                  ))}
+              </div>
+            )}
           </section>
 
           <Separator />

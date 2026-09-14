@@ -12,6 +12,7 @@ import { hexToRgba } from "@/lib/color-contrast";
 import {
   formatDayNumber,
   formatFullDateFromDate,
+  formatTime,
   getMonthGridDays,
   isSameDayAs,
   isSameMonthAs,
@@ -25,52 +26,67 @@ const MAX_VISIBLE_PER_DAY = 3;
 interface MonthChipProps {
   publication: Publication;
   onOpen: () => void;
+  showCalendarLabel: boolean;
 }
 
-function MonthChip({ publication, onOpen }: MonthChipProps) {
-  const { getPlatform, getStatus } = useLookups();
+function MonthChip({ publication, onOpen, showCalendarLabel }: MonthChipProps) {
+  const { getCalendar, getClientAccount, getPlatform, getStatus } = useLookups();
   const status = getStatus(publication.statusId);
+  const calendar = showCalendarLabel ? getCalendar(publication.calendarId) : undefined;
   const primaryAsset = publication.assets.find((a) => a.isPrimary) ?? publication.assets[0];
-  const uniquePlatformIds = Array.from(new Set(publication.destinations.map((d) => d.platformId)));
+  const uniquePlatformIds = Array.from(
+    new Set(
+      publication.destinations
+        .map((d) => getClientAccount(d.clientAccountId)?.platformId)
+        .filter((id): id is string => Boolean(id))
+    )
+  );
 
   return (
     <button
       type="button"
       onClick={onOpen}
-      className="flex w-full cursor-pointer items-center gap-1 rounded-md px-1 py-0.5 text-left transition-colors hover:bg-muted"
+      className="flex w-full cursor-pointer items-start gap-2 rounded-md px-1 py-1 text-left transition-colors hover:bg-muted"
     >
-      <span className="relative size-4 shrink-0 overflow-hidden rounded-sm bg-muted">
+      <span className="relative size-12 shrink-0 overflow-hidden rounded-sm bg-muted">
         {primaryAsset?.thumbnailUrl && (
-          <Image src={primaryAsset.thumbnailUrl} alt="" fill sizes="16px" className="object-cover" />
+          <Image src={primaryAsset.thumbnailUrl} alt="" fill sizes="48px" className="object-cover" />
         )}
       </span>
-      {publication.publicationTime && (
-        <span className="shrink-0 text-[9.5px] tabular-nums text-muted-foreground">
-          {publication.publicationTime}
-        </span>
-      )}
-      <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-foreground">{publication.title}</span>
-      <span className="flex shrink-0 items-center gap-0.5">
-        {uniquePlatformIds.slice(0, 2).map((platformId) => {
-          const platform = getPlatform(platformId);
-          if (!platform) return null;
-          return (
-            <PlatformIcon
-              key={platformId}
-              platformKey={platform.key}
-              className="size-2.5"
-              style={{ color: platform.color }}
-            />
-          );
-        })}
-        {status && (
-          <Tooltip>
-            <TooltipTrigger
-              render={<span className="size-1.5 shrink-0 rounded-full" style={{ backgroundColor: status.color }} />}
-            />
-            <TooltipContent>{status.label}</TooltipContent>
-          </Tooltip>
+      <span className="flex min-w-0 flex-1 flex-col gap-0.5 leading-tight">
+        <span className="line-clamp-2 text-[11px] font-medium text-foreground">{publication.title}</span>
+        {(publication.publicationTime || calendar) && (
+          <span className="flex min-w-0 items-center gap-1 text-[9.5px] text-muted-foreground">
+            {publication.publicationTime && (
+              <span className="shrink-0 tabular-nums">{formatTime(publication.publicationTime)}</span>
+            )}
+            {calendar && <span className="truncate">{calendar.name}</span>}
+          </span>
         )}
+        <span className="flex items-center gap-0.5">
+          {uniquePlatformIds.slice(0, 3).map((platformId) => {
+            const platform = getPlatform(platformId);
+            if (!platform) return null;
+            return (
+              <PlatformIcon
+                key={platformId}
+                platformKey={platform.key}
+                className="size-2.5 shrink-0"
+                style={{ color: platform.color }}
+              />
+            );
+          })}
+          {status && (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <span className="size-1.5 shrink-0 rounded-full" style={{ backgroundColor: status.color }} />
+                }
+              />
+              <TooltipContent>{status.label}</TooltipContent>
+            </Tooltip>
+          )}
+        </span>
       </span>
     </button>
   );
@@ -83,6 +99,7 @@ interface MonthDayCellProps {
   onOpenPublication: (publication: Publication) => void;
   onCreateForDay: (day: Date) => void;
   clientColor: string;
+  showCalendarLabel: boolean;
 }
 
 function MonthDayCell({
@@ -92,6 +109,7 @@ function MonthDayCell({
   onOpenPublication,
   onCreateForDay,
   clientColor,
+  showCalendarLabel,
 }: MonthDayCellProps) {
   const today = isToday(day);
   const weekend = isWeekend(day);
@@ -102,7 +120,7 @@ function MonthDayCell({
   return (
     <div
       className={cn(
-        "group/day flex min-h-[112px] flex-col gap-0.5 border-r border-b border-border p-1.5",
+        "group/day flex min-h-[232px] flex-col gap-0.5 border-r border-b border-border p-1.5",
         bgClass
       )}
       style={!today && weekend ? { backgroundColor: hexToRgba(clientColor, 0.05) } : undefined}
@@ -133,7 +151,12 @@ function MonthDayCell({
 
       <div className="flex flex-col gap-0.5">
         {visible.map((publication) => (
-          <MonthChip key={publication.id} publication={publication} onOpen={() => onOpenPublication(publication)} />
+          <MonthChip
+            key={publication.id}
+            publication={publication}
+            onOpen={() => onOpenPublication(publication)}
+            showCalendarLabel={showCalendarLabel}
+          />
         ))}
       </div>
 
@@ -149,7 +172,7 @@ function MonthDayCell({
           >
             +{overflowCount} más
           </PopoverTrigger>
-          <PopoverContent align="start" className="w-64">
+          <PopoverContent align="start" className="w-72">
             <div className="mb-1 px-1 text-xs font-medium text-muted-foreground">{formatFullDateFromDate(day)}</div>
             <div className="flex flex-col gap-0.5">
               {publications.map((publication) => (
@@ -157,6 +180,7 @@ function MonthDayCell({
                   key={publication.id}
                   publication={publication}
                   onOpen={() => onOpenPublication(publication)}
+                  showCalendarLabel={showCalendarLabel}
                 />
               ))}
             </div>
@@ -173,6 +197,7 @@ interface MonthViewProps {
   onOpenPublication: (publication: Publication) => void;
   onCreateForDay: (day: Date) => void;
   clientColor: string;
+  showCalendarLabel: boolean;
 }
 
 export function MonthView({
@@ -181,6 +206,7 @@ export function MonthView({
   onOpenPublication,
   onCreateForDay,
   clientColor,
+  showCalendarLabel,
 }: MonthViewProps) {
   const gridDays = getMonthGridDays(anchorDate);
   const weekCount = gridDays.length / 7;
@@ -215,6 +241,7 @@ export function MonthView({
               onOpenPublication={onOpenPublication}
               onCreateForDay={onCreateForDay}
               clientColor={clientColor}
+              showCalendarLabel={showCalendarLabel}
             />
           );
         })}

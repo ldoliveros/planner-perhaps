@@ -14,9 +14,17 @@ interface WeekViewProps {
   onOpenPublication: (publication: Publication) => void;
   onCreateForDay: (day: Date) => void;
   clientColor: string;
+  showCalendarLabel: boolean;
 }
 
-export function WeekView({ weekDays, publications, onOpenPublication, onCreateForDay, clientColor }: WeekViewProps) {
+export function WeekView({
+  weekDays,
+  publications,
+  onOpenPublication,
+  onCreateForDay,
+  clientColor,
+  showCalendarLabel,
+}: WeekViewProps) {
   return (
     <div className="grid flex-1 grid-cols-7 divide-x divide-border">
       {weekDays.map((day) => {
@@ -58,6 +66,7 @@ export function WeekView({ weekDays, publications, onOpenPublication, onCreateFo
                   key={publication.id}
                   publication={publication}
                   onOpen={() => onOpenPublication(publication)}
+                  showCalendarLabel={showCalendarLabel}
                 />
               ))}
             </div>

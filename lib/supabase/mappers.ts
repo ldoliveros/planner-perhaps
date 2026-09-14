@@ -1,6 +1,7 @@
 import type {
   AccountTypeRow,
   CalendarRow,
+  ClientAccountRow,
   ClientRow,
   ContentTypeRow,
   PlatformRow,
@@ -13,6 +14,7 @@ import type {
   AccountType,
   Calendar,
   Client,
+  ClientAccount,
   ContentType,
   Platform,
   Publication,
@@ -39,8 +41,7 @@ export function mapCalendar(row: CalendarRow): Calendar {
     id: row.id,
     clientId: row.client_id,
     name: row.name,
-    month: row.month,
-    year: row.year,
+    slug: row.slug,
     description: row.description,
     status: row.status,
     driveFolderId: row.drive_folder_id,
@@ -62,6 +63,20 @@ export function mapAccountType(row: AccountTypeRow): AccountType {
   return { id: row.id, key: row.slug, name: row.name };
 }
 
+export function mapClientAccount(row: ClientAccountRow): ClientAccount {
+  return {
+    id: row.id,
+    clientId: row.client_id,
+    platformId: row.platform_id,
+    name: row.name,
+    handle: row.handle,
+    url: row.url,
+    accountTypeId: row.account_type_id,
+    active: row.active,
+    sortOrder: row.sort_order,
+  };
+}
+
 export function mapContentType(row: ContentTypeRow): ContentType {
   return { id: row.id, key: row.key, label: row.label, order: row.sort_order };
 }
@@ -71,7 +86,7 @@ export function mapStatus(row: StatusRow): Status {
 }
 
 export function mapPublicationDestination(row: PublicationDestinationRow): PublicationDestination {
-  return { platformId: row.platform_id, accountTypeId: row.account_type_id };
+  return { clientAccountId: row.client_account_id };
 }
 
 export function mapPublicationAsset(row: PublicationAssetRow): PublicationAsset {

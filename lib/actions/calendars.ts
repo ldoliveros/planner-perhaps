@@ -2,12 +2,15 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { slugify } from "@/lib/slugify";
 
 export interface CalendarFormState {
   error: string | null;
   savedAt: number | null;
   calendarId: string | null;
 }
+
+const UNIQUE_VIOLATION = "23505";
 
 export async function saveCalendar(
   _prevState: CalendarFormState,
@@ -16,17 +19,12 @@ export async function saveCalendar(
   const id = formData.get("id") ? String(formData.get("id")) : null;
   const clientId = String(formData.get("clientId") ?? "");
   const name = String(formData.get("name") ?? "").trim();
-  const month = Number(formData.get("month"));
-  const year = Number(formData.get("year"));
   const description = String(formData.get("description") ?? "").trim() || null;
   const status = String(formData.get("status") ?? "active") as "draft" | "active" | "archived";
   const driveFolderUrl = String(formData.get("driveFolderUrl") ?? "").trim() || null;
 
-  if (!clientId || !name || !month || !year) {
-    return { error: "Completá cliente, nombre, mes y año.", savedAt: null, calendarId: null };
-  }
-  if (month < 1 || month > 12) {
-    return { error: "El mes debe estar entre 1 y 12.", savedAt: null, calendarId: null };
+  if (!clientId || !name) {
+    return { error: "Completá cliente y nombre.", savedAt: null, calendarId: null };
   }
 
   const supabase = await createClient();
@@ -34,21 +32,46 @@ export async function saveCalendar(
   if (id) {
     const { error } = await supabase
       .from("calendars")
-      .update({ client_id: clientId, name, month, year, description, status, drive_folder_url: driveFolderUrl })
+      .update({ client_id: clientId, name, description, status, drive_folder_url: driveFolderUrl })
       .eq("id", id);
-    if (error) return { error: error.message, savedAt: null, calendarId: null };
+    if (error) {
+      if (error.code === UNIQUE_VIOLATION) {
+        return { error: "Ya existe un calendario con ese nombre para este cliente.", savedAt: null, calendarId: null };
+      }
+      return { error: error.message, savedAt: null, calendarId: null };
+    }
     revalidatePath("/admin/calendars");
-    revalidatePath(`/admin/calendars/${id}`);
+    revalidatePath(`/admin/clients/${clientId}`);
+    revalidatePath(`/admin/clients/${clientId}/planner`);
     return { error: null, savedAt: Date.now(), calendarId: id };
   }
 
+  const slug = slugify(name);
   const { data, error } = await supabase
     .from("calendars")
-    .insert({ client_id: clientId, name, month, year, description, status, drive_folder_url: driveFolderUrl })
+    .insert({ client_id: clientId, name, slug, description, status, drive_folder_url: driveFolderUrl })
     .select("id")
     .single();
-  if (error) return { error: error.message, savedAt: null, calendarId: null };
+  if (error) {
+    if (error.code === UNIQUE_VIOLATION) {
+      return { error: "Ya existe un calendario con ese nombre para este cliente.", savedAt: null, calendarId: null };
+    }
+    return { error: error.message, savedAt: null, calendarId: null };
+  }
 
   revalidatePath("/admin/calendars");
+  revalidatePath(`/admin/clients/${clientId}`);
+  revalidatePath(`/admin/clients/${clientId}/planner`);
   return { error: null, savedAt: Date.now(), calendarId: data.id };
+}
+
+export async function deleteCalendar(calendarId: string, clientId: string): Promise<{ error: string | null }> {
+  const supabase = await createClient();
+  const { error } = await supabase.from("calendars").delete().eq("id", calendarId);
+  if (error) return { error: error.message };
+
+  revalidatePath("/admin/calendars");
+  revalidatePath(`/admin/clients/${clientId}`);
+  revalidatePath(`/admin/clients/${clientId}/planner`);
+  return { error: null };
 }

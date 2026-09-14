@@ -12,21 +12,30 @@ import { PublicationForm } from "@/components/publication/publication-form";
 import { LookupsProvider } from "@/components/providers/lookups-provider";
 import { formatMonthYear, formatWeekRange, getWeekDays } from "@/lib/date-utils";
 import type { Lookups } from "@/lib/supabase/queries";
-import type { Calendar, Client, Publication } from "@/types";
+import type { Calendar, Client, ClientAccount, Publication } from "@/types";
 
 interface CalendarScreenProps {
   client: Client;
-  calendar: Calendar;
+  calendars: Calendar[];
   publications: Publication[];
+  clientAccounts: ClientAccount[];
   lookups: Lookups;
 }
 
-export function CalendarScreen({ client, calendar, publications, lookups }: CalendarScreenProps) {
+export function CalendarScreen({ client, calendars, publications, clientAccounts, lookups }: CalendarScreenProps) {
+  const clientAccountMap = useMemo(() => new Map(clientAccounts.map((a) => [a.id, a])), [clientAccounts]);
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
   const view: CalendarView = searchParams.get("view") === "month" ? "month" : "week";
+
+  const calendarIds = useMemo(() => {
+    const raw = searchParams.get("calendars");
+    if (!raw) return [];
+    const validIds = new Set(calendars.map((c) => c.id));
+    return raw.split(",").filter((id) => validIds.has(id));
+  }, [searchParams, calendars]);
 
   const setView = useCallback(
     (next: CalendarView) => {
@@ -42,15 +51,21 @@ export function CalendarScreen({ client, calendar, publications, lookups }: Cale
     [pathname, router, searchParams]
   );
 
-  const initialAnchor = useMemo(() => {
-    const today = new Date();
-    if (today.getFullYear() === calendar.year && today.getMonth() + 1 === calendar.month) {
-      return today;
-    }
-    return new Date(calendar.year, calendar.month - 1, 1);
-  }, [calendar.year, calendar.month]);
+  const setCalendarIds = useCallback(
+    (ids: string[]) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (ids.length === 0) {
+        params.delete("calendars");
+      } else {
+        params.set("calendars", ids.join(","));
+      }
+      const query = params.toString();
+      router.replace(`${pathname}${query ? `?${query}` : ""}`, { scroll: false });
+    },
+    [pathname, router, searchParams]
+  );
 
-  const [anchorDate, setAnchorDate] = useState(initialAnchor);
+  const [anchorDate, setAnchorDate] = useState(() => new Date());
   const [filters, setFilters] = useState<CalendarFiltersState>(EMPTY_FILTERS);
   const [selectedPublication, setSelectedPublication] = useState<Publication | null>(null);
   const [formState, setFormState] = useState<{ open: boolean; publication?: Publication; defaultDate?: string }>({
@@ -61,20 +76,39 @@ export function CalendarScreen({ client, calendar, publications, lookups }: Cale
   const weekDays = useMemo(() => getWeekDays(anchorDate), [anchorDate]);
   const periodLabel = view === "month" ? formatMonthYear(anchorDate) : formatWeekRange(weekDays);
 
+  const visibleCalendars = calendarIds.length > 0 ? calendars.filter((c) => calendarIds.includes(c.id)) : calendars;
+  const showCalendarLabel = visibleCalendars.length > 1;
+  const calendarLabel =
+    visibleCalendars.length === 1
+      ? visibleCalendars[0].name
+      : calendarIds.length === 0
+        ? "Todos los calendarios"
+        : `${visibleCalendars.length} calendarios`;
+  const driveFolderUrl = visibleCalendars.length === 1 ? visibleCalendars[0].driveFolderUrl : client.driveFolderUrl;
+
+  const calendarScopedPublications = useMemo(() => {
+    if (calendarIds.length === 0) return publications;
+    return publications.filter((p) => calendarIds.includes(p.calendarId));
+  }, [publications, calendarIds]);
+
   const availableCampaigns = useMemo(
-    () => Array.from(new Set(publications.map((p) => p.campaign).filter((c): c is string => Boolean(c)))).sort(),
-    [publications]
+    () =>
+      Array.from(new Set(calendarScopedPublications.map((p) => p.campaign).filter((c): c is string => Boolean(c)))).sort(),
+    [calendarScopedPublications]
   );
 
   const filteredPublications = useMemo(() => {
-    return publications.filter((p) => {
-      if (filters.platformIds.length > 0 && !p.destinations.some((d) => filters.platformIds.includes(d.platformId))) {
+    return calendarScopedPublications.filter((p) => {
+      if (
+        filters.platformIds.length > 0 &&
+        !p.destinations.some((d) => {
+          const account = clientAccountMap.get(d.clientAccountId);
+          return account && filters.platformIds.includes(account.platformId);
+        })
+      ) {
         return false;
       }
-      if (
-        filters.accountTypeIds.length > 0 &&
-        !p.destinations.some((d) => d.accountTypeId !== null && filters.accountTypeIds.includes(d.accountTypeId))
-      ) {
+      if (filters.accountIds.length > 0 && !p.destinations.some((d) => filters.accountIds.includes(d.clientAccountId))) {
         return false;
       }
       if (filters.contentTypeIds.length > 0 && !filters.contentTypeIds.includes(p.contentTypeId)) {
@@ -88,7 +122,10 @@ export function CalendarScreen({ client, calendar, publications, lookups }: Cale
       }
       return true;
     });
-  }, [publications, filters]);
+  }, [calendarScopedPublications, filters, clientAccountMap]);
+
+  // CASO 1: un solo calendario activo -> se precarga. CASO 2: varios o ninguno -> el form pide elegir.
+  const defaultCalendarId = visibleCalendars.length === 1 ? visibleCalendars[0].id : undefined;
 
   function openCreateForm(day?: Date) {
     setFormKey((k) => k + 1);
@@ -102,11 +139,12 @@ export function CalendarScreen({ client, calendar, publications, lookups }: Cale
   }
 
   return (
-    <LookupsProvider {...lookups}>
+    <LookupsProvider {...lookups} calendars={calendars} clientAccounts={clientAccounts}>
       <div className="flex min-h-screen flex-col">
         <CalendarHeader
           client={client}
-          calendar={calendar}
+          calendarLabel={calendarLabel}
+          driveFolderUrl={driveFolderUrl}
           periodLabel={periodLabel}
           view={view}
           onViewChange={setView}
@@ -115,7 +153,13 @@ export function CalendarScreen({ client, calendar, publications, lookups }: Cale
           onToday={() => setAnchorDate(new Date())}
           onCreate={() => openCreateForm()}
         />
-        <CalendarFiltersBar value={filters} onChange={setFilters} availableCampaigns={availableCampaigns} />
+        <CalendarFiltersBar
+          value={filters}
+          onChange={setFilters}
+          availableCampaigns={availableCampaigns}
+          calendarIds={calendarIds}
+          onCalendarIdsChange={setCalendarIds}
+        />
         {view === "week" ? (
           <WeekView
             weekDays={weekDays}
@@ -123,6 +167,7 @@ export function CalendarScreen({ client, calendar, publications, lookups }: Cale
             onOpenPublication={setSelectedPublication}
             onCreateForDay={openCreateForm}
             clientColor={client.color}
+            showCalendarLabel={showCalendarLabel}
           />
         ) : (
           <MonthView
@@ -131,6 +176,7 @@ export function CalendarScreen({ client, calendar, publications, lookups }: Cale
             onOpenPublication={setSelectedPublication}
             onCreateForDay={openCreateForm}
             clientColor={client.color}
+            showCalendarLabel={showCalendarLabel}
           />
         )}
         <PublicationDrawer
@@ -142,7 +188,10 @@ export function CalendarScreen({ client, calendar, publications, lookups }: Cale
           key={formKey}
           open={formState.open}
           onOpenChange={(open) => setFormState((prev) => ({ ...prev, open }))}
-          calendarId={calendar.id}
+          clientId={client.id}
+          calendars={calendars}
+          clientAccounts={clientAccounts}
+          defaultCalendarId={defaultCalendarId}
           publication={formState.publication}
           defaultDate={formState.defaultDate}
         />

@@ -16,8 +16,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { saveCalendar, type CalendarFormState } from "@/lib/actions/calendars";
-import { CALENDAR_STATUS_LABELS, MONTH_LABELS } from "@/lib/calendar-labels";
+import { CALENDAR_STATUS_LABELS } from "@/lib/calendar-labels";
 import type { Calendar, CalendarStatus, Client } from "@/types";
 
 const INITIAL_STATE: CalendarFormState = { error: null, savedAt: null, calendarId: null };
@@ -88,12 +89,10 @@ function CalendarFormBody({
   const [state, formAction, isPending] = useActionState(saveCalendar, INITIAL_STATE);
   const lastSavedAt = useRef<number | null>(null);
   const router = useRouter();
-  const today = new Date();
 
   const [clientId, setClientId] = useState(lockedClient?.id ?? calendar?.clientId ?? "");
   const [name, setName] = useState(calendar?.name ?? "");
-  const [month, setMonth] = useState(String(calendar?.month ?? today.getMonth() + 1));
-  const [year, setYear] = useState(calendar?.year ?? today.getFullYear());
+  const [description, setDescription] = useState(calendar?.description ?? "");
   const [status, setStatus] = useState<CalendarStatus>(calendar?.status ?? "active");
   const [driveFolderUrl, setDriveFolderUrl] = useState(calendar?.driveFolderUrl ?? "");
 
@@ -147,43 +146,21 @@ function CalendarFormBody({
           name="name"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="Ej: Septiembre 2026"
+          placeholder="Ej: General, Cosmiatría, GDL"
           required
+          autoFocus
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="month">Mes</Label>
-          <Select
-            name="month"
-            value={month}
-            onValueChange={(value) => setMonth(value as string)}
-            items={Object.fromEntries(MONTH_LABELS.map((label, index) => [String(index + 1), label]))}
-          >
-            <SelectTrigger id="month" className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {MONTH_LABELS.map((label, index) => (
-                <SelectItem key={label} value={String(index + 1)}>
-                  {label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="year">Año</Label>
-          <Input
-            id="year"
-            name="year"
-            type="number"
-            value={year}
-            onChange={(e) => setYear(Number(e.target.value))}
-            required
-          />
-        </div>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="description">Descripción (opcional)</Label>
+        <Textarea
+          id="description"
+          name="description"
+          rows={2}
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+        />
       </div>
 
       <div className="flex flex-col gap-1.5">

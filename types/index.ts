@@ -15,8 +15,7 @@ export interface Calendar {
   id: string;
   clientId: string;
   name: string;
-  month: number;
-  year: number;
+  slug: string;
   description: string | null;
   status: CalendarStatus;
   driveFolderId: string | null;
@@ -37,9 +36,20 @@ export interface AccountType {
   name: string;
 }
 
-export interface PublicationDestination {
+export interface ClientAccount {
+  id: string;
+  clientId: string;
   platformId: string;
+  name: string;
+  handle: string | null;
+  url: string | null;
   accountTypeId: string | null;
+  active: boolean;
+  sortOrder: number;
+}
+
+export interface PublicationDestination {
+  clientAccountId: string;
 }
 
 export interface ContentType {

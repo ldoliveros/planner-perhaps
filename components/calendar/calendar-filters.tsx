@@ -8,7 +8,7 @@ import { useLookups } from "@/components/providers/lookups-provider";
 
 export interface CalendarFiltersState {
   platformIds: string[];
-  accountTypeIds: string[];
+  accountIds: string[];
   contentTypeIds: string[];
   statusIds: string[];
   campaigns: string[];
@@ -16,7 +16,7 @@ export interface CalendarFiltersState {
 
 export const EMPTY_FILTERS: CalendarFiltersState = {
   platformIds: [],
-  accountTypeIds: [],
+  accountIds: [],
   contentTypeIds: [],
   statusIds: [],
   campaigns: [],
@@ -55,6 +55,21 @@ function FilterPopover({
       </PopoverTrigger>
       <PopoverContent align="start" className="w-56">
         <div className="flex flex-col gap-1">
+          {options.length > 1 && (
+            <>
+              <label className="flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1.5 text-sm font-medium hover:bg-muted">
+                <Checkbox
+                  checked={selected.length === options.length}
+                  indeterminate={selected.length > 0 && selected.length < options.length}
+                  onCheckedChange={() =>
+                    onChange(selected.length === options.length ? [] : options.map((o) => o.id))
+                  }
+                />
+                Seleccionar todos
+              </label>
+              <div className="my-1 h-px bg-border" />
+            </>
+          )}
           {options.map((option) => {
             const checked = selected.includes(option.id);
             return (
@@ -80,13 +95,21 @@ interface CalendarFiltersProps {
   value: CalendarFiltersState;
   onChange: (value: CalendarFiltersState) => void;
   availableCampaigns: string[];
+  calendarIds: string[];
+  onCalendarIdsChange: (ids: string[]) => void;
 }
 
-export function CalendarFiltersBar({ value, onChange, availableCampaigns }: CalendarFiltersProps) {
-  const { platforms, accountTypes, contentTypes, statuses } = useLookups();
+export function CalendarFiltersBar({
+  value,
+  onChange,
+  availableCampaigns,
+  calendarIds,
+  onCalendarIdsChange,
+}: CalendarFiltersProps) {
+  const { platforms, contentTypes, statuses, calendars, clientAccounts } = useLookups();
   const hasActiveFilters =
     value.platformIds.length > 0 ||
-    value.accountTypeIds.length > 0 ||
+    value.accountIds.length > 0 ||
     value.contentTypeIds.length > 0 ||
     value.statusIds.length > 0 ||
     value.campaigns.length > 0;
@@ -95,18 +118,28 @@ export function CalendarFiltersBar({ value, onChange, availableCampaigns }: Cale
     <div className="flex flex-wrap items-center gap-2 border-b border-border bg-background px-6 py-3">
       <ListFilter className="mr-1 size-4 text-muted-foreground" />
 
+      {calendars.length > 1 && (
+        <FilterPopover
+          label="Calendario"
+          options={calendars.map((c) => ({ id: c.id, label: c.name }))}
+          selected={calendarIds}
+          onChange={onCalendarIdsChange}
+        />
+      )}
       <FilterPopover
         label="Canal"
         options={platforms.map((p) => ({ id: p.id, label: p.name }))}
         selected={value.platformIds}
         onChange={(platformIds) => onChange({ ...value, platformIds })}
       />
-      <FilterPopover
-        label="Cuenta"
-        options={accountTypes.map((a) => ({ id: a.id, label: a.name }))}
-        selected={value.accountTypeIds}
-        onChange={(accountTypeIds) => onChange({ ...value, accountTypeIds })}
-      />
+      {clientAccounts.length > 0 && (
+        <FilterPopover
+          label="Cuenta"
+          options={clientAccounts.map((a) => ({ id: a.id, label: a.handle ? `${a.name} (${a.handle})` : a.name }))}
+          selected={value.accountIds}
+          onChange={(accountIds) => onChange({ ...value, accountIds })}
+        />
+      )}
       <FilterPopover
         label="Tipo"
         options={contentTypes.map((c) => ({ id: c.id, label: c.label }))}

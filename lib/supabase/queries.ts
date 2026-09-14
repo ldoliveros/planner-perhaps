@@ -3,13 +3,14 @@ import {
   mapAccountType,
   mapCalendar,
   mapClient,
+  mapClientAccount,
   mapContentType,
   mapPlatform,
   mapPublication,
   mapStatus,
 } from "./mappers";
 import { withSignedClientLogos, withSignedThumbnails } from "./storage";
-import type { AccountType, Calendar, Client, ContentType, Platform, Publication, Status } from "@/types";
+import type { AccountType, Calendar, Client, ClientAccount, ContentType, Platform, Publication, Status } from "@/types";
 
 const PUBLICATION_SELECT = "*, publication_destinations(*), publication_assets(*)";
 
@@ -54,37 +55,33 @@ export async function getClientById(id: string): Promise<Client | null> {
 
 export async function listCalendars(): Promise<Calendar[]> {
   const supabase = await createClient();
-  const { data } = await supabase
-    .from("calendars")
-    .select("*")
-    .order("year", { ascending: false })
-    .order("month", { ascending: false });
+  const { data } = await supabase.from("calendars").select("*").order("name");
   return (data ?? []).map(mapCalendar);
-}
-
-export async function getCalendarById(id: string): Promise<Calendar | null> {
-  const supabase = await createClient();
-  const { data } = await supabase.from("calendars").select("*").eq("id", id).maybeSingle();
-  return data ? mapCalendar(data) : null;
 }
 
 export async function listCalendarsForClient(clientId: string): Promise<Calendar[]> {
   const supabase = await createClient();
-  const { data } = await supabase
-    .from("calendars")
-    .select("*")
-    .eq("client_id", clientId)
-    .order("year", { ascending: false })
-    .order("month", { ascending: false });
+  const { data } = await supabase.from("calendars").select("*").eq("client_id", clientId).order("name");
   return (data ?? []).map(mapCalendar);
 }
 
-export async function listPublicationsForCalendar(calendarId: string): Promise<Publication[]> {
+export async function listClientAccountsForClient(clientId: string): Promise<ClientAccount[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("client_accounts")
+    .select("*")
+    .eq("client_id", clientId)
+    .order("sort_order")
+    .order("name");
+  return (data ?? []).map(mapClientAccount);
+}
+
+export async function listPublicationsForClient(clientId: string): Promise<Publication[]> {
   const supabase = await createClient();
   const { data } = await supabase
     .from("publications")
     .select(PUBLICATION_SELECT)
-    .eq("calendar_id", calendarId)
+    .eq("client_id", clientId)
     .order("publication_date");
   const publications = (data ?? []).map(mapPublication);
   return withSignedThumbnails(supabase, publications);

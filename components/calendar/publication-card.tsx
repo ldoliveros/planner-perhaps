@@ -4,29 +4,29 @@ import Image from "next/image";
 import { ImageIcon, Paperclip } from "lucide-react";
 import { PlatformIcon } from "@/components/icons/brand-icons";
 import { useLookups } from "@/components/providers/lookups-provider";
+import { formatTime } from "@/lib/date-utils";
 import type { Publication } from "@/types";
 
 interface PublicationCardProps {
   publication: Publication;
   onOpen: () => void;
+  showCalendarLabel?: boolean;
 }
 
-export function PublicationCard({ publication, onOpen }: PublicationCardProps) {
-  const { getAccountType, getContentType, getPlatform, getStatus } = useLookups();
+export function PublicationCard({ publication, onOpen, showCalendarLabel }: PublicationCardProps) {
+  const { getCalendar, getClientAccount, getContentType, getPlatform, getStatus } = useLookups();
   const contentType = getContentType(publication.contentTypeId);
   const status = getStatus(publication.statusId);
+  const calendar = showCalendarLabel ? getCalendar(publication.calendarId) : undefined;
   const primaryAsset = publication.assets.find((a) => a.isPrimary) ?? null;
   const heroAsset = primaryAsset ?? publication.assets[0] ?? null;
   const fileAssetCount = publication.assets.filter((a) => !a.isPrimary).length;
 
-  const uniquePlatformIds = Array.from(new Set(publication.destinations.map((d) => d.platformId)));
-  const uniqueAccountNames = Array.from(
-    new Set(
-      publication.destinations
-        .map((d) => (d.accountTypeId ? getAccountType(d.accountTypeId)?.name : undefined))
-        .filter(Boolean)
-    )
-  );
+  const destinationAccounts = publication.destinations
+    .map((d) => getClientAccount(d.clientAccountId))
+    .filter((a): a is NonNullable<typeof a> => Boolean(a));
+  const uniquePlatformIds = Array.from(new Set(destinationAccounts.map((a) => a.platformId)));
+  const uniqueAccountNames = Array.from(new Set(destinationAccounts.map((a) => a.name)));
 
   return (
     <button
@@ -68,7 +68,7 @@ export function PublicationCard({ publication, onOpen }: PublicationCardProps) {
 
         {publication.publicationTime && (
           <span className="absolute right-1.5 top-1.5 rounded-full bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white backdrop-blur-sm">
-            {publication.publicationTime}
+            {formatTime(publication.publicationTime)}
           </span>
         )}
 
@@ -82,6 +82,11 @@ export function PublicationCard({ publication, onOpen }: PublicationCardProps) {
 
       <div className="flex flex-1 flex-col gap-1.5 border-l-[3px] p-2" style={{ borderLeftColor: status?.color }}>
         <p className="line-clamp-2 text-[13px] font-medium leading-snug text-foreground">{publication.title}</p>
+        {calendar && (
+          <span className="w-fit rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+            {calendar.name}
+          </span>
+        )}
         <div className="flex items-center justify-between gap-1 text-[11px] text-muted-foreground">
           <span className="truncate">
             {contentType?.label}

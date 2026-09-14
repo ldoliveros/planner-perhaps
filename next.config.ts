@@ -7,6 +7,11 @@ const nextConfig: NextConfig = {
   images: {
     remotePatterns: supabaseHostname ? [{ hostname: supabaseHostname }] : [],
   },
+  experimental: {
+    serverActions: {
+      bodySizeLimit: "10mb",
+    },
+  },
 };
 
 export default nextConfig;

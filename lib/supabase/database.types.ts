@@ -37,8 +37,7 @@ export type CalendarRow = {
   id: string;
   client_id: string;
   name: string;
-  month: number;
-  year: number;
+  slug: string;
   description: string | null;
   status: "draft" | "active" | "archived";
   drive_folder_id: string | null;
@@ -50,8 +49,7 @@ export type CalendarInsert = {
   id?: string;
   client_id: string;
   name: string;
-  month: number;
-  year: number;
+  slug: string;
   description?: string | null;
   status?: "draft" | "active" | "archived";
   drive_folder_id?: string | null;
@@ -165,18 +163,42 @@ export type PublicationInsert = {
 };
 export type PublicationUpdate = Partial<PublicationInsert>;
 
+export type ClientAccountRow = {
+  id: string;
+  client_id: string;
+  platform_id: string;
+  name: string;
+  handle: string | null;
+  url: string | null;
+  account_type_id: string | null;
+  active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+};
+export type ClientAccountInsert = {
+  id?: string;
+  client_id: string;
+  platform_id: string;
+  name: string;
+  handle?: string | null;
+  url?: string | null;
+  account_type_id?: string | null;
+  active?: boolean;
+  sort_order?: number;
+};
+export type ClientAccountUpdate = Partial<ClientAccountInsert>;
+
 export type PublicationDestinationRow = {
   id: string;
   publication_id: string;
-  platform_id: string;
-  account_type_id: string | null;
+  client_account_id: string;
   created_at: string;
 };
 export type PublicationDestinationInsert = {
   id?: string;
   publication_id: string;
-  platform_id: string;
-  account_type_id?: string | null;
+  client_account_id: string;
 };
 export type PublicationDestinationUpdate = Partial<PublicationDestinationInsert>;
 
@@ -233,6 +255,12 @@ export type Database = {
         Row: PublicationRow;
         Insert: PublicationInsert;
         Update: PublicationUpdate;
+        Relationships: [];
+      };
+      client_accounts: {
+        Row: ClientAccountRow;
+        Insert: ClientAccountInsert;
+        Update: ClientAccountUpdate;
         Relationships: [];
       };
       publication_destinations: {

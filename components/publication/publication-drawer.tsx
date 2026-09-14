@@ -16,7 +16,7 @@ import {
 import { CopyBlock } from "@/components/publication/copy-block";
 import { PlatformIcon } from "@/components/icons/brand-icons";
 import { useLookups } from "@/components/providers/lookups-provider";
-import { formatFullDate } from "@/lib/date-utils";
+import { formatFullDate, formatTime } from "@/lib/date-utils";
 import { cn } from "cn";
 import type { AssetType, Publication } from "@/types";
 
@@ -42,7 +42,7 @@ interface PublicationDrawerProps {
 }
 
 export function PublicationDrawer({ publication, onOpenChange, onEdit }: PublicationDrawerProps) {
-  const { getAccountType, getContentType, getPlatform, getStatus } = useLookups();
+  const { getClientAccount, getContentType, getPlatform, getStatus } = useLookups();
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const contentType = publication ? getContentType(publication.contentTypeId) : undefined;
   const status = publication ? getStatus(publication.statusId) : undefined;
@@ -103,7 +103,7 @@ export function PublicationDrawer({ publication, onOpenChange, onEdit }: Publica
                   <SheetTitle className="text-lg">{publication.title}</SheetTitle>
                   <SheetDescription>
                     {formatFullDate(publication.publicationDate)}
-                    {publication.publicationTime ? ` · ${publication.publicationTime}` : ""}
+                    {publication.publicationTime ? ` · ${formatTime(publication.publicationTime)}` : ""}
                   </SheetDescription>
                 </div>
                 <Button size="sm" variant="outline" className="shrink-0 gap-1.5" onClick={() => onEdit(publication)}>
@@ -113,19 +113,16 @@ export function PublicationDrawer({ publication, onOpenChange, onEdit }: Publica
               </SheetHeader>
 
               <div className="flex flex-wrap items-center gap-1.5">
-                {publication.destinations.map((destination, index) => {
-                  const platform = getPlatform(destination.platformId);
+                {publication.destinations.map((destination) => {
+                  const account = getClientAccount(destination.clientAccountId);
+                  if (!account) return null;
+                  const platform = getPlatform(account.platformId);
                   if (!platform) return null;
-                  const accountType = destination.accountTypeId ? getAccountType(destination.accountTypeId) : null;
                   return (
-                    <Badge
-                      key={`${destination.platformId}-${destination.accountTypeId}-${index}`}
-                      variant="outline"
-                      className="gap-1.5 py-1"
-                    >
+                    <Badge key={destination.clientAccountId} variant="outline" className="gap-1.5 py-1">
                       <PlatformIcon platformKey={platform.key} className="size-3" style={{ color: platform.color }} />
-                      {platform.name}
-                      {accountType ? ` · ${accountType.name}` : ""}
+                      {account.name}
+                      {account.handle ? ` · ${account.handle}` : ""}
                     </Badge>
                   );
                 })}

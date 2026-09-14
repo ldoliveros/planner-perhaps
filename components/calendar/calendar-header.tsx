@@ -5,13 +5,14 @@ import { ChevronLeft, ChevronRight, FolderOpen, Plus } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { getContrastTextColor } from "@/lib/color-contrast";
 import { cn } from "cn";
-import type { Calendar, Client } from "@/types";
+import type { Client } from "@/types";
 
 export type CalendarView = "week" | "month";
 
 interface CalendarHeaderProps {
   client: Client;
-  calendar: Calendar;
+  calendarLabel: string;
+  driveFolderUrl: string | null;
   periodLabel: string;
   view: CalendarView;
   onViewChange: (view: CalendarView) => void;
@@ -23,7 +24,8 @@ interface CalendarHeaderProps {
 
 export function CalendarHeader({
   client,
-  calendar,
+  calendarLabel,
+  driveFolderUrl,
   periodLabel,
   view,
   onViewChange,
@@ -59,7 +61,7 @@ export function CalendarHeader({
             <div className="text-xs font-medium" style={{ color: client.color }}>
               {client.name}
             </div>
-            <h1 className="text-base font-semibold text-foreground">{calendar.name}</h1>
+            <h1 className="text-base font-semibold text-foreground">{calendarLabel}</h1>
           </div>
         </div>
 
@@ -101,9 +103,9 @@ export function CalendarHeader({
             </button>
           </div>
 
-          {calendar.driveFolderUrl && (
+          {driveFolderUrl && (
             <a
-              href={calendar.driveFolderUrl}
+              href={driveFolderUrl}
               target="_blank"
               rel="noreferrer"
               className={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1.5")}

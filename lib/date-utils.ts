@@ -66,3 +66,9 @@ export function isSameDayAs(dateIso: string, day: Date): boolean {
 export function isToday(day: Date): boolean {
   return isTodayFns(day);
 }
+
+/** "15:30:00" (Postgres time) -> "15:30". Solo formato de presentación. */
+export function formatTime(time: string | null): string {
+  if (!time) return "";
+  return time.slice(0, 5);
+}

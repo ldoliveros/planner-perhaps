@@ -3,19 +3,11 @@
 import { revalidatePath } from "next/cache";
 import sharp from "sharp";
 import { createClient } from "@/lib/supabase/server";
+import { slugify } from "@/lib/slugify";
 
 export interface ClientFormState {
   error: string | null;
   savedAt: number | null;
-}
-
-function slugify(value: string): string {
-  return value
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-+|-+$)/g, "");
 }
 
 export async function saveClient(_prevState: ClientFormState, formData: FormData): Promise<ClientFormState> {

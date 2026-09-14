@@ -11,8 +11,7 @@ export interface PublicationFormState {
 }
 
 interface DestinationInput {
-  platformId: string;
-  accountTypeId: string | null;
+  clientAccountId: string;
 }
 
 interface ManualAssetInput {
@@ -112,8 +111,7 @@ export async function savePublication(
   const { error: insertDestError } = await supabase.from("publication_destinations").insert(
     destinations.map((d) => ({
       publication_id: publicationId as string,
-      platform_id: d.platformId,
-      account_type_id: d.accountTypeId,
+      client_account_id: d.clientAccountId,
     }))
   );
   if (insertDestError) return { error: insertDestError.message, savedAt: null };
@@ -174,17 +172,19 @@ export async function savePublication(
     }
   }
 
-  revalidatePath(`/admin/calendars/${calendarId}`);
+  revalidatePath(`/admin/clients/${clientId}/planner`);
+  revalidatePath(`/admin/clients/${clientId}`);
   revalidatePath("/admin/calendars");
   return { error: null, savedAt: Date.now() };
 }
 
-export async function deletePublication(publicationId: string, calendarId: string): Promise<{ error: string | null }> {
+export async function deletePublication(publicationId: string, clientId: string): Promise<{ error: string | null }> {
   const supabase = await createClient();
   const { error } = await supabase.from("publications").delete().eq("id", publicationId);
   if (error) return { error: error.message };
 
-  revalidatePath(`/admin/calendars/${calendarId}`);
+  revalidatePath(`/admin/clients/${clientId}/planner`);
+  revalidatePath(`/admin/clients/${clientId}`);
   revalidatePath("/admin/calendars");
   return { error: null };
 }
