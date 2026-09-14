@@ -1,8 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "./database.types";
-import type { Publication } from "@/types";
+import type { Client, Publication } from "@/types";
 
 const THUMBNAILS_BUCKET = "thumbnails";
+const CLIENT_LOGOS_BUCKET = "client-logos";
 const SIGNED_URL_TTL_SECONDS = 60 * 60;
 
 /**
@@ -38,5 +39,30 @@ export async function withSignedThumbnails(
       ...asset,
       thumbnailUrl: asset.thumbnailUrl ? (urlByPath.get(asset.thumbnailUrl) ?? null) : null,
     })),
+  }));
+}
+
+/**
+ * clients.logo_url guarda el PATH dentro del bucket privado "client-logos"
+ * (ej: "{client_id}/logo-123.webp"), no una URL pública. Mismo patrón que
+ * withSignedThumbnails.
+ */
+export async function withSignedClientLogos(
+  supabase: SupabaseClient<Database>,
+  clients: Client[]
+): Promise<Client[]> {
+  const paths = clients.map((c) => c.logoUrl).filter((p): p is string => Boolean(p));
+  if (paths.length === 0) return clients;
+
+  const { data } = await supabase.storage.from(CLIENT_LOGOS_BUCKET).createSignedUrls(paths, SIGNED_URL_TTL_SECONDS);
+
+  const urlByPath = new Map<string, string>();
+  for (const item of data ?? []) {
+    if (item.path && item.signedUrl) urlByPath.set(item.path, item.signedUrl);
+  }
+
+  return clients.map((c) => ({
+    ...c,
+    logoUrl: c.logoUrl ? (urlByPath.get(c.logoUrl) ?? null) : null,
   }));
 }

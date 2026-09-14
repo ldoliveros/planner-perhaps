@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { PerhapsLogo } from "@/components/branding/perhaps-logo";
 import { createClient } from "@/lib/supabase/server";
 import { signOut } from "@/lib/actions/auth";
 
@@ -34,7 +35,10 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   return (
     <div className="flex min-h-screen flex-1 flex-col bg-background">
       <div className="flex items-center justify-between border-b border-border px-4 py-1.5">
-        <span className="text-xs font-medium text-muted-foreground">Planificador Editorial · Admin</span>
+        <div className="flex items-center gap-2">
+          <PerhapsLogo height={16} />
+          <span className="text-xs font-medium text-muted-foreground">Planificador Editorial</span>
+        </div>
         <form action={signOut}>
           <Button variant="ghost" size="sm" type="submit" className="gap-1.5 text-xs text-muted-foreground">
             <LogOut className="size-3.5" />

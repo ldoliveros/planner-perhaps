@@ -122,6 +122,7 @@ export function CalendarScreen({ client, calendar, publications, lookups }: Cale
             publications={filteredPublications}
             onOpenPublication={setSelectedPublication}
             onCreateForDay={openCreateForm}
+            clientColor={client.color}
           />
         ) : (
           <MonthView
@@ -129,6 +130,7 @@ export function CalendarScreen({ client, calendar, publications, lookups }: Cale
             publications={filteredPublications}
             onOpenPublication={setSelectedPublication}
             onCreateForDay={openCreateForm}
+            clientColor={client.color}
           />
         )}
         <PublicationDrawer

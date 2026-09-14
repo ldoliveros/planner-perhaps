@@ -1,8 +1,10 @@
 "use client";
 
 import { Plus } from "lucide-react";
+import { isWeekend } from "date-fns";
 import { cn } from "cn";
 import { formatDayAbbr, formatDayNumber, isSameDayAs, isToday } from "@/lib/date-utils";
+import { hexToRgba } from "@/lib/color-contrast";
 import { PublicationCard } from "@/components/calendar/publication-card";
 import type { Publication } from "@/types";
 
@@ -11,9 +13,10 @@ interface WeekViewProps {
   publications: Publication[];
   onOpenPublication: (publication: Publication) => void;
   onCreateForDay: (day: Date) => void;
+  clientColor: string;
 }
 
-export function WeekView({ weekDays, publications, onOpenPublication, onCreateForDay }: WeekViewProps) {
+export function WeekView({ weekDays, publications, onOpenPublication, onCreateForDay, clientColor }: WeekViewProps) {
   return (
     <div className="grid flex-1 grid-cols-7 divide-x divide-border">
       {weekDays.map((day) => {
@@ -21,11 +24,13 @@ export function WeekView({ weekDays, publications, onOpenPublication, onCreateFo
           .filter((p) => isSameDayAs(p.publicationDate, day))
           .sort((a, b) => (a.publicationTime ?? "").localeCompare(b.publicationTime ?? ""));
         const today = isToday(day);
+        const weekend = isWeekend(day);
 
         return (
           <div
             key={day.toISOString()}
             className={cn("group/day flex min-h-0 flex-col", today && "bg-primary/[0.03]")}
+            style={!today && weekend ? { backgroundColor: hexToRgba(clientColor, 0.05) } : undefined}
           >
             <div className="relative flex flex-col items-center gap-1 border-b border-border py-2.5">
               <span className="text-[11px] font-medium tracking-wide text-muted-foreground">{formatDayAbbr(day)}</span>

@@ -8,7 +8,7 @@ import {
   mapPublication,
   mapStatus,
 } from "./mappers";
-import { withSignedThumbnails } from "./storage";
+import { withSignedClientLogos, withSignedThumbnails } from "./storage";
 import type { AccountType, Calendar, Client, ContentType, Platform, Publication, Status } from "@/types";
 
 const PUBLICATION_SELECT = "*, publication_destinations(*), publication_assets(*)";
@@ -40,13 +40,16 @@ export async function getLookups(): Promise<Lookups> {
 export async function listClients(): Promise<Client[]> {
   const supabase = await createClient();
   const { data } = await supabase.from("clients").select("*").order("name");
-  return (data ?? []).map(mapClient);
+  const clients = (data ?? []).map(mapClient);
+  return withSignedClientLogos(supabase, clients);
 }
 
 export async function getClientById(id: string): Promise<Client | null> {
   const supabase = await createClient();
   const { data } = await supabase.from("clients").select("*").eq("id", id).maybeSingle();
-  return data ? mapClient(data) : null;
+  if (!data) return null;
+  const [client] = await withSignedClientLogos(supabase, [mapClient(data)]);
+  return client;
 }
 
 export async function listCalendars(): Promise<Calendar[]> {

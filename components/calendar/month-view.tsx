@@ -2,11 +2,13 @@
 
 import Image from "next/image";
 import { Plus } from "lucide-react";
+import { isWeekend } from "date-fns";
 import { cn } from "cn";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { PlatformIcon } from "@/components/icons/brand-icons";
 import { useLookups } from "@/components/providers/lookups-provider";
+import { hexToRgba } from "@/lib/color-contrast";
 import {
   formatDayNumber,
   formatFullDateFromDate,
@@ -80,19 +82,30 @@ interface MonthDayCellProps {
   inCurrentMonth: boolean;
   onOpenPublication: (publication: Publication) => void;
   onCreateForDay: (day: Date) => void;
+  clientColor: string;
 }
 
-function MonthDayCell({ day, publications, inCurrentMonth, onOpenPublication, onCreateForDay }: MonthDayCellProps) {
+function MonthDayCell({
+  day,
+  publications,
+  inCurrentMonth,
+  onOpenPublication,
+  onCreateForDay,
+  clientColor,
+}: MonthDayCellProps) {
   const today = isToday(day);
+  const weekend = isWeekend(day);
   const visible = publications.slice(0, MAX_VISIBLE_PER_DAY);
   const overflowCount = publications.length - visible.length;
+  const bgClass = today ? "bg-primary/[0.03]" : !weekend && !inCurrentMonth ? "bg-muted/30" : "";
 
   return (
     <div
       className={cn(
         "group/day flex min-h-[112px] flex-col gap-0.5 border-r border-b border-border p-1.5",
-        !inCurrentMonth && "bg-muted/30"
+        bgClass
       )}
+      style={!today && weekend ? { backgroundColor: hexToRgba(clientColor, 0.05) } : undefined}
     >
       <div className="flex items-center justify-between">
         <span
@@ -159,9 +172,16 @@ interface MonthViewProps {
   publications: Publication[];
   onOpenPublication: (publication: Publication) => void;
   onCreateForDay: (day: Date) => void;
+  clientColor: string;
 }
 
-export function MonthView({ anchorDate, publications, onOpenPublication, onCreateForDay }: MonthViewProps) {
+export function MonthView({
+  anchorDate,
+  publications,
+  onOpenPublication,
+  onCreateForDay,
+  clientColor,
+}: MonthViewProps) {
   const gridDays = getMonthGridDays(anchorDate);
   const weekCount = gridDays.length / 7;
 
@@ -194,6 +214,7 @@ export function MonthView({ anchorDate, publications, onOpenPublication, onCreat
               inCurrentMonth={isSameMonthAs(day, anchorDate)}
               onOpenPublication={onOpenPublication}
               onCreateForDay={onCreateForDay}
+              clientColor={clientColor}
             />
           );
         })}
