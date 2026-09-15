@@ -1,8 +1,8 @@
 "use server";
 
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getSiteURL } from "@/lib/site-url";
 
 export interface AuthActionState {
   error: string | null;
@@ -40,11 +40,11 @@ export async function requestMagicLink(
     return { error: "Completá tu email.", sentAt: null };
   }
 
-  const origin = (await headers()).get("origin");
+  const siteURL = await getSiteURL();
   const supabase = await createClient();
   const { error } = await supabase.auth.signInWithOtp({
     email,
-    options: { emailRedirectTo: `${origin}/auth/callback` },
+    options: { emailRedirectTo: `${siteURL}/auth/callback` },
   });
 
   if (error) {
@@ -74,10 +74,10 @@ export async function requestPasswordReset(
     return { error: "Completá tu email.", sentAt: null };
   }
 
-  const origin = (await headers()).get("origin");
+  const siteURL = await getSiteURL();
   const supabase = await createClient();
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${origin}/auth/callback?next=/auth/reset-password`,
+    redirectTo: `${siteURL}/auth/callback?next=/auth/reset-password`,
   });
 
   if (error) {

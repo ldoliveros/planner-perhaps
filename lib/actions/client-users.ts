@@ -1,8 +1,8 @@
 "use server";
 
-import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { createAdminClient, requireSuperAdmin } from "@/lib/supabase/admin";
+import { getSiteURL } from "@/lib/site-url";
 
 export interface InviteClientUserState {
   error: string | null;
@@ -37,10 +37,10 @@ export async function inviteClientUser(
     return { error: "El cliente indicado no existe.", savedAt: null };
   }
 
-  const origin = (await headers()).get("origin");
+  const siteURL = await getSiteURL();
   const { data, error } = await admin.auth.admin.inviteUserByEmail(email, {
     data: fullName ? { full_name: fullName } : undefined,
-    redirectTo: `${origin}/auth/callback`,
+    redirectTo: `${siteURL}/auth/callback`,
   });
   if (error) {
     return { error: error.message, savedAt: null };

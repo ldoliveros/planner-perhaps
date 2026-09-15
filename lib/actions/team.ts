@@ -1,6 +1,5 @@
 "use server";
 
-import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import {
   countOtherActiveSuperAdmins,
@@ -8,6 +7,7 @@ import {
   createAdminClient,
   requireSuperAdmin,
 } from "@/lib/supabase/admin";
+import { getSiteURL } from "@/lib/site-url";
 import { createClient } from "@/lib/supabase/server";
 
 export interface TeamActionState {
@@ -111,10 +111,10 @@ export async function inviteTeamMember(
     if (clientsError) return { error: clientsError, savedAt: null };
   }
 
-  const origin = (await headers()).get("origin");
+  const siteURL = await getSiteURL();
   const { data, error } = await admin.auth.admin.inviteUserByEmail(email, {
     data: fullName ? { full_name: fullName } : undefined,
-    redirectTo: `${origin}/auth/callback`,
+    redirectTo: `${siteURL}/auth/callback`,
   });
   if (error) {
     return { error: error.message, savedAt: null };
@@ -294,10 +294,10 @@ export async function sendTeamMemberPasswordReset(userId: string): Promise<{ err
   if (profileError) return { error: profileError.message };
   if (!profile?.email) return { error: "Este usuario no tiene un email registrado." };
 
-  const origin = (await headers()).get("origin");
+  const siteURL = await getSiteURL();
   const supabase = await createClient();
   const { error } = await supabase.auth.resetPasswordForEmail(profile.email, {
-    redirectTo: `${origin}/auth/callback?next=/auth/reset-password`,
+    redirectTo: `${siteURL}/auth/callback?next=/auth/reset-password`,
   });
   if (error) return { error: error.message };
 
