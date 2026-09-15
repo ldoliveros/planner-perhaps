@@ -1,7 +1,11 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { CheckCircle2 } from "lucide-react";
+import { AuthBrandHeader } from "@/components/auth/auth-brand-header";
+import { AuthSplitLayout } from "@/components/auth/auth-split-layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -25,15 +29,21 @@ export default function ResetPasswordPage() {
   }, [state.savedAt, router]);
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
-      <div className="w-full max-w-sm rounded-xl border border-border bg-card p-6 shadow-sm">
-        <h1 className="mb-1 text-lg font-semibold text-foreground">Nueva contraseña</h1>
-        <p className="mb-6 text-sm text-muted-foreground">Elegí una contraseña de al menos 10 caracteres.</p>
+    <AuthSplitLayout>
+      <AuthBrandHeader />
 
-        {done ? (
-          <p className="text-sm text-foreground">Contraseña actualizada. Redirigiendo...</p>
-        ) : (
-          <form action={formAction} className="flex flex-col gap-4">
+      {done ? (
+        <div className="flex flex-col items-start gap-2 py-2">
+          <CheckCircle2 className="size-8 text-[#26a9e0]" />
+          <p className="text-lg font-semibold text-foreground">Contraseña actualizada</p>
+          <p className="text-sm text-muted-foreground">Te llevamos al ingreso en un momento...</p>
+        </div>
+      ) : (
+        <>
+          <h1 className="text-3xl font-bold leading-[1.15] tracking-tight text-foreground">Nueva contraseña</h1>
+          <p className="mt-3 text-sm text-muted-foreground">Elegí una contraseña de al menos 10 caracteres.</p>
+
+          <form action={formAction} className="mt-8 flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="password">Nueva contraseña</Label>
               <Input
@@ -43,6 +53,8 @@ export default function ResetPasswordPage() {
                 autoComplete="new-password"
                 minLength={10}
                 required
+                autoFocus
+                className="h-11 rounded-xl px-3.5"
               />
             </div>
             <div className="flex flex-col gap-1.5">
@@ -54,17 +66,29 @@ export default function ResetPasswordPage() {
                 autoComplete="new-password"
                 minLength={10}
                 required
+                className="h-11 rounded-xl px-3.5"
               />
             </div>
 
             {state.error && <p className="text-sm text-destructive">{state.error}</p>}
 
-            <Button type="submit" disabled={isPending} className="mt-2">
+            <Button
+              type="submit"
+              disabled={isPending}
+              className="h-11 rounded-xl bg-[#26a9e0] text-white hover:bg-[#1c8fc0] disabled:opacity-60"
+            >
               {isPending ? "Guardando..." : "Guardar contraseña"}
             </Button>
+
+            <Link
+              href="/login"
+              className="text-center text-xs text-muted-foreground hover:text-foreground hover:underline"
+            >
+              Volver a iniciar sesión
+            </Link>
           </form>
-        )}
-      </div>
-    </div>
+        </>
+      )}
+    </AuthSplitLayout>
   );
 }

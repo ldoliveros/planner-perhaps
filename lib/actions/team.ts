@@ -268,3 +268,38 @@ export async function setTeamMemberActive(userId: string, active: boolean): Prom
   revalidatePath("/admin/team");
   return { error: null };
 }
+
+/**
+ * Le manda al miembro del equipo el mismo link oficial de "¿Olvidaste tu
+ * contraseña?" que ya existe en /login — el Super Admin nunca genera, ve ni
+ * transmite ninguna contraseña, solo dispara el mecanismo de Supabase Auth
+ * en nombre de otro usuario.
+ */
+export async function sendTeamMemberPasswordReset(userId: string): Promise<{ error: string | null }> {
+  try {
+    await requireSuperAdmin();
+  } catch {
+    return { error: "No autorizado." };
+  }
+
+  const admin = createAdminClient();
+  const target = await getTeamMemberTarget(admin, userId);
+  if (target.error) return { error: target.error };
+
+  const { data: profile, error: profileError } = await admin
+    .from("profiles")
+    .select("email")
+    .eq("id", userId)
+    .maybeSingle();
+  if (profileError) return { error: profileError.message };
+  if (!profile?.email) return { error: "Este usuario no tiene un email registrado." };
+
+  const origin = (await headers()).get("origin");
+  const supabase = await createClient();
+  const { error } = await supabase.auth.resetPasswordForEmail(profile.email, {
+    redirectTo: `${origin}/auth/callback?next=/auth/reset-password`,
+  });
+  if (error) return { error: error.message };
+
+  return { error: null };
+}

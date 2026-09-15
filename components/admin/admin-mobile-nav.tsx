@@ -1,0 +1,84 @@
+"use client";
+
+import { useState } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { Menu } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
+import { PerhapsIsologo } from "@/components/branding/perhaps-isologo";
+import { getAdminNavItems } from "@/components/admin/admin-nav-items";
+import { UserMenu } from "@/components/shared/user-menu";
+import { ROLE_LABELS } from "@/lib/role-labels";
+import { cn } from "cn";
+
+interface AdminMobileNavProps {
+  role: "super_admin" | "account_manager";
+  email: string | null;
+  fullName: string | null;
+  avatarUrl: string | null;
+}
+
+export function AdminMobileNav({ role, email, fullName, avatarUrl }: AdminMobileNavProps) {
+  const [open, setOpen] = useState(false);
+  const pathname = usePathname();
+  const items = getAdminNavItems(role);
+
+  return (
+    <>
+      <div className="flex items-center gap-2 border-b border-border bg-background px-3 py-2 md:hidden">
+        <Button variant="ghost" size="icon-sm" aria-label="Abrir navegación" onClick={() => setOpen(true)}>
+          <Menu />
+        </Button>
+        <Link href="/admin" className="flex items-center gap-1.5 text-foreground">
+          <PerhapsIsologo size={18} />
+          <span className="text-sm font-bold tracking-tight">Perhaps.</span>
+        </Link>
+      </div>
+
+      <Sheet open={open} onOpenChange={setOpen}>
+        <SheetContent side="left" className="w-72 gap-0 border-none bg-[#111318] p-0 sm:max-w-72" showCloseButton={false}>
+          <SheetTitle className="sr-only">Navegación</SheetTitle>
+          <div className="flex items-center gap-2 px-5 pt-6 pb-1 text-white">
+            <PerhapsIsologo size={24} />
+            <span className="text-lg font-bold tracking-tight">Perhaps.</span>
+          </div>
+          <div className="px-5 pb-5 text-[10px] font-semibold tracking-[0.18em] text-white/40 uppercase">
+            Planificador Editorial
+          </div>
+          <nav className="flex flex-1 flex-col gap-0.5 px-3">
+            {items.map((item) => {
+              const active = pathname?.startsWith(item.href);
+              const Icon = item.icon;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={() => setOpen(false)}
+                  className={cn(
+                    "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+                    active ? "bg-white/10 text-white" : "text-white/55 hover:bg-white/5 hover:text-white/90"
+                  )}
+                >
+                  <Icon className="size-[18px] shrink-0" />
+                  {item.label}
+                </Link>
+              );
+            })}
+          </nav>
+          <div className="border-t border-white/10 p-3">
+            <UserMenu
+              email={email}
+              fullName={fullName}
+              avatarUrl={avatarUrl}
+              profileHref="/admin/profile"
+              signOutRedirectTo="/login"
+              roleLabel={ROLE_LABELS[role]}
+              variant="sidebar"
+            />
+          </div>
+        </SheetContent>
+      </Sheet>
+    </>
+  );
+}

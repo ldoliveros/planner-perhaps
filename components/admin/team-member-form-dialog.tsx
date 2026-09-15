@@ -26,6 +26,7 @@ import {
   changeTeamMemberRole,
   inviteTeamMember,
   saveTeamMemberAssignments,
+  sendTeamMemberPasswordReset,
   setTeamMemberActive,
   updateTeamMemberName,
   type TeamActionState,
@@ -240,6 +241,7 @@ function EditBody({ member, clients, onDone }: { member: TeamMember; clients: Cl
   const [isSaving, startSaveTransition] = useTransition();
   const [isChangingRole, startRoleTransition] = useTransition();
   const [isTogglingActive, startActiveTransition] = useTransition();
+  const [isSendingReset, startResetTransition] = useTransition();
 
   const roleChanged = pendingRole !== member.role;
   const roleChangeNeedsClients = pendingRole === "account_manager" && selectedClientIds.length === 0;
@@ -298,6 +300,18 @@ function EditBody({ member, clients, onDone }: { member: TeamMember; clients: Cl
     });
   }
 
+  function handleSendPasswordReset() {
+    setError(null);
+    startResetTransition(async () => {
+      const result = await sendTeamMemberPasswordReset(member.id);
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+      toast.success("Le enviamos un link para restablecer su contraseña");
+    });
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-1.5">
@@ -308,6 +322,16 @@ function EditBody({ member, clients, onDone }: { member: TeamMember; clients: Cl
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="tm-edit-email">Email</Label>
         <Input id="tm-edit-email" value={member.email ?? ""} disabled readOnly />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="w-fit"
+          disabled={isSendingReset}
+          onClick={handleSendPasswordReset}
+        >
+          {isSendingReset ? "Enviando..." : "Enviar link de restablecimiento de contraseña"}
+        </Button>
       </div>
 
       <div className="flex items-center justify-between gap-2 rounded-lg border border-border px-3 py-2">

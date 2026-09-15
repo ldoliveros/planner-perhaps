@@ -1,9 +1,8 @@
 import { redirect } from "next/navigation";
-import Link from "next/link";
+import { cookies } from "next/headers";
 import { Button } from "@/components/ui/button";
-import { PerhapsLogo } from "@/components/branding/perhaps-logo";
-import { AdminNav } from "@/components/admin/admin-nav";
-import { UserMenu } from "@/components/shared/user-menu";
+import { AdminSidebar } from "@/components/admin/admin-sidebar";
+import { AdminMobileNav } from "@/components/admin/admin-mobile-nav";
 import { createClient } from "@/lib/supabase/server";
 import { signOut } from "@/lib/actions/auth";
 
@@ -38,25 +37,27 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     );
   }
 
+  const cookieStore = await cookies();
+  const defaultCollapsed = cookieStore.get("sidebar_collapsed")?.value === "1";
+
   return (
-    <div className="flex min-h-screen flex-1 flex-col bg-background">
-      <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-1.5 sm:gap-4 sm:px-4">
-        <div className="flex min-w-0 items-center gap-2 overflow-x-auto sm:gap-4">
-          <Link href="/admin" className="flex shrink-0 items-center gap-2">
-            <PerhapsLogo height={16} />
-            <span className="hidden text-xs font-medium text-muted-foreground sm:inline">Planificador Editorial</span>
-          </Link>
-          <AdminNav role={profile.role} />
-        </div>
-        <UserMenu
+    <div className="flex h-dvh overflow-hidden bg-background">
+      <AdminSidebar
+        role={profile.role}
+        email={user.email ?? null}
+        fullName={profile.full_name}
+        avatarUrl={profile.avatar_url}
+        defaultCollapsed={defaultCollapsed}
+      />
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <AdminMobileNav
+          role={profile.role}
           email={user.email ?? null}
           fullName={profile.full_name}
           avatarUrl={profile.avatar_url}
-          profileHref="/admin/profile"
-          signOutRedirectTo="/login"
         />
+        <main className="min-w-0 flex-1 overflow-y-auto">{children}</main>
       </div>
-      {children}
     </div>
   );
 }

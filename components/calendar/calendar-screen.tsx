@@ -193,7 +193,7 @@ export function CalendarScreen({
   if (calendars.length === 0) {
     return (
       <LookupsProvider {...lookups} calendars={calendars} clientAccounts={clientAccounts}>
-        <div className="flex min-h-screen flex-col">
+        <div className="flex h-full flex-col">
           <CalendarHeader
             client={client}
             calendarLabel="Sin calendarios"
@@ -227,7 +227,7 @@ export function CalendarScreen({
 
   return (
     <LookupsProvider {...lookups} calendars={calendars} clientAccounts={clientAccounts}>
-      <div className="flex min-h-screen flex-col">
+      <div className="flex h-full flex-col">
         <CalendarHeader
           client={client}
           calendarLabel={calendarLabel}

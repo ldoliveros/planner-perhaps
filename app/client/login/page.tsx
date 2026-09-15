@@ -2,6 +2,9 @@
 
 import { useActionState, useEffect, useRef, useState } from "react";
 import { CheckCircle2 } from "lucide-react";
+import { AuthBrandHeader } from "@/components/auth/auth-brand-header";
+import { AuthSecondaryLink } from "@/components/auth/auth-secondary-link";
+import { AuthSplitLayout } from "@/components/auth/auth-split-layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,32 +25,57 @@ export default function ClientLoginPage() {
   }, [state.sentAt]);
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
-      <div className="w-full max-w-sm rounded-xl border border-border bg-card p-6 shadow-sm">
-        <h1 className="mb-1 text-lg font-semibold text-foreground">Planificador Editorial</h1>
-        <p className="mb-6 text-sm text-muted-foreground">Ingresá con el email de tu cuenta.</p>
+    <AuthSplitLayout>
+      <AuthBrandHeader />
 
-        {sent ? (
-          <div className="flex flex-col items-center gap-2 py-4 text-center">
-            <CheckCircle2 className="size-8 text-primary" />
-            <p className="text-sm font-medium text-foreground">Revisá tu email</p>
-            <p className="text-sm text-muted-foreground">Te enviamos un link para ingresar. Puede tardar unos minutos.</p>
-          </div>
-        ) : (
-          <form action={formAction} className="flex flex-col gap-4">
+      {sent ? (
+        <div className="flex flex-col items-start gap-2 py-2">
+          <CheckCircle2 className="size-8 text-[#26a9e0]" />
+          <p className="text-lg font-semibold text-foreground">Revisá tu email</p>
+          <p className="text-sm text-muted-foreground">
+            Te enviamos un link para ingresar. Puede tardar unos minutos.
+          </p>
+        </div>
+      ) : (
+        <>
+          <h1 className="text-3xl font-bold leading-[1.15] tracking-tight text-foreground">
+            Accedé a tu calendario
+            <br />
+            de contenidos
+          </h1>
+          <p className="mt-3 text-sm text-muted-foreground">
+            Te enviaremos un enlace seguro a tu email para ingresar.
+          </p>
+
+          <form action={formAction} className="mt-8 flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="email">Email</Label>
-              <Input id="email" name="email" type="email" autoComplete="email" required autoFocus />
+              <Input
+                id="email"
+                name="email"
+                type="email"
+                placeholder="nombre@empresa.com"
+                autoComplete="email"
+                required
+                autoFocus
+                className="h-11 rounded-xl px-3.5"
+              />
             </div>
 
             {state.error && <p className="text-sm text-destructive">{state.error}</p>}
 
-            <Button type="submit" disabled={isPending} className="mt-2">
-              {isPending ? "Enviando..." : "Enviar link de acceso"}
+            <Button
+              type="submit"
+              disabled={isPending}
+              className="h-11 rounded-xl bg-[#26a9e0] text-white hover:bg-[#1c8fc0] disabled:opacity-60"
+            >
+              {isPending ? "Enviando..." : "Enviarme link de acceso"}
             </Button>
           </form>
-        )}
-      </div>
-    </div>
+        </>
+      )}
+
+      <AuthSecondaryLink question="¿Sos parte del equipo?" label="Acceso administrador" href="/login" />
+    </AuthSplitLayout>
   );
 }
