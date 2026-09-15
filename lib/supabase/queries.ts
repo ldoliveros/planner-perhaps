@@ -1,3 +1,4 @@
+import { createAdminClient, requireSuperAdmin } from "./admin";
 import { createClient } from "./server";
 import {
   mapAccountType,
@@ -21,6 +22,7 @@ import type {
   Platform,
   Publication,
   Status,
+  TeamMember,
 } from "@/types";
 
 const PUBLICATION_SELECT = "*, publication_destinations(*), publication_assets(*)";
@@ -129,10 +131,67 @@ export async function listUsersForClient(clientId: string): Promise<ClientUser[]
   return (data ?? []).map(mapClientUser);
 }
 
+/**
+ * Equipo interno (Super Admin + Account Manager) con sus clientes asignados
+ * y estado real de acceso (banned_until de Auth). Super-Admin-only: usa
+ * createAdminClient() para leer el estado de ban, que no vive en `profiles`.
+ */
+export async function listTeamMembers(): Promise<TeamMember[]> {
+  await requireSuperAdmin();
+  const supabase = await createClient();
+
+  const { data: profilesData } = await supabase
+    .from("profiles")
+    .select("id, email, full_name, avatar_url, role, created_at")
+    .in("role", ["super_admin", "account_manager"])
+    .order("created_at");
+  const members = profilesData ?? [];
+
+  const memberIds = members.map((m) => m.id);
+  const { data: assignments } =
+    memberIds.length > 0
+      ? await supabase.from("user_client_assignments").select("user_id, client_id").in("user_id", memberIds)
+      : { data: [] as { user_id: string; client_id: string }[] };
+
+  const clientIds = Array.from(new Set((assignments ?? []).map((a) => a.client_id)));
+  const { data: clientsData } =
+    clientIds.length > 0 ? await supabase.from("clients").select("id, name").in("id", clientIds) : { data: [] };
+  const clientNameById = new Map((clientsData ?? []).map((c) => [c.id, c.name]));
+
+  // admin.auth.admin.listUsers() pega contra la API de Auth (no PostgREST) y no
+  // tiene timeout propio: si esa API está lenta, un await sin acotar acá cuelga
+  // la página entera indefinidamente. Se acota con una carrera contra un timer:
+  // si no responde a tiempo, se listan igual los usuarios pero como "Activo" por
+  // default (estado visual, no afecta el bloqueo real de acceso vía ban_duration).
+  const admin = createAdminClient();
+  const authList = await Promise.race([
+    admin.auth.admin.listUsers({ perPage: 200 }).then((res) => res.data.users),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000)),
+  ]);
+  const activeById = new Map(
+    (authList ?? []).map((u) => [u.id, !u.banned_until || new Date(u.banned_until).getTime() <= Date.now()])
+  );
+
+  return members.map((m) => ({
+    id: m.id,
+    email: m.email,
+    fullName: m.full_name,
+    avatarUrl: m.avatar_url,
+    role: m.role as "super_admin" | "account_manager",
+    assignedClients: (assignments ?? [])
+      .filter((a) => a.user_id === m.id)
+      .map((a) => ({ id: a.client_id, name: clientNameById.get(a.client_id) ?? "—" })),
+    active: activeById.get(m.id) ?? true,
+    createdAt: m.created_at,
+  }));
+}
+
 export interface CurrentProfile {
   userId: string;
   email: string | null;
-  role: "admin" | "client";
+  fullName: string | null;
+  avatarUrl: string | null;
+  role: "super_admin" | "account_manager" | "client";
   clientId: string | null;
 }
 
@@ -145,10 +204,17 @@ export async function getCurrentProfile(): Promise<CurrentProfile | null> {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role, client_id")
+    .select("role, client_id, full_name, avatar_url")
     .eq("id", user.id)
     .maybeSingle();
   if (!profile) return null;
 
-  return { userId: user.id, email: user.email ?? null, role: profile.role, clientId: profile.client_id };
+  return {
+    userId: user.id,
+    email: user.email ?? null,
+    fullName: profile.full_name,
+    avatarUrl: profile.avatar_url,
+    role: profile.role,
+    clientId: profile.client_id,
+  };
 }

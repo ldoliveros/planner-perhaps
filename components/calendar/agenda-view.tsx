@@ -101,7 +101,7 @@ export function AgendaView({ days, publications, onOpenPublication, showCalendar
                 <TableCell className="text-muted-foreground">{contentType?.label ?? "—"}</TableCell>
                 <TableCell>
                   {status && (
-                    <Badge variant="outline" style={{ borderColor: status.color, color: status.color }}>
+                    <Badge className="text-white" style={{ backgroundColor: status.color }}>
                       {status.label}
                     </Badge>
                   )}

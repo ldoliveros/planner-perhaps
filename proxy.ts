@@ -47,8 +47,9 @@ export async function proxy(request: NextRequest) {
 
   if ((isAdminLoginRoute || isClientLoginRoute) && user) {
     const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
+    const isStaff = profile?.role === "super_admin" || profile?.role === "account_manager";
     const url = request.nextUrl.clone();
-    url.pathname = profile?.role === "admin" ? "/admin" : "/client";
+    url.pathname = isStaff ? "/admin" : "/client";
     url.search = "";
     return NextResponse.redirect(url);
   }

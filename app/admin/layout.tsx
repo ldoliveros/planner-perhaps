@@ -1,9 +1,9 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PerhapsLogo } from "@/components/branding/perhaps-logo";
 import { AdminNav } from "@/components/admin/admin-nav";
+import { UserMenu } from "@/components/shared/user-menu";
 import { createClient } from "@/lib/supabase/server";
 import { signOut } from "@/lib/actions/auth";
 
@@ -17,9 +17,13 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     redirect("/login");
   }
 
-  const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role, full_name, avatar_url")
+    .eq("id", user.id)
+    .maybeSingle();
 
-  if (profile?.role !== "admin") {
+  if (profile?.role !== "super_admin" && profile?.role !== "account_manager") {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-background px-4 text-center">
         <p className="text-sm text-muted-foreground">
@@ -42,14 +46,15 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             <PerhapsLogo height={16} />
             <span className="hidden text-xs font-medium text-muted-foreground sm:inline">Planificador Editorial</span>
           </Link>
-          <AdminNav />
+          <AdminNav role={profile.role} />
         </div>
-        <form action={signOut.bind(null, "/login")} className="shrink-0">
-          <Button variant="ghost" size="sm" type="submit" className="gap-1.5 text-xs text-muted-foreground">
-            <LogOut className="size-3.5" />
-            <span className="hidden sm:inline">{user.email}</span>
-          </Button>
-        </form>
+        <UserMenu
+          email={user.email ?? null}
+          fullName={profile.full_name}
+          avatarUrl={profile.avatar_url}
+          profileHref="/admin/profile"
+          signOutRedirectTo="/login"
+        />
       </div>
       {children}
     </div>

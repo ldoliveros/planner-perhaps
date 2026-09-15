@@ -4,18 +4,24 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "cn";
 
-const NAV_ITEMS = [
+const BASE_NAV_ITEMS = [
   { href: "/admin/clients", label: "Clientes" },
   { href: "/admin/calendars", label: "Calendarios" },
   { href: "/admin/publications", label: "Publicaciones" },
 ];
 
-export function AdminNav() {
+interface AdminNavProps {
+  role: "super_admin" | "account_manager";
+}
+
+export function AdminNav({ role }: AdminNavProps) {
   const pathname = usePathname();
+  const items =
+    role === "super_admin" ? [...BASE_NAV_ITEMS, { href: "/admin/team", label: "Equipo" }] : BASE_NAV_ITEMS;
 
   return (
     <nav className="flex items-center gap-1">
-      {NAV_ITEMS.map((item) => {
+      {items.map((item) => {
         const active = pathname?.startsWith(item.href);
         return (
           <Link

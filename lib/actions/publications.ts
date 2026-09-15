@@ -3,7 +3,6 @@
 import { revalidatePath } from "next/cache";
 import sharp from "sharp";
 import { createClient } from "@/lib/supabase/server";
-import type { AssetType } from "@/types";
 
 export interface PublicationFormState {
   error: string | null;
@@ -12,13 +11,6 @@ export interface PublicationFormState {
 
 interface DestinationInput {
   clientAccountId: string;
-}
-
-interface ManualAssetInput {
-  id?: string;
-  type: AssetType;
-  filename: string;
-  driveFileUrl: string | null;
 }
 
 function parseJsonArray<T>(raw: FormDataEntryValue | null): T[] {
@@ -49,8 +41,6 @@ export async function savePublication(
   const statusId = String(formData.get("statusId") ?? "");
   const driveFolderUrl = String(formData.get("driveFolderUrl") ?? "").trim() || null;
   const destinations = parseJsonArray<DestinationInput>(formData.get("destinations"));
-  const manualAssets = parseJsonArray<ManualAssetInput>(formData.get("manualAssets"));
-  const removedAssetIds = parseJsonArray<string>(formData.get("removedAssetIds"));
   const thumbnail = formData.get("thumbnail");
 
   if (!calendarId || !title || !contentTypeId || !publicationDate || !statusId) {
@@ -115,28 +105,6 @@ export async function savePublication(
     }))
   );
   if (insertDestError) return { error: insertDestError.message, savedAt: null };
-
-  // Assets eliminados por el usuario en el form.
-  if (removedAssetIds.length > 0) {
-    await supabase.from("publication_assets").delete().in("id", removedAssetIds);
-  }
-
-  // Assets manuales (metadata + URL de Drive manual, sin archivo real todavía).
-  for (const asset of manualAssets) {
-    if (asset.id) {
-      await supabase
-        .from("publication_assets")
-        .update({ type: asset.type, filename: asset.filename, drive_file_url: asset.driveFileUrl })
-        .eq("id", asset.id);
-    } else {
-      await supabase.from("publication_assets").insert({
-        publication_id: publicationId,
-        type: asset.type,
-        filename: asset.filename,
-        drive_file_url: asset.driveFileUrl,
-      });
-    }
-  }
 
   // Portada / thumbnail: se optimiza y sube al bucket privado de Supabase.
   if (thumbnail instanceof File && thumbnail.size > 0) {

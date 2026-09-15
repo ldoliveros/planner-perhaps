@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Image from "next/image";
-import { Copy, ExternalLink, File, FileText, FolderOpen, ImageIcon, Pencil, Video } from "lucide-react";
+import { Copy, ExternalLink, FolderOpen, ImageIcon, Pencil } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -18,22 +18,7 @@ import { PlatformIcon } from "@/components/icons/brand-icons";
 import { useLookups } from "@/components/providers/lookups-provider";
 import { formatFullDate, formatTime } from "@/lib/date-utils";
 import { cn } from "cn";
-import type { AssetType, Publication } from "@/types";
-
-const ASSET_ICONS: Record<AssetType, typeof ImageIcon> = {
-  image: ImageIcon,
-  video: Video,
-  pdf: FileText,
-  document: FileText,
-  other: File,
-};
-
-function formatFileSize(bytes: number | null): string {
-  if (!bytes) return "";
-  const mb = bytes / 1_000_000;
-  if (mb < 1) return `${Math.round(bytes / 1000)} KB`;
-  return `${mb.toFixed(1)} MB`;
-}
+import type { Publication } from "@/types";
 
 interface PublicationDrawerProps {
   publication: Publication | null;
@@ -49,7 +34,6 @@ export function PublicationDrawer({ publication, onOpenChange, onEdit, onDuplica
   const status = publication ? getStatus(publication.statusId) : undefined;
   const primaryAsset = publication?.assets.find((a) => a.isPrimary) ?? null;
   const heroAsset = primaryAsset ?? publication?.assets[0] ?? null;
-  const fileAssets = publication?.assets.filter((a) => !a.isPrimary) ?? [];
 
   return (
     <Sheet open={publication !== null} onOpenChange={onOpenChange}>
@@ -182,57 +166,22 @@ export function PublicationDrawer({ publication, onOpenChange, onEdit, onDuplica
                 </div>
               )}
 
-              <div>
-                <div className="mb-2 flex items-center justify-between">
-                  <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              {publication.driveFolderUrl && (
+                <div>
+                  <span className="mb-2 block text-xs font-medium uppercase tracking-wide text-muted-foreground">
                     Archivos
                   </span>
-                  {publication.driveFolderUrl && (
-                    <a
-                      href={publication.driveFolderUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "gap-1.5 text-xs")}
-                    >
-                      <FolderOpen className="size-3.5" />
-                      Abrir carpeta en Drive
-                    </a>
-                  )}
+                  <a
+                    href={publication.driveFolderUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1.5")}
+                  >
+                    <FolderOpen className="size-3.5" />
+                    Abrir carpeta en Drive
+                  </a>
                 </div>
-
-                {fileAssets.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">Todavía no hay archivos asociados.</p>
-                ) : (
-                  <div className="flex flex-col divide-y divide-border rounded-lg border border-border">
-                    {fileAssets.map((asset) => {
-                      const Icon = ASSET_ICONS[asset.type];
-                      return (
-                        <div key={asset.id} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
-                          <span className="flex min-w-0 items-center gap-2">
-                            <Icon className="size-4 shrink-0 text-muted-foreground" />
-                            <span className="truncate">{asset.filename}</span>
-                            {asset.fileSize && (
-                              <span className="shrink-0 text-xs text-muted-foreground">{formatFileSize(asset.fileSize)}</span>
-                            )}
-                          </span>
-                          {asset.driveFileUrl ? (
-                            <a
-                              href={asset.driveFileUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="shrink-0 text-xs font-medium text-primary hover:underline"
-                            >
-                              Abrir en Drive
-                            </a>
-                          ) : (
-                            <span className="shrink-0 text-xs text-muted-foreground">Sin Drive</span>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
+              )}
             </div>
           </>
         )}

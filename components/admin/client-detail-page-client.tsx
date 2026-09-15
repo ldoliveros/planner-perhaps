@@ -40,6 +40,7 @@ interface ClientDetailPageClientProps {
   platforms: Platform[];
   accountTypes: AccountType[];
   clientUsers: ClientUser[];
+  canEditClient: boolean;
 }
 
 export function ClientDetailPageClient({
@@ -50,6 +51,7 @@ export function ClientDetailPageClient({
   platforms,
   accountTypes,
   clientUsers,
+  canEditClient,
 }: ClientDetailPageClientProps) {
   const platformMap = new Map(platforms.map((p) => [p.id, p]));
   const accountTypeMap = new Map(accountTypes.map((a) => [a.id, a]));
@@ -102,15 +104,17 @@ export function ClientDetailPageClient({
             <CalendarDays className="size-3.5" />
             Ver planner
           </Button>
-          <ClientFormDialog
-            client={client}
-            trigger={
-              <Button variant="outline" size="sm" className="gap-1.5">
-                <Pencil className="size-3.5" />
-                Editar cliente
-              </Button>
-            }
-          />
+          {canEditClient && (
+            <ClientFormDialog
+              client={client}
+              trigger={
+                <Button variant="outline" size="sm" className="gap-1.5">
+                  <Pencil className="size-3.5" />
+                  Editar cliente
+                </Button>
+              }
+            />
+          )}
         </div>
       </div>
 
@@ -220,7 +224,7 @@ export function ClientDetailPageClient({
               {clientUsers.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">
-                    Todavía no hay usuarios invitados. Invitá al primero con &quot;Invitar usuario&quot;.
+                    Todavía no hay usuarios invitados. Invitá al primero con &quot;Invitar cliente&quot;.
                   </TableCell>
                 </TableRow>
               )}

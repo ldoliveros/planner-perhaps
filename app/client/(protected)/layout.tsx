@@ -1,8 +1,8 @@
 import { redirect } from "next/navigation";
 import Image from "next/image";
-import { LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PerhapsLogo } from "@/components/branding/perhaps-logo";
+import { UserMenu } from "@/components/shared/user-menu";
 import { getClientById, getCurrentProfile } from "@/lib/supabase/queries";
 import { getContrastTextColor } from "@/lib/color-contrast";
 import { signOut } from "@/lib/actions/auth";
@@ -65,12 +65,13 @@ export default async function ClientLayout({ children }: { children: React.React
             <span className="truncate text-xs font-medium text-foreground">{client.name}</span>
           </div>
         </div>
-        <form action={signOut.bind(null, "/client/login")} className="shrink-0">
-          <Button variant="ghost" size="sm" type="submit" className="gap-1.5 text-xs text-muted-foreground">
-            <LogOut className="size-3.5" />
-            <span className="hidden sm:inline">{profile.email}</span>
-          </Button>
-        </form>
+        <UserMenu
+          email={profile.email}
+          fullName={profile.fullName}
+          avatarUrl={profile.avatarUrl}
+          profileHref="/client/profile"
+          signOutRedirectTo="/client/login"
+        />
       </div>
       {children}
     </div>

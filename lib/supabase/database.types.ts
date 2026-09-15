@@ -26,12 +26,28 @@ export type ProfileRow = {
   id: string;
   email: string | null;
   full_name: string | null;
-  role: "admin" | "client";
+  avatar_url: string | null;
+  role: "super_admin" | "account_manager" | "client";
   client_id: string | null;
   created_at: string;
 };
 export type ProfileInsert = Omit<ProfileRow, "created_at">;
 export type ProfileUpdate = Partial<ProfileInsert>;
+
+export type UserClientAssignmentRow = {
+  id: string;
+  user_id: string;
+  client_id: string;
+  created_at: string;
+  created_by: string | null;
+};
+export type UserClientAssignmentInsert = {
+  id?: string;
+  user_id: string;
+  client_id: string;
+  created_by?: string | null;
+};
+export type UserClientAssignmentUpdate = Partial<UserClientAssignmentInsert>;
 
 export type CalendarRow = {
   id: string;
@@ -273,6 +289,12 @@ export type Database = {
         Row: PublicationAssetRow;
         Insert: PublicationAssetInsert;
         Update: PublicationAssetUpdate;
+        Relationships: [];
+      };
+      user_client_assignments: {
+        Row: UserClientAssignmentRow;
+        Insert: UserClientAssignmentInsert;
+        Update: UserClientAssignmentUpdate;
         Relationships: [];
       };
     };

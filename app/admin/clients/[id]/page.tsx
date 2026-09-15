@@ -3,6 +3,7 @@ import { ClientDetailPageClient } from "@/components/admin/client-detail-page-cl
 import { createClient } from "@/lib/supabase/server";
 import {
   getClientById,
+  getCurrentProfile,
   getLookups,
   listCalendarsForClient,
   listClientAccountsForClient,
@@ -15,12 +16,13 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
   const client = await getClientById(id);
   if (!client) notFound();
 
-  const [calendars, clientAccounts, clientUsers, lookups, supabase] = await Promise.all([
+  const [calendars, clientAccounts, clientUsers, lookups, supabase, profile] = await Promise.all([
     listCalendarsForClient(client.id),
     listClientAccountsForClient(client.id),
     listUsersForClient(client.id),
     getLookups(),
     createClient(),
+    getCurrentProfile(),
   ]);
 
   const calendarIds = calendars.map((c) => c.id);
@@ -43,6 +45,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
       platforms={lookups.platforms}
       accountTypes={lookups.accountTypes}
       clientUsers={clientUsers}
+      canEditClient={profile?.role === "super_admin"}
     />
   );
 }

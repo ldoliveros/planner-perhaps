@@ -3,7 +3,7 @@
 import { useActionState, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { ImageIcon, Plus, Trash2 } from "lucide-react";
+import { ImageIcon } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -28,24 +28,9 @@ import { useLookups } from "@/components/providers/lookups-provider";
 import { deletePublication, savePublication, type PublicationFormState } from "@/lib/actions/publications";
 import { formatTime } from "@/lib/date-utils";
 import { toast } from "@/lib/toast";
-import type { AssetType, Calendar, ClientAccount, Publication, PublicationDestination } from "@/types";
+import type { Calendar, ClientAccount, Publication, PublicationDestination } from "@/types";
 
 const INITIAL_STATE: PublicationFormState = { error: null, savedAt: null };
-
-const ASSET_TYPE_LABELS: Record<AssetType, string> = {
-  image: "Imagen",
-  video: "Video",
-  pdf: "PDF",
-  document: "Documento",
-  other: "Otro",
-};
-
-interface ManualAssetRow {
-  id?: string;
-  type: AssetType;
-  filename: string;
-  driveFileUrl: string | null;
-}
 
 interface PublicationFormProps {
   open: boolean;
@@ -80,7 +65,6 @@ export function PublicationForm({
   // nuevo, así que los valores iniciales alcanzan — no hace falta re-sincronizar
   // este estado en un efecto.
   const primaryAsset = publication?.assets.find((a) => a.isPrimary) ?? null;
-  const otherAssets = publication?.assets.filter((a) => !a.isPrimary) ?? [];
   const firstStatusId = statuses.find((s) => s.order === 1)?.id;
 
   const [calendarId, setCalendarId] = useState(
@@ -89,10 +73,6 @@ export function PublicationForm({
   const [destinations, setDestinations] = useState<PublicationDestination[]>(
     publication?.destinations ?? duplicateFrom?.destinations ?? []
   );
-  const [manualAssets, setManualAssets] = useState<ManualAssetRow[]>(() =>
-    otherAssets.map((a) => ({ id: a.id, type: a.type, filename: a.filename, driveFileUrl: a.driveFileUrl }))
-  );
-  const [removedAssetIds, setRemovedAssetIds] = useState<string[]>([]);
   const [thumbnailPreview, setThumbnailPreview] = useState<string | null>(primaryAsset?.thumbnailUrl ?? null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -132,22 +112,6 @@ export function PublicationForm({
     if (file) setThumbnailPreview(URL.createObjectURL(file));
   }
 
-  function addManualAsset() {
-    setManualAssets((prev) => [...prev, { type: "image", filename: "", driveFileUrl: null }]);
-  }
-
-  function updateManualAsset(index: number, patch: Partial<ManualAssetRow>) {
-    setManualAssets((prev) => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)));
-  }
-
-  function removeManualAsset(index: number) {
-    setManualAssets((prev) => {
-      const row = prev[index];
-      if (row.id) setRemovedAssetIds((ids) => [...ids, row.id as string]);
-      return prev.filter((_, i) => i !== index);
-    });
-  }
-
   async function handleConfirmDelete() {
     if (!publication) return;
     setDeleteError(null);
@@ -173,13 +137,6 @@ export function PublicationForm({
         <form action={formAction} className="flex flex-col gap-6 px-4 pb-6">
           {publication && <input type="hidden" name="id" value={publication.id} />}
           <input type="hidden" name="destinations" value={JSON.stringify(destinations)} readOnly />
-          <input
-            type="hidden"
-            name="manualAssets"
-            value={JSON.stringify(manualAssets.filter((a) => a.filename.trim().length > 0))}
-            readOnly
-          />
-          <input type="hidden" name="removedAssetIds" value={JSON.stringify(removedAssetIds)} readOnly />
 
           <section className="flex flex-col gap-3">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Información</h3>
@@ -385,16 +342,9 @@ export function PublicationForm({
           <Separator />
 
           <section className="flex flex-col gap-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Archivos / Drive</h3>
-              <Button type="button" variant="ghost" size="sm" className="gap-1.5" onClick={addManualAsset}>
-                <Plus className="size-3.5" />
-                Agregar archivo
-              </Button>
-            </div>
-
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Archivos / Drive</h3>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="driveFolderUrl">Carpeta de Drive de la publicación (opcional)</Label>
+              <Label htmlFor="driveFolderUrl">Carpeta de Google Drive</Label>
               <Input
                 id="driveFolderUrl"
                 name="driveFolderUrl"
@@ -402,56 +352,10 @@ export function PublicationForm({
                 placeholder="https://drive.google.com/drive/folders/..."
                 defaultValue={publication?.driveFolderUrl ?? ""}
               />
+              <p className="text-xs text-muted-foreground">
+                Pegá el enlace a la carpeta donde están los archivos de esta publicación.
+              </p>
             </div>
-
-            {manualAssets.length > 0 && (
-              <div className="flex flex-col gap-2">
-                {manualAssets.map((asset, index) => (
-                  <div key={asset.id ?? `new-${index}`} className="flex items-start gap-2 rounded-lg border border-border p-2">
-                    <div className="grid flex-1 grid-cols-2 gap-2">
-                      <Input
-                        placeholder="Nombre del archivo"
-                        value={asset.filename}
-                        onChange={(e) => updateManualAsset(index, { filename: e.target.value })}
-                        className="col-span-2"
-                      />
-                      <Select
-                        value={asset.type}
-                        onValueChange={(value) => updateManualAsset(index, { type: value as AssetType })}
-                        items={ASSET_TYPE_LABELS}
-                      >
-                        <SelectTrigger className="w-full">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {(Object.keys(ASSET_TYPE_LABELS) as AssetType[]).map((type) => (
-                            <SelectItem key={type} value={type}>
-                              {ASSET_TYPE_LABELS[type]}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Input
-                        placeholder="URL de Drive (opcional)"
-                        type="url"
-                        value={asset.driveFileUrl ?? ""}
-                        onChange={(e) => updateManualAsset(index, { driveFileUrl: e.target.value || null })}
-                      />
-                    </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      className="text-muted-foreground"
-                      onClick={() => removeManualAsset(index)}
-                      aria-label="Quitar archivo"
-                    >
-                      <Trash2 className="size-3.5" />
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            )}
           </section>
 
           {state.error && <p className="text-sm text-destructive">{state.error}</p>}

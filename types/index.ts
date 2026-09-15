@@ -1,6 +1,6 @@
 export type CalendarStatus = "draft" | "active" | "archived";
 
-export type UserRole = "admin" | "client";
+export type UserRole = "super_admin" | "account_manager" | "client";
 
 export interface ClientUser {
   id: string;
@@ -8,6 +8,17 @@ export interface ClientUser {
   fullName: string | null;
   role: UserRole;
   clientId: string | null;
+  createdAt: string;
+}
+
+export interface TeamMember {
+  id: string;
+  email: string | null;
+  fullName: string | null;
+  avatarUrl: string | null;
+  role: "super_admin" | "account_manager";
+  assignedClients: { id: string; name: string }[];
+  active: boolean;
   createdAt: string;
 }
 

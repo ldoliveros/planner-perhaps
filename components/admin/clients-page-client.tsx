@@ -13,14 +13,15 @@ import type { Client } from "@/types";
 interface ClientsPageClientProps {
   clients: Client[];
   calendarCountByClientId: Record<string, number>;
+  canCreateClients: boolean;
 }
 
-export function ClientsPageClient({ clients, calendarCountByClientId }: ClientsPageClientProps) {
+export function ClientsPageClient({ clients, calendarCountByClientId, canCreateClients }: ClientsPageClientProps) {
   return (
     <div className="flex flex-col gap-4 p-6">
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold text-foreground">Clientes</h1>
-        <ClientFormDialog />
+        {canCreateClients && <ClientFormDialog />}
       </div>
 
       <div className="overflow-hidden rounded-lg border border-border bg-card">
@@ -37,7 +38,9 @@ export function ClientsPageClient({ clients, calendarCountByClientId }: ClientsP
             {clients.length === 0 && (
               <TableRow>
                 <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">
-                  Todavía no hay clientes. Creá el primero con &quot;Nuevo cliente&quot;.
+                  {canCreateClients
+                    ? <>Todavía no hay clientes. Creá el primero con &quot;Nuevo cliente&quot;.</>
+                    : "Todavía no tenés clientes asignados."}
                 </TableCell>
               </TableRow>
             )}

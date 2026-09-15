@@ -39,13 +39,13 @@ export function ClientUserFormDialog({ clientId }: ClientUserFormDialogProps) {
         render={
           <Button size="sm" className="gap-1.5">
             <Plus />
-            Invitar usuario
+            Invitar cliente
           </Button>
         }
       />
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Invitar usuario</DialogTitle>
+          <DialogTitle>Invitar cliente</DialogTitle>
         </DialogHeader>
         <ClientUserFormBody key={sessionKey} clientId={clientId} onDone={() => setOpen(false)} />
       </DialogContent>

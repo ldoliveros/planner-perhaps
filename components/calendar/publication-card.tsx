@@ -50,27 +50,22 @@ export function PublicationCard({ publication, onOpen, showCalendarLabel }: Publ
           </div>
         )}
 
-        <div className="absolute left-1.5 top-1.5 flex gap-1">
-          {uniquePlatformIds.map((platformId) => {
-            const platform = getPlatform(platformId);
-            if (!platform) return null;
-            return (
-              <span
-                key={platformId}
-                className="flex size-5 items-center justify-center rounded-full bg-white/95 shadow-sm"
-                title={platform.name}
-              >
-                <PlatformIcon platformKey={platform.key} className="size-3" style={{ color: platform.color }} />
-              </span>
-            );
-          })}
+        <div className="absolute inset-x-1.5 top-1.5 flex items-start justify-between gap-1">
+          {status && (
+            <span
+              title={status.label}
+              className="min-w-0 truncate rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-white shadow-sm"
+              style={{ backgroundColor: status.color }}
+            >
+              {status.label}
+            </span>
+          )}
+          {publication.publicationTime && (
+            <span className="shrink-0 rounded-full bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white backdrop-blur-sm">
+              {formatTime(publication.publicationTime)}
+            </span>
+          )}
         </div>
-
-        {publication.publicationTime && (
-          <span className="absolute right-1.5 top-1.5 rounded-full bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white backdrop-blur-sm">
-            {formatTime(publication.publicationTime)}
-          </span>
-        )}
 
         {fileAssetCount > 0 && (
           <span className="absolute bottom-1.5 right-1.5 flex items-center gap-0.5 rounded-full bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white">
@@ -81,6 +76,19 @@ export function PublicationCard({ publication, onOpen, showCalendarLabel }: Publ
       </div>
 
       <div className="flex flex-1 flex-col gap-1.5 border-l-[3px] p-2" style={{ borderLeftColor: status?.color }}>
+        {uniquePlatformIds.length > 0 && (
+          <div className="flex items-center gap-1">
+            {uniquePlatformIds.map((platformId) => {
+              const platform = getPlatform(platformId);
+              if (!platform) return null;
+              return (
+                <span key={platformId} title={platform.name}>
+                  <PlatformIcon platformKey={platform.key} className="size-3.5" style={{ color: platform.color }} />
+                </span>
+              );
+            })}
+          </div>
+        )}
         <p className="line-clamp-2 text-[13px] font-medium leading-snug text-foreground">{publication.title}</p>
         {calendar && (
           <span className="w-fit rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
@@ -93,12 +101,6 @@ export function PublicationCard({ publication, onOpen, showCalendarLabel }: Publ
             {uniqueAccountNames.length > 0 ? ` · ${uniqueAccountNames.join(" + ")}` : ""}
           </span>
         </div>
-        {status && (
-          <div className="flex items-center gap-1 text-[11px] font-medium" style={{ color: status.color }}>
-            <span className="size-1.5 shrink-0 rounded-full" style={{ backgroundColor: status.color }} />
-            {status.label}
-          </div>
-        )}
       </div>
     </button>
   );

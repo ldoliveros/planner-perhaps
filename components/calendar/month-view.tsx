@@ -5,7 +5,6 @@ import { Plus } from "lucide-react";
 import { isWeekend } from "date-fns";
 import { cn } from "cn";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { PlatformIcon } from "@/components/icons/brand-icons";
 import { useLookups } from "@/components/providers/lookups-provider";
 import { hexToRgba } from "@/lib/color-contrast";
@@ -54,6 +53,14 @@ function MonthChip({ publication, onOpen, showCalendarLabel }: MonthChipProps) {
         )}
       </span>
       <span className="flex min-w-0 flex-1 flex-col gap-0.5 leading-tight">
+        {status && (
+          <span
+            className="w-fit max-w-full truncate rounded-full px-1.5 py-px text-[8px] font-semibold uppercase tracking-wide text-white"
+            style={{ backgroundColor: status.color }}
+          >
+            {status.label}
+          </span>
+        )}
         <span className="line-clamp-2 text-[11px] font-medium text-foreground">{publication.title}</span>
         {(publication.publicationTime || calendar) && (
           <span className="flex min-w-0 items-center gap-1 text-[9.5px] text-muted-foreground">
@@ -63,30 +70,22 @@ function MonthChip({ publication, onOpen, showCalendarLabel }: MonthChipProps) {
             {calendar && <span className="truncate">{calendar.name}</span>}
           </span>
         )}
-        <span className="flex items-center gap-0.5">
-          {uniquePlatformIds.slice(0, 3).map((platformId) => {
-            const platform = getPlatform(platformId);
-            if (!platform) return null;
-            return (
-              <PlatformIcon
-                key={platformId}
-                platformKey={platform.key}
-                className="size-2.5 shrink-0"
-                style={{ color: platform.color }}
-              />
-            );
-          })}
-          {status && (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <span className="size-1.5 shrink-0 rounded-full" style={{ backgroundColor: status.color }} />
-                }
-              />
-              <TooltipContent>{status.label}</TooltipContent>
-            </Tooltip>
-          )}
-        </span>
+        {uniquePlatformIds.length > 0 && (
+          <span className="flex items-center gap-0.5">
+            {uniquePlatformIds.slice(0, 3).map((platformId) => {
+              const platform = getPlatform(platformId);
+              if (!platform) return null;
+              return (
+                <PlatformIcon
+                  key={platformId}
+                  platformKey={platform.key}
+                  className="size-2.5 shrink-0"
+                  style={{ color: platform.color }}
+                />
+              );
+            })}
+          </span>
+        )}
       </span>
     </button>
   );
