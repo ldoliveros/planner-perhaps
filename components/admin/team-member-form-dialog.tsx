@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useActionState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,6 +24,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   changeTeamMemberRole,
+  deleteTeamMember,
   inviteTeamMember,
   saveTeamMemberAssignments,
   sendTeamMemberPasswordReset,
@@ -49,12 +50,15 @@ function ClientChecklist({
   onToggle: (clientId: string) => void;
 }) {
   const selected = new Set(selectedIds);
+  // Clientes archivados no se ofrecen para nuevas asignaciones, salvo que el
+  // usuario ya estuviera asignado (para no "perder" esa asignación en silencio).
+  const selectableClients = clients.filter((c) => c.active || selected.has(c.id));
   return (
     <div className="flex max-h-48 flex-col gap-1 overflow-y-auto rounded-lg border border-border px-3 py-2">
-      {clients.length === 0 ? (
+      {selectableClients.length === 0 ? (
         <p className="py-1 text-sm text-muted-foreground">No hay clientes creados todavía.</p>
       ) : (
-        clients.map((client) => (
+        selectableClients.map((client) => (
           <label key={client.id} className="flex items-center gap-2 text-sm text-foreground">
             <Checkbox checked={selected.has(client.id)} onCheckedChange={() => onToggle(client.id)} />
             {client.name}
@@ -242,6 +246,9 @@ function EditBody({ member, clients, onDone }: { member: TeamMember; clients: Cl
   const [isChangingRole, startRoleTransition] = useTransition();
   const [isTogglingActive, startActiveTransition] = useTransition();
   const [isSendingReset, startResetTransition] = useTransition();
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [isDeleting, startDeleteTransition] = useTransition();
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const roleChanged = pendingRole !== member.role;
   const roleChangeNeedsClients = pendingRole === "account_manager" && selectedClientIds.length === 0;
@@ -309,6 +316,21 @@ function EditBody({ member, clients, onDone }: { member: TeamMember; clients: Cl
         return;
       }
       toast.success("Le enviamos un link para restablecer su contraseña");
+    });
+  }
+
+  function handleConfirmDelete() {
+    setDeleteError(null);
+    startDeleteTransition(async () => {
+      const result = await deleteTeamMember(member.id);
+      if (result.error) {
+        setDeleteError(result.error);
+        return;
+      }
+      setDeleteOpen(false);
+      router.refresh();
+      onDone();
+      toast.success("Usuario eliminado");
     });
   }
 
@@ -427,6 +449,35 @@ function EditBody({ member, clients, onDone }: { member: TeamMember; clients: Cl
       )}
 
       {error && <p className="text-sm text-destructive">{error}</p>}
+
+      <div className="flex items-center justify-between gap-2 rounded-lg border border-destructive/30 px-3 py-2">
+        <div className="flex flex-col">
+          <span className="text-sm font-medium text-foreground">Eliminar usuario</span>
+          <span className="text-xs text-muted-foreground">Acción irreversible: borra la cuenta por completo.</span>
+        </div>
+        <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+          <AlertDialogTrigger render={<Button type="button" variant="outline" size="sm" className="gap-1.5 text-destructive" />}>
+            <Trash2 className="size-3.5" />
+            Eliminar
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>¿Eliminar a {member.fullName ?? member.email}?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Esta acción no se puede deshacer. Se borra su cuenta, su perfil y sus asignaciones de cliente. No afecta
+                el contenido editorial que haya creado.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            {deleteError && <p className="text-sm text-destructive">{deleteError}</p>}
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction variant="destructive" disabled={isDeleting} onClick={handleConfirmDelete}>
+                Eliminar definitivamente
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
 
       <DialogFooter>
         <Button type="button" disabled={isSaving} onClick={handleSave}>

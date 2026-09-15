@@ -107,6 +107,10 @@ export function CalendarFiltersBar({
   onCalendarIdsChange,
 }: CalendarFiltersProps) {
   const { platforms, contentTypes, statuses, calendars, clientAccounts } = useLookups();
+  // Calendarios archivados no se ofrecen como filtro operativo — salvo que ya
+  // vinieran seleccionados (ej. deep link desde Admin > Publicaciones a una
+  // publicación histórica), para no "perder" ese filtro silenciosamente.
+  const selectableCalendars = calendars.filter((c) => c.status !== "archived" || calendarIds.includes(c.id));
   const hasActiveFilters =
     value.platformIds.length > 0 ||
     value.accountIds.length > 0 ||
@@ -118,10 +122,10 @@ export function CalendarFiltersBar({
     <div className="flex flex-wrap items-center gap-2 border-b border-border bg-background px-6 py-3">
       <ListFilter className="mr-1 size-4 text-muted-foreground" />
 
-      {calendars.length > 1 && (
+      {selectableCalendars.length > 1 && (
         <FilterPopover
           label="Calendario"
-          options={calendars.map((c) => ({ id: c.id, label: c.name }))}
+          options={selectableCalendars.map((c) => ({ id: c.id, label: c.name }))}
           selected={calendarIds}
           onChange={onCalendarIdsChange}
         />

@@ -49,6 +49,8 @@ export function PublicationsSearchPageClient({
 }: PublicationsSearchPageClientProps) {
   const clientMap = useMemo(() => new Map(clients.map((c) => [c.id, c])), [clients]);
   const calendarMap = useMemo(() => new Map(calendars.map((c) => [c.id, c])), [calendars]);
+  const clientLabel = (c: Client) => (c.active ? c.name : `${c.name} (Archivado)`);
+  const calendarLabel = (c: Calendar) => (c.status === "archived" ? `${c.name} (Archivado)` : c.name);
   const clientAccountMap = useMemo(() => new Map(clientAccounts.map((a) => [a.id, a])), [clientAccounts]);
   const platformMap = useMemo(() => new Map(platforms.map((p) => [p.id, p])), [platforms]);
   const contentTypeMap = useMemo(() => new Map(contentTypes.map((c) => [c.id, c])), [contentTypes]);
@@ -136,13 +138,13 @@ export function PublicationsSearchPageClient({
               setCalendarId(ALL);
               setAccountId(ALL);
             }}
-            items={{ [ALL]: "Todos los clientes", ...Object.fromEntries(clients.map((c) => [c.id, c.name])) }}
+            items={{ [ALL]: "Todos los clientes", ...Object.fromEntries(clients.map((c) => [c.id, clientLabel(c)])) }}
           >
             <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value={ALL}>Todos los clientes</SelectItem>
               {clients.map((c) => (
-                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                <SelectItem key={c.id} value={c.id}>{clientLabel(c)}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -150,13 +152,13 @@ export function PublicationsSearchPageClient({
           <Select
             value={calendarId}
             onValueChange={(v) => setCalendarId(v as string)}
-            items={{ [ALL]: "Todos los calendarios", ...Object.fromEntries(calendarsForClient.map((c) => [c.id, c.name])) }}
+            items={{ [ALL]: "Todos los calendarios", ...Object.fromEntries(calendarsForClient.map((c) => [c.id, calendarLabel(c)])) }}
           >
             <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value={ALL}>Todos los calendarios</SelectItem>
               {calendarsForClient.map((c) => (
-                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                <SelectItem key={c.id} value={c.id}>{calendarLabel(c)}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -261,13 +263,13 @@ export function PublicationsSearchPageClient({
                     {client ? (
                       <span className="flex items-center gap-1.5">
                         <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: client.color }} />
-                        {client.name}
+                        {clientLabel(client)}
                       </span>
                     ) : (
                       "—"
                     )}
                   </TableCell>
-                  <TableCell className="text-muted-foreground">{calendar?.name ?? "—"}</TableCell>
+                  <TableCell className="text-muted-foreground">{calendar ? calendarLabel(calendar) : "—"}</TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1">
                       {uniquePlatformIds.map((platformId) => {

@@ -36,12 +36,20 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
     publicationCountByCalendarId[row.calendar_id] = (publicationCountByCalendarId[row.calendar_id] ?? 0) + 1;
   }
 
+  const accountIds = clientAccounts.map((a) => a.id);
+  const { data: usedDestinations } =
+    accountIds.length > 0
+      ? await supabase.from("publication_destinations").select("client_account_id").in("client_account_id", accountIds)
+      : { data: [] };
+  const usedAccountIds = Array.from(new Set((usedDestinations ?? []).map((d) => d.client_account_id)));
+
   return (
     <ClientDetailPageClient
       client={client}
       calendars={calendars}
       publicationCountByCalendarId={publicationCountByCalendarId}
       clientAccounts={clientAccounts}
+      usedAccountIds={usedAccountIds}
       platforms={lookups.platforms}
       accountTypes={lookups.accountTypes}
       clientUsers={clientUsers}

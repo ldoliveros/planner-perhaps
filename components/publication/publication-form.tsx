@@ -100,6 +100,10 @@ export function PublicationForm({
   // Cuentas activas + cualquier cuenta ya seleccionada aunque haya sido desactivada
   // después (para no "perder" el destino silenciosamente al editar).
   const selectableAccounts = clientAccounts.filter((a) => a.active || selectedAccountIds.has(a.id));
+
+  // Mismo criterio: calendarios no archivados + el que ya está asignado (si
+  // se archivó después de crear esta publicación, no lo "perdemos" al editar).
+  const selectableCalendars = calendars.filter((c) => c.status !== "archived" || c.id === calendarId);
   const accountsByPlatform = new Map<string, ClientAccount[]>();
   for (const account of selectableAccounts) {
     const list = accountsByPlatform.get(account.platformId) ?? [];
@@ -146,13 +150,13 @@ export function PublicationForm({
                 name="calendarId"
                 value={calendarId}
                 onValueChange={(value) => setCalendarId(value as string)}
-                items={Object.fromEntries(calendars.map((c) => [c.id, c.name]))}
+                items={Object.fromEntries(selectableCalendars.map((c) => [c.id, c.name]))}
               >
                 <SelectTrigger id="calendarId" className="w-full">
                   <SelectValue placeholder="Elegí un calendario" />
                 </SelectTrigger>
                 <SelectContent>
-                  {calendars.map((c) => (
+                  {selectableCalendars.map((c) => (
                     <SelectItem key={c.id} value={c.id}>
                       {c.name}
                     </SelectItem>

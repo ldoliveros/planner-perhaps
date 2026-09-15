@@ -95,7 +95,11 @@ function CalendarFormBody({
   const [name, setName] = useState(calendar?.name ?? "");
   const [description, setDescription] = useState(calendar?.description ?? "");
   const [status, setStatus] = useState<CalendarStatus>(calendar?.status ?? "active");
-  const [driveFolderUrl, setDriveFolderUrl] = useState(calendar?.driveFolderUrl ?? "");
+
+  // Clientes archivados no se ofrecen para calendarios nuevos, pero si este
+  // calendario ya pertenece a uno (editando desde la lista global), se
+  // mantiene visible para no romper el valor ya seleccionado.
+  const selectableClients = (clients ?? []).filter((c) => c.active || c.id === clientId);
 
   useEffect(() => {
     if (state.savedAt && state.savedAt !== lastSavedAt.current) {
@@ -125,13 +129,13 @@ function CalendarFormBody({
             name="clientId"
             value={clientId}
             onValueChange={(value) => setClientId(value as string)}
-            items={Object.fromEntries((clients ?? []).map((c) => [c.id, c.name]))}
+            items={Object.fromEntries(selectableClients.map((c) => [c.id, c.name]))}
           >
             <SelectTrigger id="clientId" className="w-full">
               <SelectValue placeholder="Elegí un cliente" />
             </SelectTrigger>
             <SelectContent>
-              {(clients ?? []).map((c) => (
+              {selectableClients.map((c) => (
                 <SelectItem key={c.id} value={c.id}>
                   {c.name}
                 </SelectItem>
@@ -182,18 +186,6 @@ function CalendarFormBody({
             <SelectItem value="archived">Archivado</SelectItem>
           </SelectContent>
         </Select>
-      </div>
-
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="driveFolderUrl">Carpeta de Drive (opcional)</Label>
-        <Input
-          id="driveFolderUrl"
-          name="driveFolderUrl"
-          type="url"
-          placeholder="https://drive.google.com/drive/folders/..."
-          value={driveFolderUrl}
-          onChange={(e) => setDriveFolderUrl(e.target.value)}
-        />
       </div>
 
       {state.error && <p className="text-sm text-destructive">{state.error}</p>}

@@ -63,3 +63,62 @@ export async function saveClient(_prevState: ClientFormState, formData: FormData
   revalidatePath("/admin/calendars");
   return { error: null, savedAt: Date.now() };
 }
+
+export async function setClientActive(clientId: string, active: boolean): Promise<{ error: string | null }> {
+  const supabase = await createClient();
+  const { error } = await supabase.from("clients").update({ active }).eq("id", clientId);
+  if (error) return { error: error.message };
+
+  revalidatePath("/admin/clients");
+  revalidatePath(`/admin/clients/${clientId}`);
+  revalidatePath("/admin/calendars");
+  return { error: null };
+}
+
+/**
+ * Solo permite eliminar clientes ya archivados y sin historial (calendarios o
+ * usuarios asociados). Nunca cascadea sobre contenido editorial: si tiene
+ * calendarios, por transitividad puede tener publicaciones, así que se
+ * bloquea ahí mismo en vez de dejar que el ON DELETE CASCADE de la FK borre
+ * historial en silencio.
+ */
+export async function deleteClient(clientId: string): Promise<{ error: string | null }> {
+  const supabase = await createClient();
+
+  const { data: client, error: clientError } = await supabase
+    .from("clients")
+    .select("active")
+    .eq("id", clientId)
+    .maybeSingle();
+  if (clientError) return { error: clientError.message };
+  if (!client) return { error: "El cliente no existe." };
+  if (client.active) return { error: "Solo se pueden eliminar clientes archivados." };
+
+  const { count: calendarCount, error: calendarsError } = await supabase
+    .from("calendars")
+    .select("id", { count: "exact", head: true })
+    .eq("client_id", clientId);
+  if (calendarsError) return { error: calendarsError.message };
+  if ((calendarCount ?? 0) > 0) {
+    return {
+      error: `Este cliente tiene ${calendarCount} calendario${calendarCount === 1 ? "" : "s"} con historial y no puede eliminarse definitivamente. Mantenelo archivado para conservarlo.`,
+    };
+  }
+
+  const { count: usersCount, error: usersError } = await supabase
+    .from("profiles")
+    .select("id", { count: "exact", head: true })
+    .eq("client_id", clientId);
+  if (usersError) return { error: usersError.message };
+  if ((usersCount ?? 0) > 0) {
+    return {
+      error: `Este cliente tiene ${usersCount} usuario${usersCount === 1 ? "" : "s"} de cliente asociado${usersCount === 1 ? "" : "s"} y no puede eliminarse.`,
+    };
+  }
+
+  const { error } = await supabase.from("clients").delete().eq("id", clientId);
+  if (error) return { error: error.message };
+
+  revalidatePath("/admin/clients");
+  return { error: null };
+}

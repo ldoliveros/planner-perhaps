@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, CalendarDays, Pencil, Plus, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, ArrowLeft, CalendarDays, Pencil, Plus, Trash2 } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,12 +21,13 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ClientFormDialog } from "@/components/admin/client-form-dialog";
 import { CalendarFormDialog } from "@/components/admin/calendar-form-dialog";
+import { CalendarRowActions } from "@/components/admin/calendar-row-actions";
 import { ClientAccountFormDialog } from "@/components/admin/client-account-form-dialog";
 import { PlatformIcon } from "@/components/icons/brand-icons";
 import { getContrastTextColor } from "@/lib/color-contrast";
 import { CALENDAR_STATUS_LABELS } from "@/lib/calendar-labels";
-import { deleteCalendar } from "@/lib/actions/calendars";
-import { setClientAccountActive } from "@/lib/actions/client-accounts";
+import { deleteClient, setClientActive } from "@/lib/actions/clients";
+import { deleteClientAccount, setClientAccountActive } from "@/lib/actions/client-accounts";
 import { deleteClientUser } from "@/lib/actions/client-users";
 import { toast } from "@/lib/toast";
 import { ClientUserFormDialog } from "@/components/admin/client-user-form-dialog";
@@ -37,6 +38,7 @@ interface ClientDetailPageClientProps {
   calendars: Calendar[];
   publicationCountByCalendarId: Record<string, number>;
   clientAccounts: ClientAccount[];
+  usedAccountIds: string[];
   platforms: Platform[];
   accountTypes: AccountType[];
   clientUsers: ClientUser[];
@@ -48,6 +50,7 @@ export function ClientDetailPageClient({
   calendars,
   publicationCountByCalendarId,
   clientAccounts,
+  usedAccountIds,
   platforms,
   accountTypes,
   clientUsers,
@@ -55,6 +58,9 @@ export function ClientDetailPageClient({
 }: ClientDetailPageClientProps) {
   const platformMap = new Map(platforms.map((p) => [p.id, p]));
   const accountTypeMap = new Map(accountTypes.map((a) => [a.id, a]));
+  const usedAccountIdSet = new Set(usedAccountIds);
+  const activeCalendars = calendars.filter((c) => c.status !== "archived");
+  const archivedCalendars = calendars.filter((c) => c.status === "archived");
   return (
     <div className="flex flex-col gap-6 p-6">
       <Link
@@ -115,6 +121,7 @@ export function ClientDetailPageClient({
               }
             />
           )}
+          {canEditClient && <ClientArchiveActions client={client} calendarCount={calendars.length} />}
         </div>
       </div>
 
@@ -132,35 +139,24 @@ export function ClientDetailPageClient({
           />
         </div>
 
-        <div className="overflow-hidden rounded-lg border border-border bg-card">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Calendario</TableHead>
-                <TableHead>Publicaciones</TableHead>
-                <TableHead>Estado</TableHead>
-                <TableHead className="text-right">Acciones</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {calendars.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">
-                    Todavía no hay calendarios. Creá el primero con &quot;Nuevo calendario&quot;.
-                  </TableCell>
-                </TableRow>
-              )}
-              {calendars.map((calendar) => (
-                <CalendarTableRow
-                  key={calendar.id}
-                  client={client}
-                  calendar={calendar}
-                  publicationCount={publicationCountByCalendarId[calendar.id] ?? 0}
-                />
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+        <CalendarsSubTable
+          client={client}
+          calendars={activeCalendars}
+          publicationCountByCalendarId={publicationCountByCalendarId}
+          emptyMessage='Todavía no hay calendarios. Creá el primero con "Nuevo calendario".'
+        />
+
+        {archivedCalendars.length > 0 && (
+          <div className="flex flex-col gap-2">
+            <h3 className="text-xs font-semibold text-muted-foreground">Archivados</h3>
+            <CalendarsSubTable
+              client={client}
+              calendars={archivedCalendars}
+              publicationCountByCalendarId={publicationCountByCalendarId}
+              emptyMessage=""
+            />
+          </div>
+        )}
       </div>
 
       <div className="flex flex-col gap-3">
@@ -193,6 +189,7 @@ export function ClientDetailPageClient({
                   key={account.id}
                   clientId={client.id}
                   account={account}
+                  isUsed={usedAccountIdSet.has(account.id)}
                   platform={platformMap.get(account.platformId)}
                   accountType={account.accountTypeId ? accountTypeMap.get(account.accountTypeId) : undefined}
                   platforms={platforms}
@@ -239,89 +236,129 @@ export function ClientDetailPageClient({
   );
 }
 
-function CalendarTableRow({
+function CalendarsSubTable({
   client,
-  calendar,
-  publicationCount,
+  calendars,
+  publicationCountByCalendarId,
+  emptyMessage,
 }: {
   client: Client;
-  calendar: Calendar;
-  publicationCount: number;
+  calendars: Calendar[];
+  publicationCountByCalendarId: Record<string, number>;
+  emptyMessage: string;
 }) {
+  return (
+    <div className="overflow-hidden rounded-lg border border-border bg-card">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Calendario</TableHead>
+            <TableHead>Publicaciones</TableHead>
+            <TableHead>Estado</TableHead>
+            <TableHead className="text-right">Acciones</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {calendars.length === 0 && (
+            <TableRow>
+              <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">
+                {emptyMessage}
+              </TableCell>
+            </TableRow>
+          )}
+          {calendars.map((calendar) => (
+            <TableRow key={calendar.id}>
+              <TableCell className="font-medium text-foreground">{calendar.name}</TableCell>
+              <TableCell className="text-muted-foreground">
+                {publicationCountByCalendarId[calendar.id] ?? 0}
+              </TableCell>
+              <TableCell>
+                <Badge variant="outline">{CALENDAR_STATUS_LABELS[calendar.status]}</Badge>
+              </TableCell>
+              <TableCell className="text-right">
+                <CalendarRowActions
+                  client={client}
+                  calendar={calendar}
+                  publicationCount={publicationCountByCalendarId[calendar.id] ?? 0}
+                />
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
+function ClientArchiveActions({ client, calendarCount }: { client: Client; calendarCount: number }) {
   const router = useRouter();
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [isPending, startTransition] = useTransition();
+  const [isDeleting, startDeleteTransition] = useTransition();
+  const [isArchiving, startArchiveTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+
+  const canDelete = !client.active && calendarCount === 0;
+
+  function handleToggleActive() {
+    startArchiveTransition(async () => {
+      const result = await setClientActive(client.id, !client.active);
+      if (result.error) {
+        toast.error(result.error);
+        return;
+      }
+      router.refresh();
+      toast.success(client.active ? "Cliente archivado" : "Cliente restaurado");
+    });
+  }
 
   function handleConfirmDelete() {
     setError(null);
-    startTransition(async () => {
-      const result = await deleteCalendar(calendar.id, client.id);
+    startDeleteTransition(async () => {
+      const result = await deleteClient(client.id);
       if (result.error) {
         setError(result.error);
         return;
       }
       setDeleteOpen(false);
       router.refresh();
-      toast.success("Calendario eliminado");
+      toast.success("Cliente eliminado");
     });
   }
 
   return (
-    <TableRow>
-      <TableCell className="font-medium text-foreground">{calendar.name}</TableCell>
-      <TableCell className="text-muted-foreground">{publicationCount}</TableCell>
-      <TableCell>
-        <Badge variant="outline">{CALENDAR_STATUS_LABELS[calendar.status]}</Badge>
-      </TableCell>
-      <TableCell className="text-right">
-        <div className="flex justify-end gap-1">
-          <Button
-            variant="ghost"
-            size="sm"
-            nativeButton={false}
-            render={<Link href={`/admin/clients/${client.id}/planner?calendars=${calendar.id}`} />}
-          >
-            Abrir
-          </Button>
-          <CalendarFormDialog
-            lockedClient={client}
-            calendar={calendar}
-            trigger={
-              <Button variant="ghost" size="sm" className="gap-1.5">
-                <Pencil className="size-3.5" />
-                Editar
-              </Button>
-            }
-          />
-          <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-            <AlertDialogTrigger
-              render={<Button variant="ghost" size="sm" className="gap-1.5 text-destructive" />}
-            >
-              <Trash2 className="size-3.5" />
-              Eliminar
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>¿Eliminar el calendario &quot;{calendar.name}&quot;?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  {publicationCount > 0
-                    ? `Esta acción no se puede deshacer. Se eliminarán también las ${publicationCount} publicación${publicationCount === 1 ? "" : "es"} de este calendario.`
-                    : "Esta acción no se puede deshacer."}
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              {error && <p className="text-sm text-destructive">{error}</p>}
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                <AlertDialogAction variant="destructive" disabled={isPending} onClick={handleConfirmDelete}>
-                  Eliminar
+    <>
+      <Button variant="outline" size="sm" className="gap-1.5" disabled={isArchiving} onClick={handleToggleActive}>
+        {client.active ? <Archive className="size-3.5" /> : <ArchiveRestore className="size-3.5" />}
+        {client.active ? "Archivar" : "Restaurar"}
+      </Button>
+      {!client.active && (
+        <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+          <AlertDialogTrigger render={<Button variant="outline" size="sm" className="gap-1.5 text-destructive" />}>
+            <Trash2 className="size-3.5" />
+            Eliminar definitivamente
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>¿Eliminar el cliente &quot;{client.name}&quot;?</AlertDialogTitle>
+              <AlertDialogDescription>
+                {canDelete
+                  ? "Esta acción es irreversible. El cliente no tiene calendarios ni historial asociado."
+                  : `Este cliente tiene ${calendarCount} calendario${calendarCount === 1 ? "" : "s"} con historial y no puede eliminarse definitivamente. Podés mantenerlo archivado para conservarlo.`}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            {error && <p className="text-sm text-destructive">{error}</p>}
+            <AlertDialogFooter>
+              <AlertDialogCancel>{canDelete ? "Cancelar" : "Entendido"}</AlertDialogCancel>
+              {canDelete && (
+                <AlertDialogAction variant="destructive" disabled={isDeleting} onClick={handleConfirmDelete}>
+                  Eliminar definitivamente
                 </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        </div>
-      </TableCell>
-    </TableRow>
+              )}
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
+    </>
   );
 }
 
@@ -380,6 +417,7 @@ function ClientUserTableRow({ clientId, user }: { clientId: string; user: Client
 function ClientAccountTableRow({
   clientId,
   account,
+  isUsed,
   platform,
   accountType,
   platforms,
@@ -387,14 +425,18 @@ function ClientAccountTableRow({
 }: {
   clientId: string;
   account: ClientAccount;
+  isUsed: boolean;
   platform: Platform | undefined;
   accountType: AccountType | undefined;
   platforms: Platform[];
   accountTypes: AccountType[];
 }) {
   const router = useRouter();
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const [isDeleting, startDeleteTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   function toggleActive() {
     setError(null);
@@ -406,6 +448,20 @@ function ClientAccountTableRow({
       }
       router.refresh();
       toast.success(account.active ? "Cuenta desactivada" : "Cuenta activada");
+    });
+  }
+
+  function handleConfirmDelete() {
+    setDeleteError(null);
+    startDeleteTransition(async () => {
+      const result = await deleteClientAccount(account.id, clientId);
+      if (result.error) {
+        setDeleteError(result.error);
+        return;
+      }
+      setDeleteOpen(false);
+      router.refresh();
+      toast.success("Cuenta eliminada");
     });
   }
 
@@ -442,6 +498,31 @@ function ClientAccountTableRow({
               </Button>
             }
           />
+          <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+            <AlertDialogTrigger render={<Button variant="ghost" size="sm" className="gap-1.5 text-destructive" />}>
+              <Trash2 className="size-3.5" />
+              Eliminar
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>¿Eliminar la cuenta &quot;{account.name}&quot;?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  {isUsed
+                    ? "Esta cuenta fue utilizada en publicaciones y no puede eliminarse. Desactivala en su lugar para conservar el historial."
+                    : "Esta acción es irreversible. Esta cuenta nunca fue utilizada en ninguna publicación."}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              {deleteError && <p className="text-sm text-destructive">{deleteError}</p>}
+              <AlertDialogFooter>
+                <AlertDialogCancel>{isUsed ? "Entendido" : "Cancelar"}</AlertDialogCancel>
+                {!isUsed && (
+                  <AlertDialogAction variant="destructive" disabled={isDeleting} onClick={handleConfirmDelete}>
+                    Eliminar
+                  </AlertDialogAction>
+                )}
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </TableCell>
     </TableRow>

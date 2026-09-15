@@ -30,7 +30,9 @@ export default async function ClientPlannerPage({ params }: { params: Promise<{ 
       publications={publications}
       clientAccounts={clientAccounts}
       lookups={lookups}
-      allClients={allClients.map((c) => ({ id: c.id, name: c.name }))}
+      allClients={allClients
+        .filter((c) => c.active || c.id === client.id)
+        .map((c) => ({ id: c.id, name: c.name }))}
     />
   );
 }

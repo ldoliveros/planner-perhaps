@@ -60,3 +60,31 @@ export async function setClientAccountActive(
   revalidatePath(`/admin/clients/${clientId}/planner`);
   return { error: null };
 }
+
+/**
+ * Solo permite eliminar cuentas/canales que nunca fueron usados en una
+ * publicación. Si tienen destinos históricos, se bloquea acá mismo en vez de
+ * dejar que el ON DELETE CASCADE de publication_destinations borre en
+ * silencio a qué canal se publicó cada contenido pasado.
+ */
+export async function deleteClientAccount(accountId: string, clientId: string): Promise<{ error: string | null }> {
+  const supabase = await createClient();
+
+  const { count, error: countError } = await supabase
+    .from("publication_destinations")
+    .select("id", { count: "exact", head: true })
+    .eq("client_account_id", accountId);
+  if (countError) return { error: countError.message };
+  if ((count ?? 0) > 0) {
+    return {
+      error: "Esta cuenta fue utilizada en publicaciones y no puede eliminarse. Podés desactivarla para conservar el historial.",
+    };
+  }
+
+  const { error } = await supabase.from("client_accounts").delete().eq("id", accountId);
+  if (error) return { error: error.message };
+
+  revalidatePath(`/admin/clients/${clientId}`);
+  revalidatePath(`/admin/clients/${clientId}/planner`);
+  return { error: null };
+}

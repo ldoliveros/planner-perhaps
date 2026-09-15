@@ -270,6 +270,38 @@ export async function setTeamMemberActive(userId: string, active: boolean): Prom
 }
 
 /**
+ * Elimina definitivamente el usuario interno: borra auth.users (cascadea a
+ * profiles vía FK, y de ahí a user_client_assignments). El trigger
+ * protect_profiles en DB es la red de seguridad real contra dejar el sistema
+ * en 0 Super Admin; el chequeo de acá solo da un mensaje legible antes de
+ * llegar a esa excepción cruda de Postgres.
+ */
+export async function deleteTeamMember(userId: string): Promise<{ error: string | null }> {
+  try {
+    await requireSuperAdmin();
+  } catch {
+    return { error: "No autorizado." };
+  }
+
+  const admin = createAdminClient();
+  const target = await getTeamMemberTarget(admin, userId);
+  if (target.error) return { error: target.error };
+
+  if (target.role === "super_admin") {
+    const remaining = await countOtherSuperAdmins(userId);
+    if (remaining === 0) {
+      return { error: "No podés eliminar al último Super Admin del sistema." };
+    }
+  }
+
+  const { error } = await admin.auth.admin.deleteUser(userId);
+  if (error) return { error: error.message };
+
+  revalidatePath("/admin/team");
+  return { error: null };
+}
+
+/**
  * Le manda al miembro del equipo el mismo link oficial de "¿Olvidaste tu
  * contraseña?" que ya existe en /login — el Super Admin nunca genera, ve ni
  * transmite ninguna contraseña, solo dispara el mecanismo de Supabase Auth
