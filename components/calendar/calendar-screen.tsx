@@ -15,6 +15,7 @@ import { PublicationDrawer } from "@/components/publication/publication-drawer";
 import { PublicationForm } from "@/components/publication/publication-form";
 import { LookupsProvider } from "@/components/providers/lookups-provider";
 import { formatMonthYear, formatWeekRange, getMonthGridDays, getWeekDays, isSameMonthAs } from "@/lib/date-utils";
+import { usePlannerShortcuts } from "@/lib/use-planner-shortcuts";
 import type { Lookups } from "@/lib/supabase/queries";
 import type { Calendar, Client, ClientAccount, Publication } from "@/types";
 
@@ -124,6 +125,7 @@ export function CalendarScreen({
         ? "Todos los calendarios"
         : `${visibleCalendars.length} calendarios`;
   const driveFolderUrl = visibleCalendars.length === 1 ? visibleCalendars[0].driveFolderUrl : client.driveFolderUrl;
+  const calendarDescription = visibleCalendars.length === 1 ? visibleCalendars[0].description : null;
 
   const calendarScopedPublications = useMemo(() => {
     if (calendarIds.length === 0) return publications;
@@ -190,6 +192,13 @@ export function CalendarScreen({
     setFormState({ open: true, duplicateFrom: publication });
   }
 
+  usePlannerShortcuts({
+    overlayOpen: formState.open || selectedPublication !== null,
+    onNewPublication: readOnly ? undefined : () => openCreateForm(),
+    onPrevWeek: () => setAnchorDate((d) => (view === "month" ? addMonths(d, -1) : addWeeks(d, -1))),
+    onNextWeek: () => setAnchorDate((d) => (view === "month" ? addMonths(d, 1) : addWeeks(d, 1))),
+  });
+
   if (calendars.length === 0) {
     return (
       <LookupsProvider {...lookups} calendars={calendars} clientAccounts={clientAccounts}>
@@ -231,6 +240,7 @@ export function CalendarScreen({
         <CalendarHeader
           client={client}
           calendarLabel={calendarLabel}
+          calendarDescription={calendarDescription}
           driveFolderUrl={driveFolderUrl}
           periodLabel={periodLabel}
           view={view}

@@ -1,9 +1,10 @@
 "use client";
 
 import Image from "next/image";
-import { ChevronLeft, ChevronRight, FolderOpen, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, FolderOpen, Info, Plus } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { getContrastTextColor } from "@/lib/color-contrast";
 import { cn } from "cn";
 import type { Client } from "@/types";
@@ -13,6 +14,8 @@ export type CalendarView = "week" | "month" | "list";
 interface CalendarHeaderProps {
   client: Client;
   calendarLabel: string;
+  /** Descripcion del calendario actual — solo cuando hay exactamente uno seleccionado. */
+  calendarDescription?: string | null;
   driveFolderUrl: string | null;
   periodLabel: string;
   view: CalendarView;
@@ -28,6 +31,7 @@ interface CalendarHeaderProps {
 export function CalendarHeader({
   client,
   calendarLabel,
+  calendarDescription,
   driveFolderUrl,
   periodLabel,
   view,
@@ -85,7 +89,27 @@ export function CalendarHeader({
                 {client.name}
               </div>
             )}
-            <h1 className="text-base font-semibold text-foreground">{calendarLabel}</h1>
+            <h1 className="flex items-center gap-1 text-base font-semibold text-foreground">
+              {calendarLabel}
+              {calendarDescription && (
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <button
+                        type="button"
+                        aria-label={`Descripción del calendario: ${calendarDescription}`}
+                        className="flex size-4 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground"
+                      />
+                    }
+                  >
+                    <Info className="size-3.5" />
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="max-w-64 whitespace-pre-wrap">
+                    {calendarDescription}
+                  </TooltipContent>
+                </Tooltip>
+              )}
+            </h1>
           </div>
         </div>
 

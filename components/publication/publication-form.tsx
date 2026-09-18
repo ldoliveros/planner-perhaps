@@ -23,6 +23,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
+import { CopyEditor } from "@/components/publication/copy-editor";
 import { PlatformIcon } from "@/components/icons/brand-icons";
 import { useLookups } from "@/components/providers/lookups-provider";
 import { deletePublication, savePublication, type PublicationFormState } from "@/lib/actions/publications";
@@ -77,6 +78,22 @@ export function PublicationForm({
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+
+  // Ctrl/Cmd+S guarda este formulario mientras está abierto — solo activo acá
+  // (no en un listener global), así que nunca compite con el shortcut del
+  // navegador cuando no hay un formulario de publicación en pantalla.
+  useEffect(() => {
+    if (!open) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        if (!isPending) formRef.current?.requestSubmit();
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [open, isPending]);
 
   useEffect(() => {
     if (state.savedAt && state.savedAt !== lastSavedAt.current) {
@@ -138,7 +155,7 @@ export function PublicationForm({
           <SheetTitle>{publication ? "Editar contenido" : duplicateFrom ? "Duplicar contenido" : "Nuevo contenido"}</SheetTitle>
         </SheetHeader>
 
-        <form action={formAction} className="flex flex-col gap-6 px-4 pb-6">
+        <form ref={formRef} action={formAction} className="flex flex-col gap-6 px-4 pb-6">
           {publication && <input type="hidden" name="id" value={publication.id} />}
           <input type="hidden" name="destinations" value={JSON.stringify(destinations)} readOnly />
 
@@ -271,7 +288,7 @@ export function PublicationForm({
             <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Contenido</h3>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="copy">Copy</Label>
-              <Textarea id="copy" name="copy" rows={5} defaultValue={publication?.copy ?? duplicateFrom?.copy ?? ""} />
+              <CopyEditor id="copy" name="copy" defaultValue={publication?.copy ?? duplicateFrom?.copy ?? ""} />
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="cta">CTA</Label>

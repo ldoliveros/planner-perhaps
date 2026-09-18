@@ -1,21 +1,23 @@
 "use client";
 
-import { useState } from "react";
 import { Check, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useCopyToClipboard } from "@/lib/use-copy-to-clipboard";
+import { toast } from "@/lib/toast";
 
 export function CopyBlock({ copy }: { copy: string }) {
-  const [copied, setCopied] = useState(false);
+  const { copied, copy: copyText } = useCopyToClipboard();
 
   async function handleCopy() {
-    try {
-      await navigator.clipboard.writeText(copy);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      setCopied(false);
+    const ok = await copyText(copy);
+    if (ok) {
+      toast.success("Copy copiado ✓");
+    } else {
+      toast.error("No se pudo copiar", "Tu navegador bloqueó el acceso al portapapeles.");
     }
   }
+
+  if (!copy) return null;
 
   return (
     <div className="rounded-lg border border-border bg-muted/40 p-3">
