@@ -30,14 +30,19 @@ export async function savePublication(
   const id = formData.get("id") ? String(formData.get("id")) : null;
   const calendarId = String(formData.get("calendarId") ?? "");
   const title = String(formData.get("title") ?? "").trim();
-  const campaign = String(formData.get("campaign") ?? "").trim() || null;
+  const campaignId = String(formData.get("campaignId") ?? "").trim() || null;
   const contentTypeId = String(formData.get("contentTypeId") ?? "");
   const publicationDate = String(formData.get("publicationDate") ?? "");
   const publicationTime = String(formData.get("publicationTime") ?? "").trim() || null;
   const copy = String(formData.get("copy") ?? "");
   const cta = String(formData.get("cta") ?? "").trim() || null;
   const externalUrl = String(formData.get("externalUrl") ?? "").trim() || null;
-  const internalNotes = String(formData.get("internalNotes") ?? "").trim() || null;
+  // internal_notes ya no se edita desde este formulario (ver v1.2 — ajuste
+  // previo al Bloque C). Si el campo no viene en el formData en absoluto, NO
+  // se incluye en el payload — así nunca se pisa con null un valor histórico
+  // ya guardado. Solo se tocaría si en el futuro algún formulario SÍ lo envía.
+  const internalNotesRaw = formData.get("internalNotes");
+  const internalNotes = internalNotesRaw === null ? undefined : String(internalNotesRaw).trim() || null;
   const statusId = String(formData.get("statusId") ?? "");
   const driveFolderUrl = String(formData.get("driveFolderUrl") ?? "").trim() || null;
   const destinations = parseJsonArray<DestinationInput>(formData.get("destinations"));
@@ -54,16 +59,16 @@ export async function savePublication(
   const publicationPayload = {
     calendar_id: calendarId,
     title,
-    campaign,
+    campaign_id: campaignId,
     content_type_id: contentTypeId,
     publication_date: publicationDate,
     publication_time: publicationTime,
     copy,
     cta,
     external_url: externalUrl,
-    internal_notes: internalNotes,
     status_id: statusId,
     drive_folder_url: driveFolderUrl,
+    ...(internalNotes !== undefined ? { internal_notes: internalNotes } : {}),
   };
 
   let publicationId = id;

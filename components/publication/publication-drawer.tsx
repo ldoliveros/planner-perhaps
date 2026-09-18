@@ -28,10 +28,11 @@ interface PublicationDrawerProps {
 }
 
 export function PublicationDrawer({ publication, onOpenChange, onEdit, onDuplicate }: PublicationDrawerProps) {
-  const { getClientAccount, getContentType, getPlatform, getStatus } = useLookups();
+  const { getCampaign, getClientAccount, getContentType, getPlatform, getStatus } = useLookups();
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const contentType = publication ? getContentType(publication.contentTypeId) : undefined;
   const status = publication ? getStatus(publication.statusId) : undefined;
+  const campaign = publication?.campaignId ? getCampaign(publication.campaignId) : undefined;
   const primaryAsset = publication?.assets.find((a) => a.isPrimary) ?? null;
   const heroAsset = primaryAsset ?? publication?.assets[0] ?? null;
 
@@ -132,7 +133,7 @@ export function PublicationDrawer({ publication, onOpenChange, onEdit, onDuplica
                     {status.label}
                   </Badge>
                 )}
-                {publication.campaign && <Badge variant="outline">{publication.campaign}</Badge>}
+                {campaign && <Badge variant="outline">{campaign.name}</Badge>}
               </div>
 
               <CopyBlock copy={publication.copy} />

@@ -4,6 +4,7 @@ import {
   getClientById,
   getLookups,
   listCalendarsForClient,
+  listCampaignsForClient,
   listClientAccountsForClient,
   listClients,
   listPublicationsForClient,
@@ -15,10 +16,11 @@ export default async function ClientPlannerPage({ params }: { params: Promise<{ 
   const client = await getClientById(id);
   if (!client) notFound();
 
-  const [calendars, publications, clientAccounts, lookups, allClients] = await Promise.all([
+  const [calendars, publications, clientAccounts, campaigns, lookups, allClients] = await Promise.all([
     listCalendarsForClient(client.id),
     listPublicationsForClient(client.id),
     listClientAccountsForClient(client.id),
+    listCampaignsForClient(client.id),
     getLookups(),
     listClients(),
   ]);
@@ -29,6 +31,7 @@ export default async function ClientPlannerPage({ params }: { params: Promise<{ 
       calendars={calendars}
       publications={publications}
       clientAccounts={clientAccounts}
+      campaigns={campaigns}
       lookups={lookups}
       allClients={allClients
         .filter((c) => c.active || c.id === client.id)

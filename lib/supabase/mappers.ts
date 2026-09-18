@@ -1,6 +1,7 @@
 import type {
   AccountTypeRow,
   CalendarRow,
+  CampaignRow,
   ClientAccountRow,
   ClientRow,
   ContentTypeRow,
@@ -14,6 +15,7 @@ import type {
 import type {
   AccountType,
   Calendar,
+  Campaign,
   Client,
   ClientAccount,
   ClientUser,
@@ -98,6 +100,15 @@ export function mapStatus(row: StatusRow): Status {
   return { id: row.id, key: row.key, label: row.label, color: row.color, order: row.sort_order };
 }
 
+export function mapCampaign(row: CampaignRow): Campaign {
+  return {
+    id: row.id,
+    clientId: row.client_id,
+    name: row.name,
+    archivedAt: row.archived_at,
+  };
+}
+
 export function mapPublicationDestination(row: PublicationDestinationRow): PublicationDestination {
   return { clientAccountId: row.client_account_id };
 }
@@ -131,7 +142,7 @@ export function mapPublication(row: PublicationRowWithRelations): Publication {
     title: row.title,
     publicationDate: row.publication_date,
     publicationTime: row.publication_time,
-    campaign: row.campaign,
+    campaignId: row.campaign_id,
     contentTypeId: row.content_type_id,
     statusId: row.status_id,
     copy: row.copy,

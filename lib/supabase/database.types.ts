@@ -152,7 +152,10 @@ export type PublicationRow = {
   title: string;
   publication_date: string;
   publication_time: string | null;
+  // Respaldo histórico de transición — ver supabase/migrations/20260918000001_campaigns.sql.
+  // La fuente de verdad funcional pasó a ser campaign_id; no editar desde la app.
   campaign: string | null;
+  campaign_id: string | null;
   content_type_id: string;
   status_id: string;
   copy: string;
@@ -170,7 +173,7 @@ export type PublicationInsert = {
   title: string;
   publication_date: string;
   publication_time?: string | null;
-  campaign?: string | null;
+  campaign_id?: string | null;
   content_type_id: string;
   status_id: string;
   copy?: string;
@@ -181,6 +184,24 @@ export type PublicationInsert = {
   drive_folder_url?: string | null;
 };
 export type PublicationUpdate = Partial<PublicationInsert>;
+
+export type CampaignRow = {
+  id: string;
+  client_id: string;
+  name: string;
+  archived_at: string | null;
+  created_at: string;
+  created_by: string | null;
+  updated_at: string;
+};
+export type CampaignInsert = {
+  id?: string;
+  client_id: string;
+  name: string;
+  archived_at?: string | null;
+  created_by?: string | null;
+};
+export type CampaignUpdate = Partial<CampaignInsert>;
 
 export type ClientAccountRow = {
   id: string;
@@ -300,6 +321,7 @@ export type Database = {
         Update: UserClientAssignmentUpdate;
         Relationships: [];
       };
+      campaigns: { Row: CampaignRow; Insert: CampaignInsert; Update: CampaignUpdate; Relationships: [] };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;

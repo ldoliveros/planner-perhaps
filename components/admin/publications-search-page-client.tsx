@@ -24,7 +24,7 @@ import { PlatformIcon } from "@/components/icons/brand-icons";
 import { deletePublication } from "@/lib/actions/publications";
 import { formatFullDate, formatTime } from "@/lib/date-utils";
 import { toast } from "@/lib/toast";
-import type { Calendar, Client, ClientAccount, ContentType, Platform, Publication, Status } from "@/types";
+import type { Calendar, Campaign, Client, ClientAccount, ContentType, Platform, Publication, Status } from "@/types";
 
 const ALL = "__all__";
 
@@ -33,6 +33,7 @@ interface PublicationsSearchPageClientProps {
   clients: Client[];
   calendars: Calendar[];
   clientAccounts: ClientAccount[];
+  campaigns: Campaign[];
   platforms: Platform[];
   contentTypes: ContentType[];
   statuses: Status[];
@@ -43,6 +44,7 @@ export function PublicationsSearchPageClient({
   clients,
   calendars,
   clientAccounts,
+  campaigns,
   platforms,
   contentTypes,
   statuses,
@@ -52,6 +54,7 @@ export function PublicationsSearchPageClient({
   const clientLabel = (c: Client) => (c.active ? c.name : `${c.name} (Archivado)`);
   const calendarLabel = (c: Calendar) => (c.status === "archived" ? `${c.name} (Archivado)` : c.name);
   const clientAccountMap = useMemo(() => new Map(clientAccounts.map((a) => [a.id, a])), [clientAccounts]);
+  const campaignMap = useMemo(() => new Map(campaigns.map((c) => [c.id, c])), [campaigns]);
   const platformMap = useMemo(() => new Map(platforms.map((p) => [p.id, p])), [platforms]);
   const contentTypeMap = useMemo(() => new Map(contentTypes.map((c) => [c.id, c])), [contentTypes]);
   const statusMap = useMemo(() => new Map(statuses.map((s) => [s.id, s])), [statuses]);
@@ -99,7 +102,10 @@ export function PublicationsSearchPageClient({
       if (clientId !== ALL && p.clientId !== clientId) return false;
       if (calendarId !== ALL && p.calendarId !== calendarId) return false;
       if (statusId !== ALL && p.statusId !== statusId) return false;
-      if (campaign.trim() && !(p.campaign ?? "").toLowerCase().includes(campaign.trim().toLowerCase())) return false;
+      if (campaign.trim()) {
+        const campaignName = p.campaignId ? (campaignMap.get(p.campaignId)?.name ?? "") : "";
+        if (!campaignName.toLowerCase().includes(campaign.trim().toLowerCase())) return false;
+      }
       if (dateFrom && p.publicationDate < dateFrom) return false;
       if (dateTo && p.publicationDate > dateTo) return false;
       if (platformId !== ALL) {
@@ -109,7 +115,20 @@ export function PublicationsSearchPageClient({
       if (accountId !== ALL && !p.destinations.some((d) => d.clientAccountId === accountId)) return false;
       return true;
     });
-  }, [publications, search, clientId, calendarId, statusId, campaign, dateFrom, dateTo, platformId, accountId, clientAccountMap]);
+  }, [
+    publications,
+    search,
+    clientId,
+    calendarId,
+    statusId,
+    campaign,
+    dateFrom,
+    dateTo,
+    platformId,
+    accountId,
+    clientAccountMap,
+    campaignMap,
+  ]);
 
   return (
     <div className="flex flex-col gap-4 p-6">

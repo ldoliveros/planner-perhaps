@@ -94,7 +94,7 @@ function FilterPopover({
 interface CalendarFiltersProps {
   value: CalendarFiltersState;
   onChange: (value: CalendarFiltersState) => void;
-  availableCampaigns: string[];
+  availableCampaigns: Option[];
   calendarIds: string[];
   onCalendarIdsChange: (ids: string[]) => void;
 }
@@ -158,7 +158,7 @@ export function CalendarFiltersBar({
       />
       <FilterPopover
         label="Campaña"
-        options={availableCampaigns.map((c) => ({ id: c, label: c }))}
+        options={availableCampaigns}
         selected={value.campaigns}
         onChange={(campaigns) => onChange({ ...value, campaigns })}
       />

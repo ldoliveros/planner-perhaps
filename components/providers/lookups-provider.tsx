@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useMemo } from "react";
-import type { AccountType, Calendar, ClientAccount, ContentType, Platform, Status } from "@/types";
+import type { AccountType, Calendar, Campaign, ClientAccount, ContentType, Platform, Status } from "@/types";
 
 interface LookupsValue {
   platforms: Platform[];
@@ -10,12 +10,14 @@ interface LookupsValue {
   statuses: Status[];
   calendars: Calendar[];
   clientAccounts: ClientAccount[];
+  campaigns: Campaign[];
   getPlatform: (id: string) => Platform | undefined;
   getAccountType: (id: string) => AccountType | undefined;
   getContentType: (id: string) => ContentType | undefined;
   getStatus: (id: string) => Status | undefined;
   getCalendar: (id: string) => Calendar | undefined;
   getClientAccount: (id: string) => ClientAccount | undefined;
+  getCampaign: (id: string) => Campaign | undefined;
 }
 
 const LookupsContext = createContext<LookupsValue | null>(null);
@@ -27,6 +29,7 @@ interface LookupsProviderProps {
   statuses: Status[];
   calendars: Calendar[];
   clientAccounts: ClientAccount[];
+  campaigns: Campaign[];
   children: React.ReactNode;
 }
 
@@ -37,6 +40,7 @@ export function LookupsProvider({
   statuses,
   calendars,
   clientAccounts,
+  campaigns,
   children,
 }: LookupsProviderProps) {
   const value = useMemo<LookupsValue>(() => {
@@ -46,6 +50,7 @@ export function LookupsProvider({
     const statusMap = new Map(statuses.map((s) => [s.id, s]));
     const calendarMap = new Map(calendars.map((c) => [c.id, c]));
     const clientAccountMap = new Map(clientAccounts.map((a) => [a.id, a]));
+    const campaignMap = new Map(campaigns.map((c) => [c.id, c]));
     return {
       platforms,
       accountTypes,
@@ -53,14 +58,16 @@ export function LookupsProvider({
       statuses,
       calendars,
       clientAccounts,
+      campaigns,
       getPlatform: (id) => platformMap.get(id),
       getAccountType: (id) => accountTypeMap.get(id),
       getContentType: (id) => contentTypeMap.get(id),
       getStatus: (id) => statusMap.get(id),
       getCalendar: (id) => calendarMap.get(id),
       getClientAccount: (id) => clientAccountMap.get(id),
+      getCampaign: (id) => campaignMap.get(id),
     };
-  }, [platforms, accountTypes, contentTypes, statuses, calendars, clientAccounts]);
+  }, [platforms, accountTypes, contentTypes, statuses, calendars, clientAccounts, campaigns]);
 
   return <LookupsContext.Provider value={value}>{children}</LookupsContext.Provider>;
 }

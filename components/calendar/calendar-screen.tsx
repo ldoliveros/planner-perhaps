@@ -17,13 +17,14 @@ import { LookupsProvider } from "@/components/providers/lookups-provider";
 import { formatMonthYear, formatWeekRange, getMonthGridDays, getWeekDays, isSameMonthAs } from "@/lib/date-utils";
 import { usePlannerShortcuts } from "@/lib/use-planner-shortcuts";
 import type { Lookups } from "@/lib/supabase/queries";
-import type { Calendar, Client, ClientAccount, Publication } from "@/types";
+import type { Calendar, Campaign, Client, ClientAccount, Publication } from "@/types";
 
 interface CalendarScreenProps {
   client: Client;
   calendars: Calendar[];
   publications: Publication[];
   clientAccounts: ClientAccount[];
+  campaigns: Campaign[];
   lookups: Lookups;
   readOnly?: boolean;
   /** Solo admin: habilita el selector compacto de cliente en el header. */
@@ -35,6 +36,7 @@ export function CalendarScreen({
   calendars,
   publications,
   clientAccounts,
+  campaigns,
   lookups,
   readOnly = false,
   allClients,
@@ -132,11 +134,17 @@ export function CalendarScreen({
     return publications.filter((p) => calendarIds.includes(p.calendarId));
   }, [publications, calendarIds]);
 
-  const availableCampaigns = useMemo(
-    () =>
-      Array.from(new Set(calendarScopedPublications.map((p) => p.campaign).filter((c): c is string => Boolean(c)))).sort(),
-    [calendarScopedPublications]
-  );
+  // Opciones del filtro de Campaña: activas del cliente + cualquier archivada
+  // que ya esté en uso por una publicación visible (para no "perder" el
+  // filtro sobre contenido histórico si esa campaña se archivó después).
+  const availableCampaigns = useMemo(() => {
+    const usedIds = new Set(
+      calendarScopedPublications.map((p) => p.campaignId).filter((id): id is string => Boolean(id))
+    );
+    return campaigns
+      .filter((c) => !c.archivedAt || usedIds.has(c.id))
+      .map((c) => ({ id: c.id, label: c.name }));
+  }, [campaigns, calendarScopedPublications]);
 
   const hasActiveFilters =
     filters.platformIds.length > 0 ||
@@ -165,7 +173,7 @@ export function CalendarScreen({
       if (filters.statusIds.length > 0 && !filters.statusIds.includes(p.statusId)) {
         return false;
       }
-      if (filters.campaigns.length > 0 && !(p.campaign && filters.campaigns.includes(p.campaign))) {
+      if (filters.campaigns.length > 0 && !(p.campaignId && filters.campaigns.includes(p.campaignId))) {
         return false;
       }
       return true;
@@ -201,7 +209,7 @@ export function CalendarScreen({
 
   if (calendars.length === 0) {
     return (
-      <LookupsProvider {...lookups} calendars={calendars} clientAccounts={clientAccounts}>
+      <LookupsProvider {...lookups} calendars={calendars} clientAccounts={clientAccounts} campaigns={campaigns}>
         <div className="flex h-full flex-col">
           <CalendarHeader
             client={client}
@@ -235,7 +243,7 @@ export function CalendarScreen({
   }
 
   return (
-    <LookupsProvider {...lookups} calendars={calendars} clientAccounts={clientAccounts}>
+    <LookupsProvider {...lookups} calendars={calendars} clientAccounts={clientAccounts} campaigns={campaigns}>
       <div className="flex h-full flex-col">
         <CalendarHeader
           client={client}
@@ -325,6 +333,7 @@ export function CalendarScreen({
             clientId={client.id}
             calendars={calendars}
             clientAccounts={clientAccounts}
+            campaigns={campaigns}
             defaultCalendarId={defaultCalendarId}
             publication={formState.publication}
             duplicateFrom={formState.duplicateFrom}

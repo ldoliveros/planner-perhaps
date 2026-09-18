@@ -3,6 +3,7 @@ import { createClient } from "./server";
 import {
   mapAccountType,
   mapCalendar,
+  mapCampaign,
   mapClient,
   mapClientAccount,
   mapClientUser,
@@ -15,6 +16,7 @@ import { withSignedClientLogos, withSignedThumbnails } from "./storage";
 import type {
   AccountType,
   Calendar,
+  Campaign,
   Client,
   ClientAccount,
   ClientUser,
@@ -93,6 +95,22 @@ export async function listClientAccountsForClient(clientId: string): Promise<Cli
     .order("sort_order")
     .order("name");
   return (data ?? []).map(mapClientAccount);
+}
+
+export async function listCampaignsForClient(clientId: string): Promise<Campaign[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("campaigns")
+    .select("*")
+    .eq("client_id", clientId)
+    .order("name");
+  return (data ?? []).map(mapCampaign);
+}
+
+export async function listAllCampaignsAdmin(): Promise<Campaign[]> {
+  const supabase = await createClient();
+  const { data } = await supabase.from("campaigns").select("*").order("name");
+  return (data ?? []).map(mapCampaign);
 }
 
 export async function listPublicationsForClient(clientId: string): Promise<Publication[]> {

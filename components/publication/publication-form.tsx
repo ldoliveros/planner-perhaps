@@ -22,14 +22,14 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Textarea } from "@/components/ui/textarea";
+import { CampaignSelect } from "@/components/publication/campaign-select";
 import { CopyEditor } from "@/components/publication/copy-editor";
 import { PlatformIcon } from "@/components/icons/brand-icons";
 import { useLookups } from "@/components/providers/lookups-provider";
 import { deletePublication, savePublication, type PublicationFormState } from "@/lib/actions/publications";
 import { formatTime } from "@/lib/date-utils";
 import { toast } from "@/lib/toast";
-import type { Calendar, ClientAccount, Publication, PublicationDestination } from "@/types";
+import type { Calendar, Campaign, ClientAccount, Publication, PublicationDestination } from "@/types";
 
 const INITIAL_STATE: PublicationFormState = { error: null, savedAt: null };
 
@@ -39,6 +39,7 @@ interface PublicationFormProps {
   clientId: string;
   calendars: Calendar[];
   clientAccounts: ClientAccount[];
+  campaigns: Campaign[];
   defaultCalendarId?: string;
   publication?: Publication;
   /** Publicación de origen al duplicar: precarga campos pero siempre crea una fila nueva. */
@@ -52,6 +53,7 @@ export function PublicationForm({
   clientId,
   calendars,
   clientAccounts,
+  campaigns,
   defaultCalendarId,
   publication,
   duplicateFrom,
@@ -71,6 +73,12 @@ export function PublicationForm({
   const [calendarId, setCalendarId] = useState(
     publication?.calendarId ?? duplicateFrom?.calendarId ?? defaultCalendarId ?? ""
   );
+  // Campaña pertenece al CLIENTE, no al calendario — cambiar de calendario
+  // (mismo cliente) nunca debe limpiar esto, y de hecho no hay ningún handler
+  // acá que lo haga. La integridad cliente<->campaña real la garantiza el
+  // trigger de DB (validate_publication_campaign), no el frontend.
+  const [campaignId, setCampaignId] = useState(publication?.campaignId ?? duplicateFrom?.campaignId ?? "");
+  const [localCampaigns, setLocalCampaigns] = useState<Campaign[]>(campaigns);
   const [destinations, setDestinations] = useState<PublicationDestination[]>(
     publication?.destinations ?? duplicateFrom?.destinations ?? []
   );
@@ -133,6 +141,14 @@ export function PublicationForm({
     if (file) setThumbnailPreview(URL.createObjectURL(file));
   }
 
+  // La campaña recién creada queda disponible al instante en ESTE formulario;
+  // router.refresh() trae los datos frescos del servidor para que también
+  // aparezca en el desplegable de las demás publicaciones del mismo cliente.
+  function handleCampaignCreated(campaign: Campaign) {
+    setLocalCampaigns((prev) => (prev.some((c) => c.id === campaign.id) ? prev : [...prev, campaign]));
+    router.refresh();
+  }
+
   async function handleConfirmDelete() {
     if (!publication) return;
     setDeleteError(null);
@@ -158,95 +174,31 @@ export function PublicationForm({
         <form ref={formRef} action={formAction} className="flex flex-col gap-6 px-4 pb-6">
           {publication && <input type="hidden" name="id" value={publication.id} />}
           <input type="hidden" name="destinations" value={JSON.stringify(destinations)} readOnly />
+          <input type="hidden" name="campaignId" value={campaignId} readOnly />
 
-          <section className="flex flex-col gap-3">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Información</h3>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="calendarId">Calendario</Label>
-              <Select
-                name="calendarId"
-                value={calendarId}
-                onValueChange={(value) => setCalendarId(value as string)}
-                items={Object.fromEntries(selectableCalendars.map((c) => [c.id, c.name]))}
-              >
-                <SelectTrigger id="calendarId" className="w-full">
-                  <SelectValue placeholder="Elegí un calendario" />
-                </SelectTrigger>
-                <SelectContent>
-                  {selectableCalendars.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="title">Título</Label>
-              <Input
-                id="title"
-                name="title"
-                defaultValue={publication?.title ?? (duplicateFrom ? `${duplicateFrom.title} (copia)` : undefined)}
-                required
-                autoFocus
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="campaign">Campaña</Label>
-                <Input id="campaign" name="campaign" defaultValue={publication?.campaign ?? duplicateFrom?.campaign ?? ""} />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="contentTypeId">Tipo de contenido</Label>
-                <Select
-                  name="contentTypeId"
-                  defaultValue={publication?.contentTypeId ?? duplicateFrom?.contentTypeId}
-                  items={Object.fromEntries(contentTypes.map((ct) => [ct.id, ct.label]))}
-                >
-                  <SelectTrigger id="contentTypeId" className="w-full">
-                    <SelectValue placeholder="Elegí un tipo" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {contentTypes.map((ct) => (
-                      <SelectItem key={ct.id} value={ct.id}>
-                        {ct.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </section>
+          {/* 1. Calendario */}
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="calendarId">Calendario</Label>
+            <Select
+              name="calendarId"
+              value={calendarId}
+              onValueChange={(value) => setCalendarId(value as string)}
+              items={Object.fromEntries(selectableCalendars.map((c) => [c.id, c.name]))}
+            >
+              <SelectTrigger id="calendarId" className="w-full">
+                <SelectValue placeholder="Elegí un calendario" />
+              </SelectTrigger>
+              <SelectContent>
+                {selectableCalendars.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-          <Separator />
-
-          <section className="flex flex-col gap-3">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Programación</h3>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="publicationDate">Fecha</Label>
-                <Input
-                  id="publicationDate"
-                  name="publicationDate"
-                  type="date"
-                  defaultValue={publication?.publicationDate ?? defaultDate ?? ""}
-                  required
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="publicationTime">Hora</Label>
-                <Input
-                  id="publicationTime"
-                  name="publicationTime"
-                  type="time"
-                  defaultValue={formatTime(publication?.publicationTime ?? null)}
-                />
-              </div>
-            </div>
-          </section>
-
-          <Separator />
-
+          {/* 2. Destinos */}
           <section className="flex flex-col gap-3">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Destinos</h3>
             {selectableAccounts.length === 0 ? (
@@ -282,35 +234,66 @@ export function PublicationForm({
             )}
           </section>
 
-          <Separator />
-
-          <section className="flex flex-col gap-3">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Contenido</h3>
+          {/* 3. Campaña | Tipo de contenido */}
+          <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="copy">Copy</Label>
-              <CopyEditor id="copy" name="copy" defaultValue={publication?.copy ?? duplicateFrom?.copy ?? ""} />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="cta">CTA</Label>
-              <Input id="cta" name="cta" defaultValue={publication?.cta ?? duplicateFrom?.cta ?? ""} />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="externalUrl">URL</Label>
-              <Input
-                id="externalUrl"
-                name="externalUrl"
-                type="url"
-                defaultValue={publication?.externalUrl ?? duplicateFrom?.externalUrl ?? ""}
+              <Label htmlFor="campaignId">Campaña</Label>
+              <CampaignSelect
+                clientId={clientId}
+                campaigns={localCampaigns}
+                value={campaignId}
+                onChange={setCampaignId}
+                onCreated={handleCampaignCreated}
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="internalNotes">Notas internas</Label>
-              <Textarea id="internalNotes" name="internalNotes" rows={2} defaultValue={publication?.internalNotes ?? ""} />
+              <Label htmlFor="contentTypeId">Tipo de contenido</Label>
+              <Select
+                name="contentTypeId"
+                defaultValue={publication?.contentTypeId ?? duplicateFrom?.contentTypeId}
+                items={Object.fromEntries(contentTypes.map((ct) => [ct.id, ct.label]))}
+              >
+                <SelectTrigger id="contentTypeId" className="w-full">
+                  <SelectValue placeholder="Elegí un tipo" />
+                </SelectTrigger>
+                <SelectContent>
+                  {contentTypes.map((ct) => (
+                    <SelectItem key={ct.id} value={ct.id}>
+                      {ct.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {/* 4. Programación */}
+          <section className="flex flex-col gap-3">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Programación</h3>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="publicationDate">Fecha</Label>
+                <Input
+                  id="publicationDate"
+                  name="publicationDate"
+                  type="date"
+                  defaultValue={publication?.publicationDate ?? defaultDate ?? ""}
+                  required
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="publicationTime">Hora</Label>
+                <Input
+                  id="publicationTime"
+                  name="publicationTime"
+                  type="time"
+                  defaultValue={formatTime(publication?.publicationTime ?? null)}
+                />
+              </div>
             </div>
           </section>
 
-          <Separator />
-
+          {/* 5. Estado */}
           <section className="flex flex-col gap-3">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Estado</h3>
             <Select
@@ -334,8 +317,9 @@ export function PublicationForm({
 
           <Separator />
 
+          {/* 6. Portada */}
           <section className="flex flex-col gap-3">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Portada / preview</h3>
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Portada</h3>
             <div className="flex items-center gap-3">
               <div className="relative size-20 shrink-0 overflow-hidden rounded-lg border border-border bg-muted">
                 {thumbnailPreview ? (
@@ -360,8 +344,47 @@ export function PublicationForm({
             </div>
           </section>
 
+          {/* 7. Título */}
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="title">Título</Label>
+            <Input
+              id="title"
+              name="title"
+              defaultValue={publication?.title ?? (duplicateFrom ? `${duplicateFrom.title} (copia)` : undefined)}
+              required
+              autoFocus
+            />
+          </div>
+
+          {/* 8. Contenido */}
+          <section className="flex flex-col gap-3">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Contenido</h3>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="copy">Copy</Label>
+              <CopyEditor id="copy" name="copy" defaultValue={publication?.copy ?? duplicateFrom?.copy ?? ""} />
+            </div>
+          </section>
+
+          {/* 9. CTA */}
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="cta">CTA</Label>
+            <Input id="cta" name="cta" defaultValue={publication?.cta ?? duplicateFrom?.cta ?? ""} />
+          </div>
+
+          {/* 10. URL */}
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="externalUrl">URL</Label>
+            <Input
+              id="externalUrl"
+              name="externalUrl"
+              type="url"
+              defaultValue={publication?.externalUrl ?? duplicateFrom?.externalUrl ?? ""}
+            />
+          </div>
+
           <Separator />
 
+          {/* 11. Archivos / Drive */}
           <section className="flex flex-col gap-3">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Archivos / Drive</h3>
             <div className="flex flex-col gap-1.5">

@@ -74,6 +74,13 @@ export interface PublicationDestination {
   clientAccountId: string;
 }
 
+export interface Campaign {
+  id: string;
+  clientId: string;
+  name: string;
+  archivedAt: string | null;
+}
+
 export interface ContentType {
   id: string;
   key: string;
@@ -112,7 +119,7 @@ export interface Publication {
   title: string;
   publicationDate: string;
   publicationTime: string | null;
-  campaign: string | null;
+  campaignId: string | null;
   contentTypeId: string;
   statusId: string;
   copy: string;
