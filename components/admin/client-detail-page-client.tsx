@@ -95,7 +95,7 @@ export function ClientDetailPageClient({
               {client.color}
               {!client.active && (
                 <Badge variant="outline" className="ml-1">
-                  Inactivo
+                  Archivado
                 </Badge>
               )}
             </div>
@@ -306,7 +306,7 @@ function ClientArchiveActions({ client, calendarCount }: { client: Client; calen
     startArchiveTransition(async () => {
       const result = await setClientActive(client.id, !client.active);
       if (result.error) {
-        toast.error(result.error);
+        toast.error(client.active ? "No se pudo archivar" : "No se pudo restaurar", result.error);
         return;
       }
       router.refresh();
@@ -452,15 +452,13 @@ function ClientAccountTableRow({
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [isDeleting, startDeleteTransition] = useTransition();
-  const [error, setError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   function toggleActive() {
-    setError(null);
     startTransition(async () => {
       const result = await setClientAccountActive(account.id, clientId, !account.active);
       if (result.error) {
-        setError(result.error);
+        toast.error("No se pudo actualizar la cuenta", result.error);
         return;
       }
       router.refresh();
@@ -495,11 +493,10 @@ function ClientAccountTableRow({
       <TableCell className="text-muted-foreground">{account.handle ?? "—"}</TableCell>
       <TableCell className="text-muted-foreground">{accountType?.name ?? "—"}</TableCell>
       <TableCell>
-        <Badge variant={account.active ? "outline" : "secondary"}>{account.active ? "Activa" : "Inactiva"}</Badge>
+        <Badge variant={account.active ? "secondary" : "outline"}>{account.active ? "Activa" : "Inactiva"}</Badge>
       </TableCell>
       <TableCell className="text-right">
         <div className="flex justify-end gap-1">
-          {error && <span className="self-center text-xs text-destructive">{error}</span>}
           <Button variant="ghost" size="sm" disabled={isPending} onClick={toggleActive}>
             {account.active ? "Desactivar" : "Activar"}
           </Button>

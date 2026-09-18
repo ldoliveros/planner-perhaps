@@ -248,6 +248,7 @@ function EditBody({ member, clients, onDone }: { member: TeamMember; clients: Cl
   const [isTogglingActive, startActiveTransition] = useTransition();
   const [isSendingReset, startResetTransition] = useTransition();
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deactivateOpen, setDeactivateOpen] = useState(false);
   const [isDeleting, startDeleteTransition] = useTransition();
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
@@ -299,7 +300,9 @@ function EditBody({ member, clients, onDone }: { member: TeamMember; clients: Cl
     startActiveTransition(async () => {
       const result = await setTeamMemberActive(member.id, !member.active);
       if (result.error) {
-        setError(result.error);
+        // Cierra la confirmación (si estaba abierta) para que el error no quede oculto detrás del modal.
+        setDeactivateOpen(false);
+        toast.error(member.active ? "No se pudo desactivar el acceso" : "No se pudo reactivar el acceso", result.error);
         return;
       }
       router.refresh();
@@ -365,7 +368,7 @@ function EditBody({ member, clients, onDone }: { member: TeamMember; clients: Cl
         <div className="flex flex-wrap items-center justify-end gap-2">
           {member.accessStatus === "invited" && <ResendInvitationButton userId={member.id} />}
           {member.active ? (
-          <AlertDialog>
+          <AlertDialog open={deactivateOpen} onOpenChange={setDeactivateOpen}>
             <AlertDialogTrigger render={<Button type="button" variant="outline" size="sm" className="text-destructive" />}>
               Desactivar acceso
             </AlertDialogTrigger>

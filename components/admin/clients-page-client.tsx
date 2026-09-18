@@ -133,7 +133,7 @@ function ClientTableRow({
     startArchiveTransition(async () => {
       const result = await setClientActive(client.id, !client.active);
       if (result.error) {
-        toast.error(result.error);
+        toast.error(client.active ? "No se pudo archivar" : "No se pudo restaurar", result.error);
         return;
       }
       router.refresh();
@@ -178,7 +178,7 @@ function ClientTableRow({
       </TableCell>
       <TableCell className="text-muted-foreground">{calendarCount}</TableCell>
       <TableCell>
-        <Badge variant={client.active ? "secondary" : "outline"}>{client.active ? "Activo" : "Inactivo"}</Badge>
+        <Badge variant={client.active ? "secondary" : "outline"}>{client.active ? "Activo" : "Archivado"}</Badge>
       </TableCell>
       <TableCell className="text-right">
         <div className="flex justify-end gap-1">

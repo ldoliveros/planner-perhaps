@@ -136,7 +136,7 @@ export function CopyEditor({ id, name, defaultValue }: CopyEditorProps) {
   async function handleCopy() {
     const ok = await copyText(value);
     if (ok) {
-      toast.success("Copy copiado ✓");
+      toast.success("Copy copiado");
     } else {
       toast.error("No se pudo copiar", "Tu navegador bloqueó el acceso al portapapeles.");
     }

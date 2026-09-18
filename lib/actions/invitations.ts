@@ -3,15 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createAdminClient, requireSuperAdmin } from "@/lib/supabase/admin";
 import { getSiteURL } from "@/lib/site-url";
-
-/** Traduce los errores de Auth más comunes a un mensaje entendible (el resto no se muestra crudo). */
-function friendlyInviteError(error: { message: string; status?: number }): string {
-  const message = error.message.toLowerCase();
-  if (error.status === 429 || message.includes("rate limit") || message.includes("security purposes")) {
-    return "Se enviaron demasiados mails en poco tiempo. Esperá un minuto y probá de nuevo.";
-  }
-  return "No se pudo reenviar la invitación. Probá de nuevo en unos minutos.";
-}
+import { friendlyInviteError } from "@/lib/friendly-errors";
 
 /**
  * Reenvía la invitación a un usuario que todavía no confirmó su acceso (Equipo o
@@ -56,7 +48,7 @@ export async function resendInvitation(userId: string): Promise<{ error: string 
     data: profile.full_name ? { full_name: profile.full_name } : undefined,
     redirectTo: `${siteURL}/auth/callback`,
   });
-  if (error) return { error: friendlyInviteError(error), email: null };
+  if (error) return { error: friendlyInviteError(error, { resend: true }), email: null };
   if (data.user.id !== userId) {
     return { error: "No se pudo reenviar la invitación: el usuario devuelto no coincide.", email: null };
   }

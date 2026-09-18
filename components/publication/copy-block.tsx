@@ -11,7 +11,7 @@ export function CopyBlock({ copy }: { copy: string }) {
   async function handleCopy() {
     const ok = await copyText(copy);
     if (ok) {
-      toast.success("Copy copiado ✓");
+      toast.success("Copy copiado");
     } else {
       toast.error("No se pudo copiar", "Tu navegador bloqueó el acceso al portapapeles.");
     }

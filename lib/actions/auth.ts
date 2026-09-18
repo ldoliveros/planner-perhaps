@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getSiteURL } from "@/lib/site-url";
+import { friendlyPasswordError } from "@/lib/friendly-errors";
 
 export interface AuthActionState {
   error: string | null;
@@ -115,7 +116,7 @@ export async function updatePassword(
   }
 
   const { error } = await supabase.auth.updateUser({ password });
-  if (error) return { error: error.message, savedAt: null };
+  if (error) return { error: friendlyPasswordError(error), savedAt: null };
 
   return { error: null, savedAt: Date.now() };
 }
@@ -162,7 +163,7 @@ export async function changeOwnPassword(
   if (verifyError) return { error: "La contraseña actual no es correcta.", savedAt: null };
 
   const { error } = await supabase.auth.updateUser({ password: newPassword });
-  if (error) return { error: error.message, savedAt: null };
+  if (error) return { error: friendlyPasswordError(error), savedAt: null };
 
   return { error: null, savedAt: Date.now() };
 }

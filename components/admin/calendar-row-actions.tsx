@@ -42,7 +42,7 @@ export function CalendarRowActions({ client, calendar, publicationCount, clients
     startArchiveTransition(async () => {
       const result = await setCalendarArchived(calendar.id, client.id, !isArchived);
       if (result.error) {
-        toast.error(result.error);
+        toast.error(isArchived ? "No se pudo restaurar" : "No se pudo archivar", result.error);
         return;
       }
       router.refresh();

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createAdminClient, requireSuperAdmin } from "@/lib/supabase/admin";
 import { getSiteURL } from "@/lib/site-url";
+import { friendlyInviteError } from "@/lib/friendly-errors";
 
 export interface InviteClientUserState {
   error: string | null;
@@ -43,7 +44,7 @@ export async function inviteClientUser(
     redirectTo: `${siteURL}/auth/callback`,
   });
   if (error) {
-    return { error: error.message, savedAt: null };
+    return { error: friendlyInviteError(error), savedAt: null };
   }
 
   const { error: profileError } = await admin

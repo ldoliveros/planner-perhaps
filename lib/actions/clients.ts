@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import sharp from "sharp";
 import { createClient } from "@/lib/supabase/server";
 import { slugify } from "@/lib/slugify";
+import { friendlyClientSaveError } from "@/lib/friendly-errors";
 
 export interface ClientFormState {
   error: string | null;
@@ -30,7 +31,7 @@ export async function saveClient(_prevState: ClientFormState, formData: FormData
       .from("clients")
       .update({ name, color, active, drive_folder_url: driveFolderUrl })
       .eq("id", clientId);
-    if (error) return { error: error.message, savedAt: null };
+    if (error) return { error: friendlyClientSaveError(error), savedAt: null };
   } else {
     const slug = slugify(name);
     const { data, error } = await supabase
@@ -38,7 +39,7 @@ export async function saveClient(_prevState: ClientFormState, formData: FormData
       .insert({ name, slug, color, active, drive_folder_url: driveFolderUrl })
       .select("id")
       .single();
-    if (error) return { error: error.message, savedAt: null };
+    if (error) return { error: friendlyClientSaveError(error), savedAt: null };
     clientId = data.id;
   }
 
