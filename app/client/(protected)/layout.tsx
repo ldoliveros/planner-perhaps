@@ -3,9 +3,12 @@ import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { PerhapsLogo } from "@/components/branding/perhaps-logo";
 import { UserMenu } from "@/components/shared/user-menu";
-import { getClientById, getCurrentProfile } from "@/lib/supabase/queries";
+import { UpdateBannerController } from "@/components/shared/update-banner-controller";
+import { getClientById, getCurrentProfile, getLastSeenVersion } from "@/lib/supabase/queries";
 import { getContrastTextColor } from "@/lib/color-contrast";
 import { signOut } from "@/lib/actions/auth";
+import { getCurrentReleaseForRole } from "@/lib/changelog";
+import { APP_VERSION } from "@/lib/version";
 
 export default async function ClientLayout({ children }: { children: React.ReactNode }) {
   const profile = await getCurrentProfile();
@@ -43,6 +46,10 @@ export default async function ClientLayout({ children }: { children: React.React
     );
   }
 
+  const lastSeenVersion = await getLastSeenVersion(profile.userId);
+  const currentRelease = getCurrentReleaseForRole(profile.role);
+  const showUpdateBanner = currentRelease !== null && lastSeenVersion !== APP_VERSION;
+
   return (
     <div className="flex min-h-screen flex-1 flex-col bg-background">
       <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-1.5 sm:gap-4 sm:px-4">
@@ -74,6 +81,9 @@ export default async function ClientLayout({ children }: { children: React.React
         />
       </div>
       {children}
+      {showUpdateBanner && currentRelease && (
+        <UpdateBannerController version={APP_VERSION} entries={currentRelease.entries} />
+      )}
     </div>
   );
 }

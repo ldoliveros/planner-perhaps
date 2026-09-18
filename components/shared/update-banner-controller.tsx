@@ -8,28 +8,36 @@ import type { ChangelogEntry } from "@/lib/changelog";
 interface UpdateBannerControllerProps {
   version: string;
   entries: ChangelogEntry[];
-  initiallyShown: boolean;
 }
 
 /**
- * v1.2 Bloque A — decide en el cliente si el banner sigue visible, y
- * persiste last_seen_version al descartarlo (no bloqueante: si la escritura
- * falla, el banner igual se cierra — el peor caso es volver a verlo en la
- * próxima carga, nunca quedar trabado en pantalla).
- *
- * TODO (recordatorio, no wiring aún): montar esto en app/admin/layout.tsx y
- * app/client/(protected)/layout.tsx recién después de aplicar la migration
- * 20260917000001_last_seen_version.sql — antes de eso, getLastSeenVersion()
- * fallaría en cada carga de página.
+ * Orquesta el banner "Nuevas actualizaciones" del lado del cliente. Se monta
+ * únicamente cuando el server ya determinó que corresponde mostrarlo
+ * (last_seen_version !== version) — acá solo se maneja el ciclo de
+ * "Entendido": persistir -> esperar confirmación -> recién ahí cerrar.
+ * Si falla, el banner queda abierto con el error visible y el mismo botón
+ * sirve para reintentar. Un guard por isSaving evita doble click/doble submit.
  */
-export function UpdateBannerController({ version, entries, initiallyShown }: UpdateBannerControllerProps) {
-  const [shown, setShown] = useState(initiallyShown);
+export function UpdateBannerController({ version, entries }: UpdateBannerControllerProps) {
+  const [shown, setShown] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  function handleDismiss() {
+  async function handleDismiss() {
+    if (isSaving) return;
+    setIsSaving(true);
+    setError(null);
+    const result = await markVersionSeen(version);
+    setIsSaving(false);
+    if (result.error) {
+      setError("No se pudo guardar. Probá de nuevo.");
+      return;
+    }
     setShown(false);
-    void markVersionSeen(version);
   }
 
   if (!shown) return null;
-  return <UpdateBanner version={version} entries={entries} onDismiss={handleDismiss} />;
+  return (
+    <UpdateBanner version={version} entries={entries} isSaving={isSaving} error={error} onDismiss={handleDismiss} />
+  );
 }
