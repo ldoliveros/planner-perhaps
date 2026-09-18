@@ -1,10 +1,8 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Check, Copy as CopyIcon, Link as LinkIcon, List, ListOrdered } from "lucide-react";
+import { Check, Copy as CopyIcon, List, ListOrdered } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { EmojiPicker } from "@/components/publication/emoji-picker";
@@ -44,8 +42,6 @@ export function CopyEditor({ id, name, defaultValue }: CopyEditorProps) {
   // el texto en la posición equivocada. Se normaliza una sola vez, al cargar.
   const [value, setValue] = useState(() => defaultValue.replace(/\r\n?/g, "\n"));
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const [linkOpen, setLinkOpen] = useState(false);
-  const [linkUrl, setLinkUrl] = useState("");
   const { copied, copy: copyText } = useCopyToClipboard();
 
   function focusAndSelect(pos: number, selectEnd?: number) {
@@ -119,14 +115,6 @@ export function CopyEditor({ id, name, defaultValue }: CopyEditorProps) {
     focusAndSelect(lineStart, lineStart + transformed.length);
   }
 
-  function handleInsertLink() {
-    const trimmed = linkUrl.trim();
-    if (!trimmed) return;
-    insertAtCursor(trimmed);
-    setLinkUrl("");
-    setLinkOpen(false);
-  }
-
   async function handleCopy() {
     const ok = await copyText(value);
     if (ok) {
@@ -173,45 +161,6 @@ export function CopyEditor({ id, name, defaultValue }: CopyEditorProps) {
             </TooltipTrigger>
             <TooltipContent side="top">Lista numerada</TooltipContent>
           </Tooltip>
-
-          <Popover open={linkOpen} onOpenChange={setLinkOpen}>
-            <PopoverTrigger
-              render={
-                <button
-                  type="button"
-                  title="Insertar link"
-                  aria-label="Insertar link"
-                  className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                />
-              }
-            >
-              <LinkIcon className="size-4" />
-            </PopoverTrigger>
-            <PopoverContent align="start" className="w-72 p-3">
-              <div className="flex flex-col gap-2">
-                <label htmlFor={`${id}-link-url`} className="text-xs font-medium text-foreground">
-                  URL
-                </label>
-                <Input
-                  id={`${id}-link-url`}
-                  type="url"
-                  placeholder="https://..."
-                  value={linkUrl}
-                  onChange={(e) => setLinkUrl(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      handleInsertLink();
-                    }
-                  }}
-                  autoFocus
-                />
-                <Button type="button" size="sm" disabled={!linkUrl.trim()} onClick={handleInsertLink}>
-                  Insertar
-                </Button>
-              </div>
-            </PopoverContent>
-          </Popover>
         </div>
 
         <Button
