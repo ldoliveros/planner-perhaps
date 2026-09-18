@@ -41,3 +41,38 @@ Reglas de uso:
 - Cualquier cambio de schema, RLS, configuración de Auth, roles globales o
   recursos fuera del cliente QA sigue requiriendo autorización explícita del
   usuario antes de ejecutarse, igual que cualquier otra migración.
+
+## Eficiencia de desarrollo y QA
+
+Regla permanente: evitar trabajo repetitivo y consumo innecesario de sesión.
+Aplica automáticamente a todas las tareas.
+
+Durante una tarea:
+
+- Leer únicamente los archivos necesarios para implementar el cambio.
+- No hacer auditorías globales salvo que sean necesarias.
+- No releer archivos completos repetidamente si no cambiaron.
+- Agrupar cambios relacionados antes de validar.
+- No ejecutar `tsc`/`eslint`/`build` después de cada modificación.
+- Usar el QA Sandbox persistente; no crear usuarios QA nuevos.
+- Reutilizar sesiones QA existentes cuando sea posible.
+- Hacer QA proporcional al riesgo del cambio.
+- Evitar probar múltiples variantes equivalentes del mismo comportamiento.
+- Elegir un flujo principal para QA exhaustivo y smoke tests para variantes.
+- No repetir regresiones ya cubiertas salvo que el cambio pueda afectarlas.
+
+Validación normal de un bloque:
+
+1. Implementación.
+2. `tsc --noEmit`.
+3. `eslint` sobre archivos modificados, o `eslint .` cuando corresponda.
+4. QA dirigido de los comportamientos afectados.
+5. `next build` solo al cierre de un bloque importante o cuando el cambio pueda
+   afectar el build.
+
+Validación exhaustiva: reservarla para checkpoints/release, antes de
+push/deploy/tag.
+
+Si `tsc`, `eslint` o QA encuentran un error: corregirlo y volver a ejecutar
+únicamente la validación relevante. No repetir pruebas exitosas sin una razón
+técnica concreta.
