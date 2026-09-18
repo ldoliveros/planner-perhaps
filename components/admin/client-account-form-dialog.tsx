@@ -142,7 +142,7 @@ function ClientAccountFormBody({
           name="name"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="Ej: AIonis Health"
+          placeholder="Ej: Cuenta principal"
           required
           autoFocus
         />
@@ -156,7 +156,7 @@ function ClientAccountFormBody({
             name="handle"
             value={handle}
             onChange={(e) => setHandle(e.target.value)}
-            placeholder="@aionis.health"
+            placeholder="Ej: @usuario"
           />
         </div>
         <div className="flex flex-col gap-1.5">
@@ -190,7 +190,7 @@ function ClientAccountFormBody({
           type="url"
           value={url}
           onChange={(e) => setUrl(e.target.value)}
-          placeholder="https://instagram.com/aionis.health"
+          placeholder="https://instagram.com/usuario"
         />
       </div>
 

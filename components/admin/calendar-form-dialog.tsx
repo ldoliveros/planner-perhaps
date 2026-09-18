@@ -152,7 +152,7 @@ function CalendarFormBody({
           name="name"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="Ej: General, Cosmiatría, GDL"
+          placeholder="Ej: Calendario general"
           required
           autoFocus
         />
