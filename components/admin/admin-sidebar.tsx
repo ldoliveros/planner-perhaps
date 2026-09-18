@@ -9,6 +9,7 @@ import { getAdminNavItems } from "@/components/admin/admin-nav-items";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { UserMenu } from "@/components/shared/user-menu";
 import { ROLE_LABELS } from "@/lib/role-labels";
+import { APP_VERSION } from "@/lib/version";
 import { cn } from "cn";
 
 const COLLAPSE_COOKIE = "sidebar_collapsed";
@@ -129,6 +130,15 @@ export function AdminSidebar({ role, email, fullName, avatarUrl, defaultCollapse
           variant="sidebar"
           collapsed={collapsed}
         />
+        <Link
+          href="/changelog"
+          className={cn(
+            "mt-1.5 block truncate rounded-md px-2 py-1 text-center text-[10px] text-white/25 transition-colors hover:text-white/60",
+            collapsed && "px-0"
+          )}
+        >
+          {collapsed ? `v${APP_VERSION}` : `Perhaps Planner · v${APP_VERSION}`}
+        </Link>
       </div>
     </aside>
   );

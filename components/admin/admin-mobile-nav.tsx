@@ -10,6 +10,7 @@ import { PerhapsIsologo } from "@/components/branding/perhaps-isologo";
 import { getAdminNavItems } from "@/components/admin/admin-nav-items";
 import { UserMenu } from "@/components/shared/user-menu";
 import { ROLE_LABELS } from "@/lib/role-labels";
+import { APP_VERSION } from "@/lib/version";
 import { cn } from "cn";
 
 interface AdminMobileNavProps {
@@ -76,6 +77,13 @@ export function AdminMobileNav({ role, email, fullName, avatarUrl }: AdminMobile
               roleLabel={ROLE_LABELS[role]}
               variant="sidebar"
             />
+            <Link
+              href="/changelog"
+              onClick={() => setOpen(false)}
+              className="mt-1.5 block truncate rounded-md px-2 py-1 text-center text-[10px] text-white/25 transition-colors hover:text-white/60"
+            >
+              Perhaps Planner · v{APP_VERSION}
+            </Link>
           </div>
         </SheetContent>
       </Sheet>

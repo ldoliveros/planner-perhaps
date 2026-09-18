@@ -30,6 +30,9 @@ export type ProfileRow = {
   role: "super_admin" | "account_manager" | "client";
   client_id: string | null;
   created_at: string;
+  // v1.2 Bloque A — supabase/migrations/20260917000001_last_seen_version.sql
+  // (columna todavia no aplicada contra la base compartida: ver informe de Bloque A).
+  last_seen_version: string | null;
 };
 export type ProfileInsert = Omit<ProfileRow, "created_at">;
 export type ProfileUpdate = Partial<ProfileInsert>;

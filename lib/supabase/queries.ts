@@ -218,3 +218,18 @@ export async function getCurrentProfile(): Promise<CurrentProfile | null> {
     clientId: profile.client_id,
   };
 }
+
+/**
+ * v1.2 Bloque A — última versión de Perhaps Planner cuyas novedades el
+ * usuario actual ya vio (banner "Nuevas actualizaciones"). Separada de
+ * getCurrentProfile() a propósito: depende de profiles.last_seen_version,
+ * columna todavía no aplicada contra la base compartida de dev/producción
+ * (ver supabase/migrations/20260917000001_last_seen_version.sql) — no
+ * tocar el select de getCurrentProfile(), que se usa en todo el admin/client
+ * layout y rompería cada carga de página si la columna no existe todavía.
+ */
+export async function getLastSeenVersion(userId: string): Promise<string | null> {
+  const supabase = await createClient();
+  const { data } = await supabase.from("profiles").select("last_seen_version").eq("id", userId).maybeSingle();
+  return data?.last_seen_version ?? null;
+}
