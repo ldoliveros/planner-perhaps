@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ButtonHTMLAttributes, type CSSProperties, type ReactNode } from "react";
+import { useMemo, useState, type ButtonHTMLAttributes, type CSSProperties, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { DndContext, DragOverlay, MouseSensor, pointerWithin, useDraggable, useDroppable, useSensor, useSensors } from "@dnd-kit/core";
 import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core";
@@ -98,25 +98,38 @@ export function WeekView({
   const canMove = Boolean(onEditPublication && onDuplicatePublication && clientId);
 
   const [activeId, setActiveId] = useState<string | null>(null);
-  // id de publicación -> fecha destino, mientras el servidor guarda y el Planner refresca.
-  const [moving, setMoving] = useState<Record<string, string>>({});
+  // Publicaciones esperando la confirmación del server action (única fase con "pulso").
+  const [saving, setSaving] = useState<Record<string, true>>({});
+  // Movimientos ya confirmados por la DB: la card se muestra en `target` sin esperar el re-render del
+  // servidor. `stale` = fechas que todavía pueden llegar en props viejas mientras el refresh está en vuelo.
+  const [movedTo, setMovedTo] = useState<Record<string, { target: string; stale: string[] }>>({});
 
   // Solo mouse: el touch queda fuera a propósito (v1.3), así el scroll táctil nunca compite con el drag.
   const sensors = useSensors(useSensor(MouseSensor, { activationConstraint: { distance: DRAG_ACTIVATION_DISTANCE } }));
 
-  // Cuando llegan los datos refrescados (fecha nueva, o la publicación ya no es visible por filtros),
-  // la card sale del estado "guardando". Se ajusta durante el render (patrón de React) en vez de en un effect.
+  // Reconciliación con el servidor (se ajusta durante el render, patrón de React, no en un effect):
+  // - props con fecha vieja (stale) -> se mantiene el override, así la card no vuelve al día anterior;
+  // - props con la fecha destino, con otra fecha, o sin la publicación -> el override ya no hace falta.
   const [seenPublications, setSeenPublications] = useState(publications);
   if (seenPublications !== publications) {
     setSeenPublications(publications);
-    const remaining = Object.entries(moving).filter(([id, target]) => {
-      const current = publications.find((p) => p.id === id);
-      return current && current.publicationDate !== target;
-    });
-    if (remaining.length !== Object.keys(moving).length) setMoving(Object.fromEntries(remaining));
+    const ids = Object.keys(movedTo);
+    if (ids.length > 0) {
+      const kept = ids.filter((id) => {
+        const server = publications.find((p) => p.id === id);
+        return server && movedTo[id].stale.includes(server.publicationDate);
+      });
+      if (kept.length !== ids.length) setMovedTo(Object.fromEntries(kept.map((id) => [id, movedTo[id]])));
+    }
   }
 
-  const activePublication = activeId ? publications.find((p) => p.id === activeId) ?? null : null;
+  // Solo se copian las publicaciones movidas; el resto conserva su referencia.
+  const displayedPublications = useMemo(
+    () => publications.map((p) => (movedTo[p.id] ? { ...p, publicationDate: movedTo[p.id].target } : p)),
+    [publications, movedTo]
+  );
+
+  const activePublication = activeId ? displayedPublications.find((p) => p.id === activeId) ?? null : null;
 
   function handleDragStart(event: DragStartEvent) {
     setActiveId(String(event.active.id));
@@ -125,21 +138,32 @@ export function WeekView({
   async function handleDragEnd({ active, over }: DragEndEvent) {
     setActiveId(null);
     if (!over) return;
-    const publication = publications.find((p) => p.id === active.id);
+    const publication = displayedPublications.find((p) => p.id === active.id);
     const targetKey = String(over.id);
     if (!publication || publication.publicationDate === targetKey) return;
 
-    setMoving((prev) => ({ ...prev, [publication.id]: targetKey }));
-    const result = await movePublicationToDate(publication.id, targetKey);
+    setSaving((prev) => ({ ...prev, [publication.id]: true }));
+    let result: { error: string | null };
+    try {
+      result = await movePublicationToDate(publication.id, targetKey);
+    } catch {
+      result = { error: "No se pudo conectar con el servidor. Probá de nuevo." };
+    }
+    setSaving((prev) => {
+      const next = { ...prev };
+      delete next[publication.id];
+      return next;
+    });
     if (result.error) {
-      setMoving((prev) => {
-        const next = { ...prev };
-        delete next[publication.id];
-        return next;
-      });
       toast.error("No se pudo mover la publicación", result.error);
       return;
     }
+    // La DB confirmó: la card pasa al día destino ya mismo. El refresh reconcilia en segundo plano.
+    setMovedTo((prev) => {
+      const stale = new Set([...(prev[publication.id]?.stale ?? []), publication.publicationDate]);
+      stale.delete(targetKey);
+      return { ...prev, [publication.id]: { target: targetKey, stale: [...stale] } };
+    });
     const targetDay = weekDays.find((d) => toDateKey(d) === targetKey);
     toast.success(targetDay ? `Publicación movida al ${formatWeekdayAndDay(targetDay)}` : "Publicación movida");
     router.refresh();
@@ -157,7 +181,7 @@ export function WeekView({
       <div className="grid flex-1 grid-cols-7 divide-x divide-border">
         {weekDays.map((day) => {
           const dateKey = toDateKey(day);
-          const dayPublications = publications
+          const dayPublications = displayedPublications
             .filter((p) => isSameDayAs(p.publicationDate, day))
             .sort((a, b) => (a.publicationTime ?? "").localeCompare(b.publicationTime ?? ""));
           const today = isToday(day);
@@ -200,7 +224,7 @@ export function WeekView({
                     key={publication.id}
                     publication={publication}
                     canMove={canMove}
-                    saving={publication.id in moving}
+                    saving={publication.id in saving}
                     onOpen={() => onOpenPublication(publication)}
                     onEdit={onEditPublication}
                     onDuplicate={onDuplicatePublication}
