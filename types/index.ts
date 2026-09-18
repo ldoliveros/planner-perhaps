@@ -2,6 +2,9 @@ export type CalendarStatus = "draft" | "active" | "archived";
 
 export type UserRole = "super_admin" | "account_manager" | "client";
 
+/** Estado de acceso derivado de Supabase Auth (no se guarda en DB). */
+export type UserAccessStatus = "active" | "invited" | "disabled";
+
 export interface ClientUser {
   id: string;
   email: string | null;
@@ -9,6 +12,8 @@ export interface ClientUser {
   role: UserRole;
   clientId: string | null;
   createdAt: string;
+  /** Solo lo resuelve un Super Admin (requiere la Auth Admin API); ausente si no se pudo o no corresponde. */
+  accessStatus?: UserAccessStatus;
 }
 
 export interface TeamMember {
@@ -19,6 +24,7 @@ export interface TeamMember {
   role: "super_admin" | "account_manager";
   assignedClients: { id: string; name: string }[];
   active: boolean;
+  accessStatus: UserAccessStatus;
   createdAt: string;
 }
 

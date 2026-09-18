@@ -13,6 +13,7 @@ import {
   mapStatus,
 } from "./mappers";
 import { withSignedClientLogos, withSignedThumbnails } from "./storage";
+import { deriveUserAccessStatus } from "@/lib/user-access";
 import type {
   AccountType,
   Calendar,
@@ -20,6 +21,7 @@ import type {
   Client,
   ClientAccount,
   ClientUser,
+  UserAccessStatus,
   ContentType,
   Platform,
   Publication,
@@ -150,8 +152,36 @@ export async function listUsersForClient(clientId: string): Promise<ClientUser[]
 }
 
 /**
+ * Estado de acceso de cada usuario, derivado de Supabase Auth (banned_until /
+ * email_confirmed_at). Requiere la Auth Admin API: solo Super Admin.
+ *
+ * admin.auth.admin.listUsers() pega contra la API de Auth (no PostgREST) y no
+ * tiene timeout propio: si esa API está lenta, un await sin acotar cuelga la
+ * página entera. Se acota con una carrera contra un timer y, si no responde a
+ * tiempo, devuelve null: quien llama muestra a todos como "Activo" por default
+ * (estado visual, no afecta el bloqueo real de acceso vía ban_duration).
+ */
+async function getAccessStatusById(): Promise<Map<string, UserAccessStatus> | null> {
+  await requireSuperAdmin();
+  const admin = createAdminClient();
+  const authList = await Promise.race([
+    admin.auth.admin.listUsers({ perPage: 200 }).then((res) => res.data.users),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000)),
+  ]);
+  if (!authList) return null;
+  return new Map(authList.map((u) => [u.id, deriveUserAccessStatus(u)]));
+}
+
+/** Agrega `accessStatus` a los usuarios Client de una ficha. Super-Admin-only. */
+export async function withAccessStatus(users: ClientUser[]): Promise<ClientUser[]> {
+  const accessById = await getAccessStatusById();
+  if (!accessById) return users;
+  return users.map((u) => ({ ...u, accessStatus: accessById.get(u.id) }));
+}
+
+/**
  * Equipo interno (Super Admin + Account Manager) con sus clientes asignados
- * y estado real de acceso (banned_until de Auth). Super-Admin-only: usa
+ * y estado real de acceso (Auth). Super-Admin-only: usa
  * createAdminClient() para leer el estado de ban, que no vive en `profiles`.
  */
 export async function listTeamMembers(): Promise<TeamMember[]> {
@@ -176,19 +206,7 @@ export async function listTeamMembers(): Promise<TeamMember[]> {
     clientIds.length > 0 ? await supabase.from("clients").select("id, name").in("id", clientIds) : { data: [] };
   const clientNameById = new Map((clientsData ?? []).map((c) => [c.id, c.name]));
 
-  // admin.auth.admin.listUsers() pega contra la API de Auth (no PostgREST) y no
-  // tiene timeout propio: si esa API está lenta, un await sin acotar acá cuelga
-  // la página entera indefinidamente. Se acota con una carrera contra un timer:
-  // si no responde a tiempo, se listan igual los usuarios pero como "Activo" por
-  // default (estado visual, no afecta el bloqueo real de acceso vía ban_duration).
-  const admin = createAdminClient();
-  const authList = await Promise.race([
-    admin.auth.admin.listUsers({ perPage: 200 }).then((res) => res.data.users),
-    new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000)),
-  ]);
-  const activeById = new Map(
-    (authList ?? []).map((u) => [u.id, !u.banned_until || new Date(u.banned_until).getTime() <= Date.now()])
-  );
+  const accessById = await getAccessStatusById();
 
   return members.map((m) => ({
     id: m.id,
@@ -199,7 +217,8 @@ export async function listTeamMembers(): Promise<TeamMember[]> {
     assignedClients: (assignments ?? [])
       .filter((a) => a.user_id === m.id)
       .map((a) => ({ id: a.client_id, name: clientNameById.get(a.client_id) ?? "—" })),
-    active: activeById.get(m.id) ?? true,
+    active: (accessById?.get(m.id) ?? "active") !== "disabled",
+    accessStatus: accessById?.get(m.id) ?? "active",
     createdAt: m.created_at,
   }));
 }

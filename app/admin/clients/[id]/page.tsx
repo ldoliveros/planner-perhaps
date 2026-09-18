@@ -8,6 +8,7 @@ import {
   listCalendarsForClient,
   listClientAccountsForClient,
   listUsersForClient,
+  withAccessStatus,
 } from "@/lib/supabase/queries";
 
 export default async function ClientDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -52,7 +53,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
       usedAccountIds={usedAccountIds}
       platforms={lookups.platforms}
       accountTypes={lookups.accountTypes}
-      clientUsers={clientUsers}
+      clientUsers={profile?.role === "super_admin" ? await withAccessStatus(clientUsers) : clientUsers}
       canEditClient={profile?.role === "super_admin"}
     />
   );

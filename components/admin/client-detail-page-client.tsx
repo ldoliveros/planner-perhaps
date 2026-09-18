@@ -31,6 +31,8 @@ import { deleteClientAccount, setClientAccountActive } from "@/lib/actions/clien
 import { deleteClientUser } from "@/lib/actions/client-users";
 import { toast } from "@/lib/toast";
 import { ClientUserFormDialog } from "@/components/admin/client-user-form-dialog";
+import { ResendInvitationButton } from "@/components/admin/resend-invitation-button";
+import { UserAccessBadge } from "@/components/admin/user-access-badge";
 import type { AccountType, Calendar, Client, ClientAccount, ClientUser, Platform } from "@/types";
 
 interface ClientDetailPageClientProps {
@@ -213,20 +215,21 @@ export function ClientDetailPageClient({
               <TableRow>
                 <TableHead>Email</TableHead>
                 <TableHead>Nombre</TableHead>
-                <TableHead>Invitado</TableHead>
+                <TableHead>Estado</TableHead>
+                <TableHead>Fecha de alta</TableHead>
                 <TableHead className="text-right">Acciones</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {clientUsers.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">
+                  <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
                     Todavía no hay usuarios invitados. Invitá al primero con &quot;Invitar cliente&quot;.
                   </TableCell>
                 </TableRow>
               )}
               {clientUsers.map((user) => (
-                <ClientUserTableRow key={user.id} clientId={client.id} user={user} />
+                <ClientUserTableRow key={user.id} clientId={client.id} user={user} canResendInvitation={canEditClient} />
               ))}
             </TableBody>
           </Table>
@@ -362,7 +365,15 @@ function ClientArchiveActions({ client, calendarCount }: { client: Client; calen
   );
 }
 
-function ClientUserTableRow({ clientId, user }: { clientId: string; user: ClientUser }) {
+function ClientUserTableRow({
+  clientId,
+  user,
+  canResendInvitation,
+}: {
+  clientId: string;
+  user: ClientUser;
+  canResendInvitation: boolean;
+}) {
   const router = useRouter();
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -386,8 +397,13 @@ function ClientUserTableRow({ clientId, user }: { clientId: string; user: Client
     <TableRow>
       <TableCell className="font-medium text-foreground">{user.email}</TableCell>
       <TableCell className="text-muted-foreground">{user.fullName ?? "—"}</TableCell>
+      <TableCell>{user.accessStatus && <UserAccessBadge status={user.accessStatus} />}</TableCell>
       <TableCell className="text-muted-foreground">{new Date(user.createdAt).toLocaleDateString("es-AR")}</TableCell>
       <TableCell className="text-right">
+        <div className="flex items-center justify-end gap-1">
+        {canResendInvitation && user.accessStatus === "invited" && (
+          <ResendInvitationButton userId={user.id} variant="ghost" />
+        )}
         <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
           <AlertDialogTrigger render={<Button variant="ghost" size="sm" className="gap-1.5 text-destructive" />}>
             <Trash2 className="size-3.5" />
@@ -409,6 +425,7 @@ function ClientUserTableRow({ clientId, user }: { clientId: string; user: Client
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+        </div>
       </TableCell>
     </TableRow>
   );

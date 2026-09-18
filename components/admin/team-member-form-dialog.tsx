@@ -15,7 +15,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
+import { ResendInvitationButton } from "@/components/admin/resend-invitation-button";
+import { UserAccessBadge } from "@/components/admin/user-access-badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -359,9 +360,11 @@ function EditBody({ member, clients, onDone }: { member: TeamMember; clients: Cl
       <div className="flex items-center justify-between gap-2 rounded-lg border border-border px-3 py-2">
         <div className="flex items-center gap-2 text-sm">
           <span className="text-muted-foreground">Estado:</span>
-          <Badge variant={member.active ? "secondary" : "outline"}>{member.active ? "Activo" : "Inactivo"}</Badge>
+          <UserAccessBadge status={member.accessStatus} />
         </div>
-        {member.active ? (
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {member.accessStatus === "invited" && <ResendInvitationButton userId={member.id} />}
+          {member.active ? (
           <AlertDialog>
             <AlertDialogTrigger render={<Button type="button" variant="outline" size="sm" className="text-destructive" />}>
               Desactivar acceso
@@ -387,6 +390,7 @@ function EditBody({ member, clients, onDone }: { member: TeamMember; clients: Cl
             Reactivar acceso
           </Button>
         )}
+        </div>
       </div>
 
       <div className="flex flex-col gap-1.5 rounded-lg border border-border px-3 py-2">

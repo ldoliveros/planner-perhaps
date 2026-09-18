@@ -2,6 +2,7 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { UserAccessBadge } from "@/components/admin/user-access-badge";
 import { TeamMemberCreateDialog, TeamMemberEditDialog } from "@/components/admin/team-member-form-dialog";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { ROLE_LABELS } from "@/lib/role-labels";
@@ -75,9 +76,7 @@ export function TeamPageClient({ members, clients }: TeamPageClientProps) {
                   )}
                 </TableCell>
                 <TableCell>
-                  <Badge variant={member.active ? "secondary" : "outline"}>
-                    {member.active ? "Activo" : "Inactivo"}
-                  </Badge>
+                  <UserAccessBadge status={member.accessStatus} />
                 </TableCell>
                 <TableCell className="text-right">
                   <TeamMemberEditDialog member={member} clients={clients} />
