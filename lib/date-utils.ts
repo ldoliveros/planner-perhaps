@@ -55,6 +55,11 @@ export function formatFullDateFromDate(date: Date): string {
   return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
+/** "miércoles 16" — día de la semana + número, en minúscula para usar dentro de una frase. */
+export function formatWeekdayAndDay(date: Date): string {
+  return format(date, "EEEE d", { locale: es });
+}
+
 export function formatFullDate(dateIso: string): string {
   return formatFullDateFromDate(new Date(`${dateIso}T00:00:00`));
 }

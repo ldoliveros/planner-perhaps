@@ -1,7 +1,9 @@
 "use client";
 
+import type { ButtonHTMLAttributes } from "react";
 import Image from "next/image";
 import { ImageIcon, Paperclip } from "lucide-react";
+import { cn } from "cn";
 import { PublicationQuickActions } from "@/components/calendar/publication-quick-actions";
 import { PlatformIcon } from "@/components/icons/brand-icons";
 import { useLookups } from "@/components/providers/lookups-provider";
@@ -15,6 +17,14 @@ interface PublicationCardProps {
   onDuplicate?: (publication: Publication) => void;
   clientId?: string;
   showCalendarLabel?: boolean;
+  /**
+   * Drag & Drop en Semana (Bloque D). El botón que cubre la card es el activador
+   * del drag: así el `•••` (hermano por encima) nunca inicia un drag. Sin estas
+   * props la card se comporta exactamente como antes (Client User, previews).
+   */
+  dragRef?: (node: HTMLElement | null) => void;
+  dragProps?: ButtonHTMLAttributes<HTMLButtonElement>;
+  dragState?: "dragging" | "saving";
 }
 
 export function PublicationCard({
@@ -24,6 +34,9 @@ export function PublicationCard({
   onDuplicate,
   clientId,
   showCalendarLabel,
+  dragRef,
+  dragProps,
+  dragState,
 }: PublicationCardProps) {
   const { getCalendar, getClientAccount, getContentType, getPlatform, getStatus } = useLookups();
   const contentType = getContentType(publication.contentTypeId);
@@ -42,12 +55,23 @@ export function PublicationCard({
   const canManage = Boolean(onEdit && onDuplicate && clientId);
 
   return (
-    <div className="group/card relative flex w-full flex-col overflow-hidden rounded-lg border border-border bg-card text-left shadow-xs transition hover:-translate-y-0.5 hover:border-foreground/15 hover:shadow-md">
+    <div
+      className={cn(
+        "group/card relative flex w-full flex-col overflow-hidden rounded-lg border border-border bg-card text-left shadow-xs transition hover:-translate-y-0.5 hover:border-foreground/15 hover:shadow-md",
+        dragState === "dragging" && "opacity-40",
+        dragState === "saving" && "animate-pulse opacity-70"
+      )}
+    >
       <button
+        ref={dragRef}
         type="button"
         onClick={onOpen}
         aria-label={publication.title}
-        className="absolute inset-0 z-[1] rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        {...dragProps}
+        className={cn(
+          "absolute inset-0 z-[1] rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          dragProps && "cursor-grab active:cursor-grabbing"
+        )}
       />
       <div className="relative h-48 w-full shrink-0 overflow-hidden bg-muted">
         {heroAsset?.thumbnailUrl ? (

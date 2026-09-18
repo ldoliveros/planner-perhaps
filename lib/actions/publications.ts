@@ -188,6 +188,39 @@ export async function setPublicationStatus(
   return { error: null };
 }
 
+/**
+ * Mueve una publicación a otro día (Bloque D — Drag & Drop en Semana).
+ * Actualiza ÚNICAMENTE `publication_date`: hora, calendario, campaña, estado,
+ * destinos y demás campos quedan intactos. Mismo criterio de permisos que
+ * setPublicationStatus: lo resuelve RLS vía el cliente autenticado y un update
+ * bloqueado (0 filas) se devuelve como error explícito.
+ */
+export async function movePublicationToDate(
+  publicationId: string,
+  newDate: string
+): Promise<{ error: string | null }> {
+  const parsed = /^\d{4}-\d{2}-\d{2}$/.test(newDate) ? new Date(`${newDate}T00:00:00Z`) : null;
+  if (!parsed || Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== newDate) {
+    return { error: "Fecha inválida." };
+  }
+
+  const supabase = await createClient();
+  const { data: updated, error } = await supabase
+    .from("publications")
+    .update({ publication_date: newDate })
+    .eq("id", publicationId)
+    .select("id, client_id")
+    .maybeSingle();
+
+  if (error) return { error: error.message };
+  if (!updated) return { error: "No se pudo mover la publicación: no encontrada o sin permisos." };
+
+  revalidatePath(`/admin/clients/${updated.client_id}/planner`);
+  revalidatePath(`/admin/clients/${updated.client_id}`);
+  revalidatePath("/admin/calendars");
+  return { error: null };
+}
+
 export async function deletePublication(publicationId: string, clientId: string): Promise<{ error: string | null }> {
   const supabase = await createClient();
   const { error } = await supabase.from("publications").delete().eq("id", publicationId);
