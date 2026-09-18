@@ -1,12 +1,13 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Check, Copy as CopyIcon, List, ListOrdered } from "lucide-react";
+import { Bold, Check, Copy as CopyIcon, List, ListOrdered } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { EmojiPicker } from "@/components/publication/emoji-picker";
 import { useCopyToClipboard } from "@/lib/use-copy-to-clipboard";
+import { countPerceivedCharacters, toggleUnicodeBold } from "@/lib/unicode-text-style";
 import { toast } from "@/lib/toast";
 
 interface CopyEditorProps {
@@ -61,6 +62,23 @@ export function CopyEditor({ id, name, defaultValue }: CopyEditorProps) {
     const next = value.slice(0, start) + insertText + value.slice(end);
     setValue(next);
     focusAndSelect(start + insertText.length);
+  }
+
+  /** Negrita Unicode sobre la selección actual. Sin selección: no hace nada. */
+  function handleBold() {
+    const el = textareaRef.current;
+    if (!el) return;
+    const start = el.selectionStart ?? 0;
+    const end = el.selectionEnd ?? 0;
+    if (start === end) return;
+
+    const selected = value.slice(start, end);
+    const transformed = toggleUnicodeBold(selected);
+    if (transformed === selected) return;
+
+    const next = value.slice(0, start) + transformed + value.slice(end);
+    setValue(next);
+    focusAndSelect(start, start + transformed.length);
   }
 
   function handleBulletList() {
@@ -135,6 +153,22 @@ export function CopyEditor({ id, name, defaultValue }: CopyEditorProps) {
               render={
                 <button
                   type="button"
+                  onClick={handleBold}
+                  aria-label="Negrita"
+                  className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                />
+              }
+            >
+              <Bold className="size-4" />
+            </TooltipTrigger>
+            <TooltipContent side="top">Negrita</TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  type="button"
                   onClick={handleBulletList}
                   aria-label="Lista con viñetas"
                   className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
@@ -185,7 +219,7 @@ export function CopyEditor({ id, name, defaultValue }: CopyEditorProps) {
         onChange={(e) => setValue(e.target.value)}
       />
 
-      <span className="self-end text-xs text-muted-foreground">{value.length} caracteres</span>
+      <span className="self-end text-xs text-muted-foreground">{countPerceivedCharacters(value)} caracteres</span>
     </div>
   );
 }
