@@ -22,6 +22,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { CampaignSelect } from "@/components/publication/campaign-select";
 import { CopyEditor } from "@/components/publication/copy-editor";
 import { PlatformIcon } from "@/components/icons/brand-icons";
@@ -206,28 +207,35 @@ export function PublicationForm({
                 Este cliente todavía no tiene cuentas configuradas. Agregá una desde la ficha del cliente.
               </p>
             ) : (
-              <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-2">
                 {platforms
                   .filter((platform) => accountsByPlatform.has(platform.id))
                   .map((platform) => (
-                    <div key={platform.id} className="flex flex-col gap-1.5">
-                      <div className="flex items-center gap-1.5">
-                        <PlatformIcon platformKey={platform.key} className="size-3.5" style={{ color: platform.color }} />
-                        <span className="text-xs font-medium text-foreground">{platform.name}</span>
-                      </div>
-                      <div className="flex flex-col gap-1 rounded-lg border border-border px-3 py-2">
-                        {accountsByPlatform.get(platform.id)!.map((account) => (
-                          <label key={account.id} className="flex items-center gap-2 text-sm text-foreground">
-                            <Checkbox
-                              checked={selectedAccountIds.has(account.id)}
-                              onCheckedChange={() => toggleDestination(account.id)}
+                    <div key={platform.id} className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                      <Tooltip>
+                        <TooltipTrigger
+                          render={
+                            <button
+                              type="button"
+                              aria-label={platform.name}
+                              className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground"
                             />
-                            {account.name}
-                            {account.handle && <span className="text-muted-foreground">{account.handle}</span>}
-                            {!account.active && <span className="text-xs text-muted-foreground">(inactiva)</span>}
-                          </label>
-                        ))}
-                      </div>
+                          }
+                        >
+                          <PlatformIcon platformKey={platform.key} className="size-4" style={{ color: platform.color }} />
+                        </TooltipTrigger>
+                        <TooltipContent side="top">{platform.name}</TooltipContent>
+                      </Tooltip>
+                      {accountsByPlatform.get(platform.id)!.map((account) => (
+                        <label key={account.id} className="flex items-center gap-1.5 text-sm text-foreground">
+                          <Checkbox
+                            checked={selectedAccountIds.has(account.id)}
+                            onCheckedChange={() => toggleDestination(account.id)}
+                          />
+                          {account.handle ? account.handle : account.name}
+                          {!account.active && <span className="text-xs text-muted-foreground">(inactiva)</span>}
+                        </label>
+                      ))}
                     </div>
                   ))}
               </div>

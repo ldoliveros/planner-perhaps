@@ -84,16 +84,9 @@ export function PublicationDrawer({ publication, onOpenChange, onEdit, onDuplica
             )}
 
             <div className="flex flex-col gap-5 p-5">
-              <SheetHeader className="flex-row items-start justify-between gap-3 p-0 text-left">
-                <div className="flex flex-col gap-1">
-                  <SheetTitle className="text-lg">{publication.title}</SheetTitle>
-                  <SheetDescription>
-                    {formatFullDate(publication.publicationDate)}
-                    {publication.publicationTime ? ` · ${formatTime(publication.publicationTime)}` : ""}
-                  </SheetDescription>
-                </div>
+              <SheetHeader className="flex flex-col gap-3 p-0 text-left">
                 {(onEdit || onDuplicate) && (
-                  <div className="flex shrink-0 items-center gap-1.5">
+                  <div className="flex items-center justify-end gap-1.5">
                     {onDuplicate && (
                       <Button size="sm" variant="outline" className="gap-1.5" onClick={() => onDuplicate(publication)}>
                         <Copy className="size-3.5" />
@@ -108,6 +101,13 @@ export function PublicationDrawer({ publication, onOpenChange, onEdit, onDuplica
                     )}
                   </div>
                 )}
+                <div className="flex flex-col gap-1">
+                  <SheetTitle className="w-full text-lg">{publication.title}</SheetTitle>
+                  <SheetDescription>
+                    {formatFullDate(publication.publicationDate)}
+                    {publication.publicationTime ? ` · ${formatTime(publication.publicationTime)}` : ""}
+                  </SheetDescription>
+                </div>
               </SheetHeader>
 
               <div className="flex flex-wrap items-center gap-1.5">
