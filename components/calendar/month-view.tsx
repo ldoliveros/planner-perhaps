@@ -5,6 +5,7 @@ import { Plus } from "lucide-react";
 import { isWeekend } from "date-fns";
 import { cn } from "cn";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { PublicationQuickActions } from "@/components/calendar/publication-quick-actions";
 import { PlatformIcon } from "@/components/icons/brand-icons";
 import { useLookups } from "@/components/providers/lookups-provider";
 import { hexToRgba } from "@/lib/color-contrast";
@@ -25,11 +26,15 @@ const MAX_VISIBLE_PER_DAY = 3;
 interface MonthChipProps {
   publication: Publication;
   onOpen: () => void;
+  onEdit?: (publication: Publication) => void;
+  onDuplicate?: (publication: Publication) => void;
+  clientId?: string;
   showCalendarLabel: boolean;
 }
 
-function MonthChip({ publication, onOpen, showCalendarLabel }: MonthChipProps) {
+function MonthChip({ publication, onOpen, onEdit, onDuplicate, clientId, showCalendarLabel }: MonthChipProps) {
   const { getCalendar, getClientAccount, getPlatform, getStatus } = useLookups();
+  const canManage = Boolean(onEdit && onDuplicate && clientId);
   const status = getStatus(publication.statusId);
   const calendar = showCalendarLabel ? getCalendar(publication.calendarId) : undefined;
   const primaryAsset = publication.assets.find((a) => a.isPrimary) ?? publication.assets[0];
@@ -42,16 +47,29 @@ function MonthChip({ publication, onOpen, showCalendarLabel }: MonthChipProps) {
   );
 
   return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className="flex w-full cursor-pointer items-start gap-2 rounded-md px-1 py-1 text-left transition-colors hover:bg-muted"
-    >
+    <div className="group/chip relative flex w-full items-start gap-2 rounded-md px-1 py-1 transition-colors hover:bg-muted">
+      <button
+        type="button"
+        onClick={onOpen}
+        aria-label={publication.title}
+        className="absolute inset-0 z-[1] rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      />
       <span className="relative size-12 shrink-0 overflow-hidden rounded-sm bg-muted">
         {primaryAsset?.thumbnailUrl && (
           <Image src={primaryAsset.thumbnailUrl} alt="" fill sizes="48px" className="object-cover" />
         )}
       </span>
+      {canManage && (
+        <div className="absolute right-0.5 top-0.5 z-10 opacity-100 transition-opacity [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover/chip:opacity-100 [@media(hover:hover)]:group-focus-within/chip:opacity-100">
+          <PublicationQuickActions
+            publication={publication}
+            clientId={clientId!}
+            onEdit={() => onEdit!(publication)}
+            onDuplicate={() => onDuplicate!(publication)}
+            className="size-5 bg-background/90 shadow-xs"
+          />
+        </div>
+      )}
       <span className="flex min-w-0 flex-1 flex-col gap-0.5 leading-tight">
         {status && (
           <span
@@ -87,7 +105,7 @@ function MonthChip({ publication, onOpen, showCalendarLabel }: MonthChipProps) {
           </span>
         )}
       </span>
-    </button>
+    </div>
   );
 }
 
@@ -96,6 +114,9 @@ interface MonthDayCellProps {
   publications: Publication[];
   inCurrentMonth: boolean;
   onOpenPublication: (publication: Publication) => void;
+  onEditPublication?: (publication: Publication) => void;
+  onDuplicatePublication?: (publication: Publication) => void;
+  clientId?: string;
   onCreateForDay?: (day: Date) => void;
   clientColor: string;
   showCalendarLabel: boolean;
@@ -106,6 +127,9 @@ function MonthDayCell({
   publications,
   inCurrentMonth,
   onOpenPublication,
+  onEditPublication,
+  onDuplicatePublication,
+  clientId,
   onCreateForDay,
   clientColor,
   showCalendarLabel,
@@ -156,6 +180,9 @@ function MonthDayCell({
             key={publication.id}
             publication={publication}
             onOpen={() => onOpenPublication(publication)}
+            onEdit={onEditPublication}
+            onDuplicate={onDuplicatePublication}
+            clientId={clientId}
             showCalendarLabel={showCalendarLabel}
           />
         ))}
@@ -181,6 +208,9 @@ function MonthDayCell({
                   key={publication.id}
                   publication={publication}
                   onOpen={() => onOpenPublication(publication)}
+                  onEdit={onEditPublication}
+                  onDuplicate={onDuplicatePublication}
+                  clientId={clientId}
                   showCalendarLabel={showCalendarLabel}
                 />
               ))}
@@ -196,6 +226,9 @@ interface MonthViewProps {
   anchorDate: Date;
   publications: Publication[];
   onOpenPublication: (publication: Publication) => void;
+  onEditPublication?: (publication: Publication) => void;
+  onDuplicatePublication?: (publication: Publication) => void;
+  clientId?: string;
   onCreateForDay?: (day: Date) => void;
   clientColor: string;
   showCalendarLabel: boolean;
@@ -205,6 +238,9 @@ export function MonthView({
   anchorDate,
   publications,
   onOpenPublication,
+  onEditPublication,
+  onDuplicatePublication,
+  clientId,
   onCreateForDay,
   clientColor,
   showCalendarLabel,
@@ -240,6 +276,9 @@ export function MonthView({
               publications={dayPublications}
               inCurrentMonth={isSameMonthAs(day, anchorDate)}
               onOpenPublication={onOpenPublication}
+              onEditPublication={onEditPublication}
+              onDuplicatePublication={onDuplicatePublication}
+              clientId={clientId}
               onCreateForDay={onCreateForDay}
               clientColor={clientColor}
               showCalendarLabel={showCalendarLabel}

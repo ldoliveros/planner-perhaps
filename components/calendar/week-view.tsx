@@ -12,6 +12,9 @@ interface WeekViewProps {
   weekDays: Date[];
   publications: Publication[];
   onOpenPublication: (publication: Publication) => void;
+  onEditPublication?: (publication: Publication) => void;
+  onDuplicatePublication?: (publication: Publication) => void;
+  clientId?: string;
   onCreateForDay?: (day: Date) => void;
   clientColor: string;
   showCalendarLabel: boolean;
@@ -21,6 +24,9 @@ export function WeekView({
   weekDays,
   publications,
   onOpenPublication,
+  onEditPublication,
+  onDuplicatePublication,
+  clientId,
   onCreateForDay,
   clientColor,
   showCalendarLabel,
@@ -68,6 +74,9 @@ export function WeekView({
                   key={publication.id}
                   publication={publication}
                   onOpen={() => onOpenPublication(publication)}
+                  onEdit={onEditPublication}
+                  onDuplicate={onDuplicatePublication}
+                  clientId={clientId}
                   showCalendarLabel={showCalendarLabel}
                 />
               ))}

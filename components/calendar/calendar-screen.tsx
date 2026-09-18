@@ -282,6 +282,9 @@ export function CalendarScreen({
               days={agendaDays}
               publications={filteredPublications}
               onOpenPublication={setSelectedPublication}
+              onEditPublication={readOnly ? undefined : openEditForm}
+              onDuplicatePublication={readOnly ? undefined : openDuplicateForm}
+              clientId={client.id}
               showCalendarLabel={showCalendarLabel}
             />
           </div>
@@ -294,6 +297,9 @@ export function CalendarScreen({
                   weekDays={weekDays}
                   publications={filteredPublications}
                   onOpenPublication={setSelectedPublication}
+                  onEditPublication={readOnly ? undefined : openEditForm}
+                  onDuplicatePublication={readOnly ? undefined : openDuplicateForm}
+                  clientId={client.id}
                   onCreateForDay={readOnly ? undefined : openCreateForm}
                   clientColor={client.color}
                   showCalendarLabel={showCalendarLabel}
@@ -303,6 +309,9 @@ export function CalendarScreen({
                   anchorDate={anchorDate}
                   publications={filteredPublications}
                   onOpenPublication={setSelectedPublication}
+                  onEditPublication={readOnly ? undefined : openEditForm}
+                  onDuplicatePublication={readOnly ? undefined : openDuplicateForm}
+                  clientId={client.id}
                   onCreateForDay={readOnly ? undefined : openCreateForm}
                   clientColor={client.color}
                   showCalendarLabel={showCalendarLabel}
@@ -314,6 +323,9 @@ export function CalendarScreen({
                 days={agendaDays}
                 publications={filteredPublications}
                 onOpenPublication={setSelectedPublication}
+                onEditPublication={readOnly ? undefined : openEditForm}
+                onDuplicatePublication={readOnly ? undefined : openDuplicateForm}
+                clientId={client.id}
                 showCalendarLabel={showCalendarLabel}
               />
             </div>

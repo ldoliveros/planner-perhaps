@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { ImageIcon, Paperclip } from "lucide-react";
+import { PublicationQuickActions } from "@/components/calendar/publication-quick-actions";
 import { PlatformIcon } from "@/components/icons/brand-icons";
 import { useLookups } from "@/components/providers/lookups-provider";
 import { formatTime } from "@/lib/date-utils";
@@ -10,10 +11,20 @@ import type { Publication } from "@/types";
 interface PublicationCardProps {
   publication: Publication;
   onOpen: () => void;
+  onEdit?: (publication: Publication) => void;
+  onDuplicate?: (publication: Publication) => void;
+  clientId?: string;
   showCalendarLabel?: boolean;
 }
 
-export function PublicationCard({ publication, onOpen, showCalendarLabel }: PublicationCardProps) {
+export function PublicationCard({
+  publication,
+  onOpen,
+  onEdit,
+  onDuplicate,
+  clientId,
+  showCalendarLabel,
+}: PublicationCardProps) {
   const { getCalendar, getClientAccount, getContentType, getPlatform, getStatus } = useLookups();
   const contentType = getContentType(publication.contentTypeId);
   const status = getStatus(publication.statusId);
@@ -28,12 +39,16 @@ export function PublicationCard({ publication, onOpen, showCalendarLabel }: Publ
   const uniquePlatformIds = Array.from(new Set(destinationAccounts.map((a) => a.platformId)));
   const uniqueAccountNames = Array.from(new Set(destinationAccounts.map((a) => a.name)));
 
+  const canManage = Boolean(onEdit && onDuplicate && clientId);
+
   return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className="group flex w-full flex-col overflow-hidden rounded-lg border border-border bg-card text-left shadow-xs transition hover:-translate-y-0.5 hover:border-foreground/15 hover:shadow-md"
-    >
+    <div className="group/card relative flex w-full flex-col overflow-hidden rounded-lg border border-border bg-card text-left shadow-xs transition hover:-translate-y-0.5 hover:border-foreground/15 hover:shadow-md">
+      <button
+        type="button"
+        onClick={onOpen}
+        aria-label={publication.title}
+        className="absolute inset-0 z-[1] rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      />
       <div className="relative h-48 w-full shrink-0 overflow-hidden bg-muted">
         {heroAsset?.thumbnailUrl ? (
           <Image
@@ -41,7 +56,7 @@ export function PublicationCard({ publication, onOpen, showCalendarLabel }: Publ
             alt=""
             fill
             sizes="220px"
-            className="object-cover transition duration-200 group-hover:scale-[1.03]"
+            className="object-cover transition duration-200 group-hover/card:scale-[1.03]"
           />
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-1 bg-muted/60 text-muted-foreground">
@@ -76,17 +91,30 @@ export function PublicationCard({ publication, onOpen, showCalendarLabel }: Publ
       </div>
 
       <div className="flex flex-1 flex-col gap-1.5 border-l-[3px] p-2" style={{ borderLeftColor: status?.color }}>
-        {uniquePlatformIds.length > 0 && (
-          <div className="flex items-center gap-1">
-            {uniquePlatformIds.map((platformId) => {
-              const platform = getPlatform(platformId);
-              if (!platform) return null;
-              return (
-                <span key={platformId} title={platform.name}>
-                  <PlatformIcon platformKey={platform.key} className="size-3.5" style={{ color: platform.color }} />
-                </span>
-              );
-            })}
+        {(uniquePlatformIds.length > 0 || canManage) && (
+          <div className="flex items-center justify-between gap-1">
+            <div className="flex items-center gap-1">
+              {uniquePlatformIds.map((platformId) => {
+                const platform = getPlatform(platformId);
+                if (!platform) return null;
+                return (
+                  <span key={platformId} title={platform.name}>
+                    <PlatformIcon platformKey={platform.key} className="size-3.5" style={{ color: platform.color }} />
+                  </span>
+                );
+              })}
+            </div>
+            {canManage && (
+              <div className="relative z-10 -my-1 -mr-1 shrink-0">
+                <PublicationQuickActions
+                  publication={publication}
+                  clientId={clientId!}
+                  onEdit={() => onEdit!(publication)}
+                  onDuplicate={() => onDuplicate!(publication)}
+                  className="size-6"
+                />
+              </div>
+            )}
           </div>
         )}
         <p className="line-clamp-2 text-[13px] font-medium leading-snug text-foreground">{publication.title}</p>
@@ -102,6 +130,6 @@ export function PublicationCard({ publication, onOpen, showCalendarLabel }: Publ
           </span>
         </div>
       </div>
-    </button>
+    </div>
   );
 }

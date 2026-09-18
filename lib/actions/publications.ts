@@ -151,6 +151,43 @@ export async function savePublication(
   return { error: null, savedAt: Date.now() };
 }
 
+/**
+ * Actualiza ÚNICAMENTE el estado de una publicación (Bloque C — acciones
+ * rápidas desde las cards). No toca ningún otro campo. El permiso real lo
+ * sigue resolviendo RLS (publications_manage / can_manage_client) a través
+ * del cliente autenticado — igual que savePublication/deletePublication, acá
+ * no se reimplementa ni se relaja esa verificación. Si RLS bloquea el
+ * update (ej. Client User intentando esto), el .select() posterior a la
+ * escritura viene vacío y se lo tratamos como error explícito en vez de un
+ * éxito silencioso que no cambió nada.
+ */
+export async function setPublicationStatus(
+  publicationId: string,
+  statusId: string
+): Promise<{ error: string | null }> {
+  const supabase = await createClient();
+
+  const { data: validStatus } = await supabase.from("statuses").select("id").eq("id", statusId).maybeSingle();
+  if (!validStatus) {
+    return { error: "Estado inválido." };
+  }
+
+  const { data: updated, error } = await supabase
+    .from("publications")
+    .update({ status_id: statusId })
+    .eq("id", publicationId)
+    .select("id, client_id")
+    .maybeSingle();
+
+  if (error) return { error: error.message };
+  if (!updated) return { error: "No se pudo actualizar el estado: publicación no encontrada o sin permisos." };
+
+  revalidatePath(`/admin/clients/${updated.client_id}/planner`);
+  revalidatePath(`/admin/clients/${updated.client_id}`);
+  revalidatePath("/admin/calendars");
+  return { error: null };
+}
+
 export async function deletePublication(publicationId: string, clientId: string): Promise<{ error: string | null }> {
   const supabase = await createClient();
   const { error } = await supabase.from("publications").delete().eq("id", publicationId);

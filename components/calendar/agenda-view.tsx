@@ -4,6 +4,7 @@ import Image from "next/image";
 import { ImageIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { PublicationQuickActions } from "@/components/calendar/publication-quick-actions";
 import { PlatformIcon } from "@/components/icons/brand-icons";
 import { useLookups } from "@/components/providers/lookups-provider";
 import { formatFullDate, formatTime, isSameDayAs } from "@/lib/date-utils";
@@ -13,12 +14,24 @@ interface AgendaViewProps {
   days: Date[];
   publications: Publication[];
   onOpenPublication: (publication: Publication) => void;
+  onEditPublication?: (publication: Publication) => void;
+  onDuplicatePublication?: (publication: Publication) => void;
+  clientId?: string;
   showCalendarLabel: boolean;
 }
 
 /** Vista "Lista": tabla compacta con thumbnail, similar al listado de /admin/publications. */
-export function AgendaView({ days, publications, onOpenPublication, showCalendarLabel }: AgendaViewProps) {
+export function AgendaView({
+  days,
+  publications,
+  onOpenPublication,
+  onEditPublication,
+  onDuplicatePublication,
+  clientId,
+  showCalendarLabel,
+}: AgendaViewProps) {
   const { getCalendar, getClientAccount, getContentType, getPlatform, getStatus } = useLookups();
+  const canManage = Boolean(onEditPublication && onDuplicatePublication && clientId);
 
   const visiblePublications = days
     .flatMap((day) => publications.filter((p) => isSameDayAs(p.publicationDate, day)))
@@ -47,6 +60,7 @@ export function AgendaView({ days, publications, onOpenPublication, showCalendar
             <TableHead>Tipo</TableHead>
             <TableHead>Estado</TableHead>
             <TableHead>Fecha</TableHead>
+            {canManage && <TableHead className="sticky right-0 w-10 bg-background"></TableHead>}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -110,6 +124,17 @@ export function AgendaView({ days, publications, onOpenPublication, showCalendar
                   {formatFullDate(publication.publicationDate)}
                   {publication.publicationTime ? ` · ${formatTime(publication.publicationTime)}` : ""}
                 </TableCell>
+                {canManage && (
+                  <TableCell className="sticky right-0 w-10 bg-background text-right" onClick={(e) => e.stopPropagation()}>
+                    <PublicationQuickActions
+                      publication={publication}
+                      clientId={clientId!}
+                      onEdit={() => onEditPublication!(publication)}
+                      onDuplicate={() => onDuplicatePublication!(publication)}
+                      className="ml-auto size-7"
+                    />
+                  </TableCell>
+                )}
               </TableRow>
             );
           })}
