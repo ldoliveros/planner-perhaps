@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { ChevronLeft, ChevronRight, FolderOpen, Info, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, FolderOpen, Info, Plus } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -24,6 +24,8 @@ interface CalendarHeaderProps {
   onNext: () => void;
   onToday: () => void;
   onCreate?: () => void;
+  /** Exportar CSV del contexto actual. Solo se pasa a quien puede editar (no Client User). */
+  onExport?: () => void;
   allClients?: { id: string; name: string }[];
   onSwitchClient?: (clientId: string) => void;
 }
@@ -40,6 +42,7 @@ export function CalendarHeader({
   onNext,
   onToday,
   onCreate,
+  onExport,
   allClients,
   onSwitchClient,
 }: CalendarHeaderProps) {
@@ -171,6 +174,13 @@ export function CalendarHeader({
               <FolderOpen />
               Abrir en Drive
             </a>
+          )}
+
+          {onExport && (
+            <Button variant="outline" size="sm" className="gap-1.5" onClick={onExport}>
+              <Download />
+              Exportar CSV
+            </Button>
           )}
 
           {onCreate && (

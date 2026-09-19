@@ -16,6 +16,9 @@ import { PublicationForm } from "@/components/publication/publication-form";
 import { LookupsProvider } from "@/components/providers/lookups-provider";
 import { formatMonthYear, formatWeekRange, getMonthGridDays, getWeekDays, isSameMonthAs } from "@/lib/date-utils";
 import { usePlannerShortcuts } from "@/lib/use-planner-shortcuts";
+import { buildPlannerCsv, downloadCsv } from "@/lib/planner-csv";
+import { slugify } from "@/lib/slugify";
+import { toast } from "@/lib/toast";
 import type { Lookups } from "@/lib/supabase/queries";
 import type { Calendar, Campaign, Client, ClientAccount, Publication } from "@/types";
 
@@ -180,6 +183,34 @@ export function CalendarScreen({
     });
   }, [calendarScopedPublications, filters, clientAccountMap]);
 
+  // Exporta lo que el usuario está viendo: mismas publicaciones (calendarios + filtros) y mismo período
+  // (agendaDays: semana en Semana/Lista, mes en Mes). No hay query ni lógica de filtros aparte.
+  function handleExportCsv() {
+    try {
+      const dateKeys = new Set(agendaDays.map((d) => format(d, "yyyy-MM-dd")));
+      const toExport = filteredPublications.filter((p) => dateKeys.has(p.publicationDate));
+      if (toExport.length === 0) {
+        toast.info("No hay publicaciones para exportar", "Probá cambiando el período o los filtros.");
+        return;
+      }
+      const csv = buildPlannerCsv(toExport, {
+        calendars,
+        clientAccounts,
+        campaigns,
+        contentTypes: lookups.contentTypes,
+        statuses: lookups.statuses,
+        platforms: lookups.platforms,
+      });
+      const from = format(agendaDays[0], "yyyy-MM-dd");
+      const to = format(agendaDays[agendaDays.length - 1], "yyyy-MM-dd");
+      downloadCsv(`planner-${slugify(client.slug || client.name)}-${from}-${to}.csv`, csv);
+      toast.success("CSV exportado");
+    } catch (error) {
+      console.error("[export-csv]", error);
+      toast.error("No se pudo exportar el CSV", "Ocurrió un problema al generar el archivo. Probá de nuevo.");
+    }
+  }
+
   // CASO 1: un solo calendario activo -> se precarga. CASO 2: varios o ninguno -> el form pide elegir.
   const defaultCalendarId = visibleCalendars.length === 1 ? visibleCalendars[0].id : undefined;
 
@@ -257,6 +288,7 @@ export function CalendarScreen({
           onNext={() => setAnchorDate((d) => (view === "month" ? addMonths(d, 1) : addWeeks(d, 1)))}
           onToday={() => setAnchorDate(new Date())}
           onCreate={readOnly ? undefined : () => openCreateForm()}
+          onExport={readOnly ? undefined : handleExportCsv}
           allClients={allClients}
           onSwitchClient={allClients ? handleSwitchClient : undefined}
         />
