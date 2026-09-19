@@ -29,10 +29,10 @@ export function UpdateBanner({ version, entries, isSaving, error, onDismiss }: U
     <div
       role="dialog"
       aria-label="Nuevas actualizaciones"
-      className="fixed bottom-4 right-4 z-50 w-[min(360px,calc(100vw-2rem))] rounded-xl border border-border bg-card p-4 shadow-lg"
+      className="fixed bottom-4 right-4 z-50 flex max-h-[calc(100dvh-2rem)] w-[min(360px,calc(100vw-2rem))] flex-col rounded-xl border border-border bg-card p-4 shadow-lg"
     >
-      <h3 className="mb-2 text-sm font-semibold text-foreground">Nuevas actualizaciones · v{version}</h3>
-      <ul className="mb-3 flex flex-col gap-1.5">
+      <h3 className="mb-2 shrink-0 text-sm font-semibold text-foreground">Nuevas actualizaciones · v{version}</h3>
+      <ul className="mb-3 flex min-h-0 flex-col gap-1.5 overflow-y-auto">
         {entries.map((entry, i) => (
           <li key={i} className="flex items-start gap-1.5 text-sm text-foreground">
             <span className="mt-0.5 shrink-0 text-green-600">✓</span>
@@ -40,8 +40,8 @@ export function UpdateBanner({ version, entries, isSaving, error, onDismiss }: U
           </li>
         ))}
       </ul>
-      {error && <p className="mb-2 text-xs text-destructive">{error}</p>}
-      <div className="flex items-center justify-between gap-2">
+      {error && <p className="mb-2 shrink-0 text-xs text-destructive">{error}</p>}
+      <div className="flex shrink-0 items-center justify-between gap-2">
         <Link href="/changelog" className="text-xs font-medium text-primary hover:underline">
           Ver todas las novedades
         </Link>
