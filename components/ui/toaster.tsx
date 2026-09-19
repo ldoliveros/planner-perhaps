@@ -74,7 +74,15 @@ export function Toaster() {
   return (
     <ToastPrimitive.Provider toastManager={toastManager}>
       <ToastPrimitive.Portal>
-        <ToastPrimitive.Viewport className="fixed top-4 right-4 z-100 flex w-80 flex-col gap-2">
+        <ToastPrimitive.Viewport
+          className="fixed top-4 right-4 z-100 flex w-80 flex-col gap-2"
+          // Base UI pausa el autocierre mientras el puntero está sobre el viewport. Como los toasts aparecen
+          // arriba a la derecha (donde quedan el cursor tras clickear Exportar CSV, el menú de usuario, etc.),
+          // un cursor quieto los dejaba abiertos indefinidamente. Se desactiva solo la pausa por hover; la
+          // pausa por foco de teclado y por ventana sin foco se mantiene.
+          onMouseEnter={(event) => event.preventBaseUIHandler()}
+          onMouseMove={(event) => event.preventBaseUIHandler()}
+        >
           <ToastList />
         </ToastPrimitive.Viewport>
       </ToastPrimitive.Portal>
