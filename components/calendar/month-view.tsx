@@ -7,6 +7,7 @@ import { cn } from "cn";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { PublicationQuickActions } from "@/components/calendar/publication-quick-actions";
 import { PlatformIcon } from "@/components/icons/brand-icons";
+import { StatusPill } from "@/components/shared/status-pill";
 import { useLookups } from "@/components/providers/lookups-provider";
 import { hexToRgba } from "@/lib/color-contrast";
 import {
@@ -71,14 +72,7 @@ function MonthChip({ publication, onOpen, onEdit, onDuplicate, clientId, showCal
         </div>
       )}
       <span className="flex min-w-0 flex-1 flex-col gap-0.5 leading-tight">
-        {status && (
-          <span
-            className="w-fit max-w-full truncate rounded-full px-1.5 py-px text-[8px] font-semibold uppercase tracking-wide text-white"
-            style={{ backgroundColor: status.color }}
-          >
-            {status.label}
-          </span>
-        )}
+        {status && <StatusPill status={status} size="xs" />}
         <span className="line-clamp-2 text-[11px] font-medium text-foreground">{publication.title}</span>
         {(publication.publicationTime || calendar) && (
           <span className="flex min-w-0 items-center gap-1 text-[9.5px] text-muted-foreground">

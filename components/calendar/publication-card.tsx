@@ -6,6 +6,7 @@ import { ImageIcon, Paperclip } from "lucide-react";
 import { cn } from "cn";
 import { PublicationQuickActions } from "@/components/calendar/publication-quick-actions";
 import { PlatformIcon } from "@/components/icons/brand-icons";
+import { StatusPill } from "@/components/shared/status-pill";
 import { useLookups } from "@/components/providers/lookups-provider";
 import { formatTime } from "@/lib/date-utils";
 import type { Publication } from "@/types";
@@ -90,15 +91,7 @@ export function PublicationCard({
         )}
 
         <div className="absolute inset-x-1.5 top-1.5 flex items-start justify-between gap-1">
-          {status && (
-            <span
-              title={status.label}
-              className="min-w-0 truncate rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-white shadow-sm"
-              style={{ backgroundColor: status.color }}
-            >
-              {status.label}
-            </span>
-          )}
+          {status && <StatusPill status={status} size="sm" className="shadow-sm" />}
           {publication.publicationTime && (
             <span className="shrink-0 rounded-full bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white backdrop-blur-sm">
               {formatTime(publication.publicationTime)}

@@ -25,7 +25,7 @@ export function CopyBlock({ copy }: { copy: string }) {
         <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Copy</span>
         <Button variant="outline" size="sm" className="gap-1.5" onClick={handleCopy}>
           {copied ? <Check className="text-green-600" /> : <Copy />}
-          {copied ? "Copiado" : "Copiar copy"}
+          {copied ? "Copiado" : "Copiar"}
         </Button>
       </div>
       <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">{copy}</p>

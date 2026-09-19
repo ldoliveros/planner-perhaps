@@ -65,14 +65,9 @@ export function CalendarRowActions({ client, calendar, publicationCount, clients
   }
 
   return (
-    <div className="flex justify-end gap-1">
-      <Button
-        variant="ghost"
-        size="sm"
-        nativeButton={false}
-        render={<Link href={`/admin/clients/${client.id}/planner?calendars=${calendar.id}`} />}
-      >
-        Abrir
+    <div className="flex flex-wrap justify-end gap-1">
+      <Button size="sm" nativeButton={false} render={<Link href={`/admin/clients/${client.id}/planner?calendars=${calendar.id}`} />}>
+        Ver
       </Button>
       {clients ? (
         <CalendarFormDialog

@@ -14,6 +14,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { CopyBlock } from "@/components/publication/copy-block";
+import { StatusPill } from "@/components/shared/status-pill";
 import { PlatformIcon } from "@/components/icons/brand-icons";
 import { useLookups } from "@/components/providers/lookups-provider";
 import { formatFullDate, formatTime } from "@/lib/date-utils";
@@ -128,11 +129,7 @@ export function PublicationDrawer({ publication, onOpenChange, onEdit, onDuplica
 
               <div className="flex flex-wrap items-center gap-1.5">
                 {contentType && <Badge variant="secondary">{contentType.label}</Badge>}
-                {status && (
-                  <Badge variant="outline" style={{ borderColor: status.color, color: status.color }}>
-                    {status.label}
-                  </Badge>
-                )}
+                {status && <StatusPill status={status} size="md" />}
                 {campaign && <Badge variant="outline">{campaign.name}</Badge>}
               </div>
 

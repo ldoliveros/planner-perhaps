@@ -158,7 +158,7 @@ function ClientTableRow({
   return (
     <TableRow>
       <TableCell>
-        <Link href={`/admin/clients/${client.id}`} className="flex items-center gap-2 hover:underline">
+        <Link href={`/admin/clients/${client.id}/planner`} className="flex items-center gap-2 hover:underline">
           <span
             className="relative flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-md text-xs font-semibold"
             style={
@@ -182,19 +182,13 @@ function ClientTableRow({
       </TableCell>
       <TableCell className="text-right">
         <div className="flex justify-end gap-1">
+          <Button size="sm" className="gap-1.5" nativeButton={false} render={<Link href={`/admin/clients/${client.id}/planner`} />}>
+            <CalendarDays className="size-3.5" />
+            Ver planner
+          </Button>
           <Button variant="ghost" size="sm" className="gap-1.5" nativeButton={false} render={<Link href={`/admin/clients/${client.id}`} />}>
             <Pencil className="size-3.5" />
             Editar
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="gap-1.5"
-            nativeButton={false}
-            render={<Link href={`/admin/clients/${client.id}/planner`} />}
-          >
-            <CalendarDays className="size-3.5" />
-            Ver planner
           </Button>
           {canManage && (
             <>

@@ -20,6 +20,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { StatusPill } from "@/components/shared/status-pill";
 import { Separator } from "@/components/ui/separator";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -310,13 +311,17 @@ export function PublicationForm({
               items={Object.fromEntries(statuses.map((s) => [s.id, s.label]))}
             >
               <SelectTrigger className="w-full">
-                <SelectValue placeholder="Elegí un estado" />
+                <SelectValue placeholder="Elegí un estado">
+                  {(value: string | null) => {
+                    const selected = statuses.find((s) => s.id === value);
+                    return selected ? <StatusPill status={selected} /> : "Elegí un estado";
+                  }}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {statuses.map((s) => (
                   <SelectItem key={s.id} value={s.id}>
-                    <span className="size-1.5 rounded-full" style={{ backgroundColor: s.color }} />
-                    {s.label}
+                    <StatusPill status={s} />
                   </SelectItem>
                 ))}
               </SelectContent>

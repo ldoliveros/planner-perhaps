@@ -2,10 +2,10 @@
 
 import Image from "next/image";
 import { ImageIcon } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { PublicationQuickActions } from "@/components/calendar/publication-quick-actions";
 import { PlatformIcon } from "@/components/icons/brand-icons";
+import { StatusPill } from "@/components/shared/status-pill";
 import { useLookups } from "@/components/providers/lookups-provider";
 import { formatFullDate, formatTime, isSameDayAs } from "@/lib/date-utils";
 import type { Publication } from "@/types";
@@ -114,11 +114,7 @@ export function AgendaView({
                 </TableCell>
                 <TableCell className="text-muted-foreground">{contentType?.label ?? "—"}</TableCell>
                 <TableCell>
-                  {status && (
-                    <Badge className="text-white" style={{ backgroundColor: status.color }}>
-                      {status.label}
-                    </Badge>
-                  )}
+                  {status && <StatusPill status={status} size="sm" />}
                 </TableCell>
                 <TableCell className="text-muted-foreground">
                   {formatFullDate(publication.publicationDate)}

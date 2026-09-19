@@ -168,7 +168,8 @@ export function ClientDetailPageClient({
         </div>
 
         <div className="overflow-hidden rounded-lg border border-border bg-card">
-          <Table>
+          <Table className={SECTION_TABLE_CLASS}>
+            <SectionColGroup />
             <TableHeader>
               <TableRow>
                 <TableHead>Cuenta</TableHead>
@@ -210,13 +211,14 @@ export function ClientDetailPageClient({
         </div>
 
         <div className="overflow-hidden rounded-lg border border-border bg-card">
-          <Table>
+          <Table className={SECTION_TABLE_CLASS}>
+            <SectionColGroup />
             <TableHeader>
               <TableRow>
                 <TableHead>Email</TableHead>
                 <TableHead>Nombre</TableHead>
-                <TableHead>Estado</TableHead>
                 <TableHead>Fecha de alta</TableHead>
+                <TableHead>Estado</TableHead>
                 <TableHead className="text-right">Acciones</TableHead>
               </TableRow>
             </TableHeader>
@@ -239,6 +241,26 @@ export function ClientDetailPageClient({
   );
 }
 
+/**
+ * Base visual común de las tres tablas de la ficha (Calendarios, Cuentas, Usuarios):
+ * [principal flexible] [secundario] [secundario] [Estado] [Acciones]. Las columnas de Estado y Acciones
+ * tienen el mismo ancho fijo en las tres, así quedan alineadas al hacer scroll. Calendarios tiene un
+ * solo dato secundario y lo extiende sobre las dos columnas (colSpan) en vez de dejar una columna vacía.
+ */
+const SECTION_TABLE_CLASS = "table-fixed min-w-[720px]";
+
+function SectionColGroup() {
+  return (
+    <colgroup>
+      <col />
+      <col className="w-[120px]" />
+      <col className="w-[100px]" />
+      <col className="w-[96px]" />
+      <col className="w-[240px]" />
+    </colgroup>
+  );
+}
+
 function CalendarsSubTable({
   client,
   calendars,
@@ -252,11 +274,12 @@ function CalendarsSubTable({
 }) {
   return (
     <div className="overflow-hidden rounded-lg border border-border bg-card">
-      <Table>
+      <Table className={SECTION_TABLE_CLASS}>
+        <SectionColGroup />
         <TableHeader>
           <TableRow>
             <TableHead>Calendario</TableHead>
-            <TableHead>Publicaciones</TableHead>
+            <TableHead colSpan={2}>Publicaciones</TableHead>
             <TableHead>Estado</TableHead>
             <TableHead className="text-right">Acciones</TableHead>
           </TableRow>
@@ -264,15 +287,15 @@ function CalendarsSubTable({
         <TableBody>
           {calendars.length === 0 && (
             <TableRow>
-              <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">
+              <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
                 {emptyMessage}
               </TableCell>
             </TableRow>
           )}
           {calendars.map((calendar) => (
             <TableRow key={calendar.id}>
-              <TableCell className="font-medium text-foreground">{calendar.name}</TableCell>
-              <TableCell className="text-muted-foreground">
+              <TableCell className="truncate font-medium text-foreground" title={calendar.name}>{calendar.name}</TableCell>
+              <TableCell colSpan={2} className="text-muted-foreground">
                 {publicationCountByCalendarId[calendar.id] ?? 0}
               </TableCell>
               <TableCell>
@@ -395,10 +418,10 @@ function ClientUserTableRow({
 
   return (
     <TableRow>
-      <TableCell className="font-medium text-foreground">{user.email}</TableCell>
-      <TableCell className="text-muted-foreground">{user.fullName ?? "—"}</TableCell>
-      <TableCell>{user.accessStatus && <UserAccessBadge status={user.accessStatus} />}</TableCell>
+      <TableCell className="truncate font-medium text-foreground" title={user.email ?? undefined}>{user.email}</TableCell>
+      <TableCell className="truncate text-muted-foreground">{user.fullName ?? "—"}</TableCell>
       <TableCell className="text-muted-foreground">{new Date(user.createdAt).toLocaleDateString("es-AR")}</TableCell>
+      <TableCell>{user.accessStatus && <UserAccessBadge status={user.accessStatus} />}</TableCell>
       <TableCell className="text-right">
         <div className="flex items-center justify-end gap-1">
         {canResendInvitation && user.accessStatus === "invited" && (
@@ -487,11 +510,11 @@ function ClientAccountTableRow({
           {platform && (
             <PlatformIcon platformKey={platform.key} className="size-4 shrink-0" style={{ color: platform.color }} />
           )}
-          {account.name}
+          <span className="truncate" title={account.name}>{account.name}</span>
         </div>
       </TableCell>
-      <TableCell className="text-muted-foreground">{account.handle ?? "—"}</TableCell>
-      <TableCell className="text-muted-foreground">{accountType?.name ?? "—"}</TableCell>
+      <TableCell className="truncate text-muted-foreground">{account.handle ?? "—"}</TableCell>
+      <TableCell className="truncate text-muted-foreground">{accountType?.name ?? "—"}</TableCell>
       <TableCell>
         <Badge variant={account.active ? "secondary" : "outline"}>{account.active ? "Activa" : "Inactiva"}</Badge>
       </TableCell>
