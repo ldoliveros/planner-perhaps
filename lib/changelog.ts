@@ -21,10 +21,48 @@ export interface ChangelogRelease {
 export const CHANGELOG: ChangelogRelease[] = [
   {
     version: "1.2",
-    date: "2026-09-17",
+    date: "2026-09-18",
     entries: [
       {
-        text: "Sumamos esta sección de novedades: acá vas a poder ver qué cambió en cada actualización de Perhaps Planner.",
+        text: "Una experiencia más ágil para planificar y gestionar contenidos.",
+        roles: ["super_admin", "account_manager"],
+      },
+      {
+        text: "Mover publicaciones más fácil: ahora podés arrastrar publicaciones de un día a otro directamente desde la vista semanal.",
+        roles: ["super_admin", "account_manager"],
+      },
+      {
+        text: "Acciones rápidas: editá, duplicá, cambiá el estado o eliminá una publicación directamente desde el calendario.",
+        roles: ["super_admin", "account_manager"],
+      },
+      {
+        text: "Mejor edición de copies: sumamos emojis, negritas, listas, contador de caracteres y copia rápida al portapapeles.",
+        roles: ["super_admin", "account_manager"],
+      },
+      {
+        text: "Campañas: ahora podés organizar y filtrar publicaciones utilizando campañas reutilizables.",
+        roles: ["super_admin", "account_manager"],
+      },
+      {
+        // Variante de consulta: el Client User solo filtra (Planner read-only).
+        text: "Campañas: ahora podés filtrar las publicaciones por campaña para encontrar el contenido más fácilmente.",
+        roles: ["client"],
+      },
+      {
+        text: "Exportar calendario: descargá en CSV el calendario que estás viendo, respetando el período, los calendarios seleccionados y los filtros activos.",
+        roles: ["super_admin", "account_manager"],
+      },
+      {
+        text: "Mejor gestión de accesos: ahora podés identificar usuarios activos, invitados o desactivados y reenviar invitaciones pendientes.",
+        roles: ["super_admin"],
+      },
+      {
+        text: "Navegación más cómoda: el menú lateral ahora puede expandirse al pasar el mouse y mantenerse fijo si preferís trabajar con la navegación abierta.",
+        roles: ["super_admin", "account_manager"],
+      },
+      {
+        // El Client User también recibe estos avisos (copiar copy, perfil y contraseña).
+        text: "Notificaciones más claras: renovamos las notificaciones para distinguir rápidamente acciones exitosas, errores e información.",
         roles: ["super_admin", "account_manager", "client"],
       },
     ],
