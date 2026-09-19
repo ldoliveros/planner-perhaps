@@ -12,7 +12,10 @@ import { ROLE_LABELS } from "@/lib/role-labels";
 import { APP_VERSION } from "@/lib/version";
 import { cn } from "cn";
 
+// Cookie histórica: "1" = compacto (sin fijar, se expande por hover), "0"/ausente = fijado abierto.
 const COLLAPSE_COOKIE = "sidebar_collapsed";
+const WIDTH_COMPACT = "w-[68px]";
+const WIDTH_EXPANDED = "w-[232px]";
 
 interface AdminSidebarProps {
   role: "super_admin" | "account_manager";
@@ -23,21 +26,40 @@ interface AdminSidebarProps {
 }
 
 export function AdminSidebar({ role, email, fullName, avatarUrl, defaultCollapsed }: AdminSidebarProps) {
-  const [collapsed, setCollapsed] = useState(defaultCollapsed);
+  // pinned = abierto permanentemente; sin fijar = compacto que se expande temporalmente por hover.
+  const [pinned, setPinned] = useState(!defaultCollapsed);
+  const [hovered, setHovered] = useState(false);
   const pathname = usePathname();
   const items = getAdminNavItems(role);
 
-  function toggleCollapsed() {
-    const next = !collapsed;
-    setCollapsed(next);
-    document.cookie = `${COLLAPSE_COOKIE}=${next ? "1" : "0"}; path=/; max-age=31536000; samesite=lax`;
+  // Estado visual: compacto salvo que esté fijado o el mouse esté encima.
+  const expanded = pinned || hovered;
+  const collapsed = !expanded;
+  const overlay = expanded && !pinned;
+
+  function togglePinned() {
+    const next = !pinned;
+    setPinned(next);
+    document.cookie = `${COLLAPSE_COOKIE}=${next ? "0" : "1"}; path=/; max-age=31536000; samesite=lax`;
   }
 
   return (
+    // El contenedor reserva el ancho del layout (fijado: 232px, sin fijar: 68px) y detecta el hover; el aside
+    // vive dentro de él, así no hay hueco entre ambos que dispare enter/leave. La expansión por hover es
+    // un overlay (absolute): nunca desplaza ni redimensiona el contenido principal.
+    <div
+      className={cn(
+        "relative hidden h-dvh shrink-0 transition-[width] duration-150 ease-out md:block",
+        pinned ? WIDTH_EXPANDED : WIDTH_COMPACT
+      )}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
     <aside
       className={cn(
-        "hidden h-dvh shrink-0 flex-col bg-[#111318] transition-[width] duration-200 ease-in-out md:flex",
-        collapsed ? "w-[68px]" : "w-[232px]"
+        "absolute inset-y-0 left-0 z-40 flex flex-col overflow-hidden bg-[#111318] transition-[width,box-shadow] duration-150 ease-out",
+        expanded ? WIDTH_EXPANDED : WIDTH_COMPACT,
+        overlay && "shadow-2xl shadow-black/40"
       )}
     >
       <div className={cn("flex items-center gap-2 px-4 pt-5 pb-3", collapsed && "justify-center px-0")}>
@@ -51,15 +73,15 @@ export function AdminSidebar({ role, email, fullName, avatarUrl, defaultCollapse
               render={
                 <button
                   type="button"
-                  onClick={toggleCollapsed}
-                  aria-label="Colapsar navegación"
+                  onClick={togglePinned}
+                  aria-label={pinned ? "Colapsar navegación" : "Fijar navegación abierta"}
                   className="flex size-7 shrink-0 items-center justify-center rounded-md text-white/50 transition-colors hover:bg-white/10 hover:text-white"
                 />
               }
             >
-              <PanelLeftClose className="size-4" />
+              {pinned ? <PanelLeftClose className="size-4" /> : <PanelLeftOpen className="size-4" />}
             </TooltipTrigger>
-            <TooltipContent side="bottom">Colapsar</TooltipContent>
+            <TooltipContent side="bottom">{pinned ? "Colapsar" : "Fijar abierto"}</TooltipContent>
           </Tooltip>
         )}
       </div>
@@ -75,7 +97,7 @@ export function AdminSidebar({ role, email, fullName, avatarUrl, defaultCollapse
               render={
                 <button
                   type="button"
-                  onClick={toggleCollapsed}
+                  onClick={togglePinned}
                   aria-label="Expandir navegación"
                   className="flex size-8 items-center justify-center rounded-md text-white/50 transition-colors hover:bg-white/10 hover:text-white"
                 />
@@ -141,5 +163,6 @@ export function AdminSidebar({ role, email, fullName, avatarUrl, defaultCollapse
         </Link>
       </div>
     </aside>
+    </div>
   );
 }
