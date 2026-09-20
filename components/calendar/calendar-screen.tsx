@@ -17,7 +17,7 @@ import { LookupsProvider } from "@/components/providers/lookups-provider";
 import { formatMonthYear, formatWeekRange, getMonthGridDays, getWeekDays, isSameMonthAs } from "@/lib/date-utils";
 import { usePlannerShortcuts } from "@/lib/use-planner-shortcuts";
 import { buildPlannerCsv, downloadCsv } from "@/lib/planner-csv";
-import { getRelevantFilterOptions, pruneFilters } from "@/lib/planner-filter-options";
+import { getRelevantFilterOptions, pruneFilters, withSelectedOptions } from "@/lib/planner-filter-options";
 import { slugify } from "@/lib/slugify";
 import { toast } from "@/lib/toast";
 import type { Lookups } from "@/lib/supabase/queries";
@@ -142,28 +142,45 @@ export function CalendarScreen({
   // las opciones de filtro y para el CSV.
   const periodDateKeys = useMemo(() => new Set(agendaDays.map((d) => format(d, "yyyy-MM-dd"))), [agendaDays]);
 
-  // Contexto base de los filtros: publicaciones de los calendarios seleccionados dentro del período visible,
-  // SIN aplicar los filtros de contenido. Así las opciones de un filtro no dependen de lo elegido en los demás.
-  const filterOptions = useMemo(
+  const filterCatalog = useMemo(
+    () => ({
+      platforms: lookups.platforms,
+      contentTypes: lookups.contentTypes,
+      statuses: lookups.statuses,
+      clientAccounts,
+      campaigns,
+    }),
+    [lookups, clientAccounts, campaigns]
+  );
+
+  // Universo editorial de los filtros: publicaciones de los calendarios seleccionados, sin importar la fecha ni
+  // los filtros de contenido. Solo un cambio de calendarios (o de datos) puede volver inválida una selección.
+  const universeOptions = useMemo(
+    () => getRelevantFilterOptions(calendarScopedPublications, filterCatalog),
+    [calendarScopedPublications, filterCatalog]
+  );
+  // Opciones relevantes del período visible (semana en Semana/Lista, mes real en Mes), también sin aplicar los
+  // filtros de contenido, para que un filtro no reduzca el catálogo de otro.
+  const periodOptions = useMemo(
     () =>
       getRelevantFilterOptions(
         calendarScopedPublications.filter((p) => periodDateKeys.has(p.publicationDate)),
-        {
-          platforms: lookups.platforms,
-          contentTypes: lookups.contentTypes,
-          statuses: lookups.statuses,
-          clientAccounts,
-          campaigns,
-        }
+        filterCatalog
       ),
-    [calendarScopedPublications, periodDateKeys, lookups, clientAccounts, campaigns]
+    [calendarScopedPublications, periodDateKeys, filterCatalog]
   );
 
-  // Si el contexto cambió (calendario / período) y una selección ya no existe entre las opciones, se limpia solo
-  // esa selección. `pruneFilters` devuelve la misma referencia cuando no hay nada que limpiar, así el ajuste de
-  // estado durante el render converge en una sola pasada y no genera loops.
-  const activeFilters = pruneFilters(filters, filterOptions);
+  // Navegar fechas NO borra selecciones: solo se limpian las que ya no existen en el universo de calendarios.
+  // `pruneFilters` devuelve la misma referencia si no hay nada que limpiar, así el ajuste de estado durante el
+  // render converge en una sola pasada y no genera loops.
+  const activeFilters = pruneFilters(filters, universeOptions);
   if (activeFilters !== filters) setFilters(activeFilters);
+
+  // Catálogo mostrado: opciones del período + las ya seleccionadas (aunque en este período no tengan publicaciones).
+  const filterOptions = useMemo(
+    () => withSelectedOptions(periodOptions, universeOptions, activeFilters),
+    [periodOptions, universeOptions, activeFilters]
+  );
 
   const hasActiveFilters =
     activeFilters.platformIds.length > 0 ||
