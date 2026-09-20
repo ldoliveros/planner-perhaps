@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useLookups } from "@/components/providers/lookups-provider";
+import type { FilterOption, RelevantFilterOptions } from "@/lib/planner-filter-options";
 
 export interface CalendarFiltersState {
   platformIds: string[];
@@ -22,11 +23,6 @@ export const EMPTY_FILTERS: CalendarFiltersState = {
   campaigns: [],
 };
 
-interface Option {
-  id: string;
-  label: string;
-}
-
 function toggle(list: string[], id: string): string[] {
   return list.includes(id) ? list.filter((v) => v !== id) : [...list, id];
 }
@@ -38,13 +34,16 @@ function FilterPopover({
   onChange,
 }: {
   label: string;
-  options: Option[];
+  options: FilterOption[];
   selected: string[];
   onChange: (ids: string[]) => void;
 }) {
   return (
     <Popover>
-      <PopoverTrigger render={<Button variant="outline" size="sm" className="gap-1.5" />}>
+      <PopoverTrigger
+        disabled={options.length === 0}
+        render={<Button variant="outline" size="sm" className="gap-1.5" />}
+      >
         {label}
         {selected.length > 0 && (
           <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground">
@@ -94,7 +93,8 @@ function FilterPopover({
 interface CalendarFiltersProps {
   value: CalendarFiltersState;
   onChange: (value: CalendarFiltersState) => void;
-  availableCampaigns: Option[];
+  /** Opciones relevantes por filtro (derivadas del contexto: calendarios + período). */
+  options: RelevantFilterOptions;
   calendarIds: string[];
   onCalendarIdsChange: (ids: string[]) => void;
 }
@@ -102,11 +102,11 @@ interface CalendarFiltersProps {
 export function CalendarFiltersBar({
   value,
   onChange,
-  availableCampaigns,
+  options,
   calendarIds,
   onCalendarIdsChange,
 }: CalendarFiltersProps) {
-  const { platforms, contentTypes, statuses, calendars, clientAccounts } = useLookups();
+  const { calendars, clientAccounts } = useLookups();
   // Calendarios archivados no se ofrecen como filtro operativo — salvo que ya
   // vinieran seleccionados (ej. deep link desde Admin > Publicaciones a una
   // publicación histórica), para no "perder" ese filtro silenciosamente.
@@ -132,33 +132,33 @@ export function CalendarFiltersBar({
       )}
       <FilterPopover
         label="Canal"
-        options={platforms.map((p) => ({ id: p.id, label: p.name }))}
+        options={options.platforms}
         selected={value.platformIds}
         onChange={(platformIds) => onChange({ ...value, platformIds })}
       />
       {clientAccounts.length > 0 && (
         <FilterPopover
           label="Cuenta"
-          options={clientAccounts.map((a) => ({ id: a.id, label: a.handle ? `${a.name} (${a.handle})` : a.name }))}
+          options={options.accounts}
           selected={value.accountIds}
           onChange={(accountIds) => onChange({ ...value, accountIds })}
         />
       )}
       <FilterPopover
         label="Tipo"
-        options={contentTypes.map((c) => ({ id: c.id, label: c.label }))}
+        options={options.contentTypes}
         selected={value.contentTypeIds}
         onChange={(contentTypeIds) => onChange({ ...value, contentTypeIds })}
       />
       <FilterPopover
         label="Estado"
-        options={statuses.map((s) => ({ id: s.id, label: s.label }))}
+        options={options.statuses}
         selected={value.statusIds}
         onChange={(statusIds) => onChange({ ...value, statusIds })}
       />
       <FilterPopover
         label="Campaña"
-        options={availableCampaigns}
+        options={options.campaigns}
         selected={value.campaigns}
         onChange={(campaigns) => onChange({ ...value, campaigns })}
       />

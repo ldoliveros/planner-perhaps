@@ -17,6 +17,7 @@ import { LookupsProvider } from "@/components/providers/lookups-provider";
 import { formatMonthYear, formatWeekRange, getMonthGridDays, getWeekDays, isSameMonthAs } from "@/lib/date-utils";
 import { usePlannerShortcuts } from "@/lib/use-planner-shortcuts";
 import { buildPlannerCsv, downloadCsv } from "@/lib/planner-csv";
+import { getRelevantFilterOptions, pruneFilters } from "@/lib/planner-filter-options";
 import { slugify } from "@/lib/slugify";
 import { toast } from "@/lib/toast";
 import type { Lookups } from "@/lib/supabase/queries";
@@ -137,58 +138,72 @@ export function CalendarScreen({
     return publications.filter((p) => calendarIds.includes(p.calendarId));
   }, [publications, calendarIds]);
 
-  // Opciones del filtro de Campaña: activas del cliente + cualquier archivada
-  // que ya esté en uso por una publicación visible (para no "perder" el
-  // filtro sobre contenido histórico si esa campaña se archivó después).
-  const availableCampaigns = useMemo(() => {
-    const usedIds = new Set(
-      calendarScopedPublications.map((p) => p.campaignId).filter((id): id is string => Boolean(id))
-    );
-    return campaigns
-      .filter((c) => !c.archivedAt || usedIds.has(c.id))
-      .map((c) => ({ id: c.id, label: c.name }));
-  }, [campaigns, calendarScopedPublications]);
+  // Fechas del período visible (semana en Semana/Lista, mes real sin días grises en Mes): mismo criterio para
+  // las opciones de filtro y para el CSV.
+  const periodDateKeys = useMemo(() => new Set(agendaDays.map((d) => format(d, "yyyy-MM-dd"))), [agendaDays]);
+
+  // Contexto base de los filtros: publicaciones de los calendarios seleccionados dentro del período visible,
+  // SIN aplicar los filtros de contenido. Así las opciones de un filtro no dependen de lo elegido en los demás.
+  const filterOptions = useMemo(
+    () =>
+      getRelevantFilterOptions(
+        calendarScopedPublications.filter((p) => periodDateKeys.has(p.publicationDate)),
+        {
+          platforms: lookups.platforms,
+          contentTypes: lookups.contentTypes,
+          statuses: lookups.statuses,
+          clientAccounts,
+          campaigns,
+        }
+      ),
+    [calendarScopedPublications, periodDateKeys, lookups, clientAccounts, campaigns]
+  );
+
+  // Si el contexto cambió (calendario / período) y una selección ya no existe entre las opciones, se limpia solo
+  // esa selección. `pruneFilters` devuelve la misma referencia cuando no hay nada que limpiar, así el ajuste de
+  // estado durante el render converge en una sola pasada y no genera loops.
+  const activeFilters = pruneFilters(filters, filterOptions);
+  if (activeFilters !== filters) setFilters(activeFilters);
 
   const hasActiveFilters =
-    filters.platformIds.length > 0 ||
-    filters.accountIds.length > 0 ||
-    filters.contentTypeIds.length > 0 ||
-    filters.statusIds.length > 0 ||
-    filters.campaigns.length > 0;
+    activeFilters.platformIds.length > 0 ||
+    activeFilters.accountIds.length > 0 ||
+    activeFilters.contentTypeIds.length > 0 ||
+    activeFilters.statusIds.length > 0 ||
+    activeFilters.campaigns.length > 0;
 
   const filteredPublications = useMemo(() => {
     return calendarScopedPublications.filter((p) => {
       if (
-        filters.platformIds.length > 0 &&
+        activeFilters.platformIds.length > 0 &&
         !p.destinations.some((d) => {
           const account = clientAccountMap.get(d.clientAccountId);
-          return account && filters.platformIds.includes(account.platformId);
+          return account && activeFilters.platformIds.includes(account.platformId);
         })
       ) {
         return false;
       }
-      if (filters.accountIds.length > 0 && !p.destinations.some((d) => filters.accountIds.includes(d.clientAccountId))) {
+      if (activeFilters.accountIds.length > 0 && !p.destinations.some((d) => activeFilters.accountIds.includes(d.clientAccountId))) {
         return false;
       }
-      if (filters.contentTypeIds.length > 0 && !filters.contentTypeIds.includes(p.contentTypeId)) {
+      if (activeFilters.contentTypeIds.length > 0 && !activeFilters.contentTypeIds.includes(p.contentTypeId)) {
         return false;
       }
-      if (filters.statusIds.length > 0 && !filters.statusIds.includes(p.statusId)) {
+      if (activeFilters.statusIds.length > 0 && !activeFilters.statusIds.includes(p.statusId)) {
         return false;
       }
-      if (filters.campaigns.length > 0 && !(p.campaignId && filters.campaigns.includes(p.campaignId))) {
+      if (activeFilters.campaigns.length > 0 && !(p.campaignId && activeFilters.campaigns.includes(p.campaignId))) {
         return false;
       }
       return true;
     });
-  }, [calendarScopedPublications, filters, clientAccountMap]);
+  }, [calendarScopedPublications, activeFilters, clientAccountMap]);
 
   // Exporta lo que el usuario está viendo: mismas publicaciones (calendarios + filtros) y mismo período
   // (agendaDays: semana en Semana/Lista, mes en Mes). No hay query ni lógica de filtros aparte.
   function handleExportCsv() {
     try {
-      const dateKeys = new Set(agendaDays.map((d) => format(d, "yyyy-MM-dd")));
-      const toExport = filteredPublications.filter((p) => dateKeys.has(p.publicationDate));
+      const toExport = filteredPublications.filter((p) => periodDateKeys.has(p.publicationDate));
       if (toExport.length === 0) {
         toast.info("No hay publicaciones para exportar", "Probá cambiando el período o los filtros.");
         return;
@@ -293,9 +308,9 @@ export function CalendarScreen({
           onSwitchClient={allClients ? handleSwitchClient : undefined}
         />
         <CalendarFiltersBar
-          value={filters}
+          value={activeFilters}
           onChange={setFilters}
-          availableCampaigns={availableCampaigns}
+          options={filterOptions}
           calendarIds={calendarIds}
           onCalendarIdsChange={setCalendarIds}
         />
