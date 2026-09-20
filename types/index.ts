@@ -68,8 +68,10 @@ export interface ClientAccount {
   id: string;
   clientId: string;
   platformId: string;
-  name: string;
-  handle: string | null;
+  /** Handle sin "@": identificador principal y obligatorio de la cuenta (el "@" es solo presentación). */
+  handle: string;
+  /** Nombre opcional y secundario. */
+  name: string | null;
   url: string | null;
   accountTypeId: string | null;
   active: boolean;

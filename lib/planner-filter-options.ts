@@ -1,4 +1,5 @@
 import type { Campaign, ClientAccount, ContentType, Platform, Publication, Status } from "@/types";
+import { accountLabel, accountLabelsWithPlatform } from "@/lib/account-label";
 
 export interface FilterOption {
   id: string;
@@ -54,10 +55,11 @@ export function getRelevantFilterOptions(
 
   const usedAccounts = catalog.clientAccounts.filter((a) => usedAccountIds.has(a.id));
   const usedPlatformIds = new Set(usedAccounts.map((a) => a.platformId));
+  const accountLabels = accountLabelsWithPlatform(usedAccounts, new Map(catalog.platforms.map((p) => [p.id, p.name])));
 
   return {
     platforms: catalog.platforms.filter((p) => usedPlatformIds.has(p.id)).map((p) => ({ id: p.id, label: p.name })),
-    accounts: usedAccounts.map((a) => ({ id: a.id, label: a.handle ? `${a.name} (${a.handle})` : a.name })),
+    accounts: usedAccounts.map((a) => ({ id: a.id, label: accountLabels.get(a.id) ?? accountLabel(a) })),
     contentTypes: catalog.contentTypes.filter((c) => usedContentTypeIds.has(c.id)).map((c) => ({ id: c.id, label: c.label })),
     statuses: catalog.statuses.filter((s) => usedStatusIds.has(s.id)).map((s) => ({ id: s.id, label: s.label })),
     campaigns: catalog.campaigns.filter((c) => usedCampaignIds.has(c.id)).map((c) => ({ id: c.id, label: c.name })),

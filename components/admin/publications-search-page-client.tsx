@@ -21,6 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { PlatformIcon } from "@/components/icons/brand-icons";
 import { StatusPill } from "@/components/shared/status-pill";
+import { accountLabelsWithPlatform } from "@/lib/account-label";
 import { deletePublication } from "@/lib/actions/publications";
 import { formatFullDate, formatTime } from "@/lib/date-utils";
 import { toast } from "@/lib/toast";
@@ -71,6 +72,7 @@ export function PublicationsSearchPageClient({
 
   const calendarsForClient = clientId === ALL ? calendars : calendars.filter((c) => c.clientId === clientId);
   const accountsForClient = clientId === ALL ? clientAccounts : clientAccounts.filter((a) => a.clientId === clientId);
+  const accountLabels = accountLabelsWithPlatform(accountsForClient, new Map(platforms.map((p) => [p.id, p.name])));
 
   const hasActiveFilters =
     search.trim() !== "" ||
@@ -199,13 +201,13 @@ export function PublicationsSearchPageClient({
           <Select
             value={accountId}
             onValueChange={(v) => setAccountId(v as string)}
-            items={{ [ALL]: "Todas las cuentas", ...Object.fromEntries(accountsForClient.map((a) => [a.id, a.name])) }}
+            items={{ [ALL]: "Todas las cuentas", ...Object.fromEntries(accountsForClient.map((a) => [a.id, accountLabels.get(a.id) ?? a.handle])) }}
           >
             <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value={ALL}>Todas las cuentas</SelectItem>
               {accountsForClient.map((a) => (
-                <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                <SelectItem key={a.id} value={a.id}>{accountLabels.get(a.id) ?? a.handle}</SelectItem>
               ))}
             </SelectContent>
           </Select>

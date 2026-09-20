@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/sheet";
 import { CopyBlock } from "@/components/publication/copy-block";
 import { StatusPill } from "@/components/shared/status-pill";
+import { accountLabel, accountSecondaryName } from "@/lib/account-label";
 import { PlatformIcon } from "@/components/icons/brand-icons";
 import { useLookups } from "@/components/providers/lookups-provider";
 import { formatFullDate, formatTime } from "@/lib/date-utils";
@@ -117,11 +118,12 @@ export function PublicationDrawer({ publication, onOpenChange, onEdit, onDuplica
                   if (!account) return null;
                   const platform = getPlatform(account.platformId);
                   if (!platform) return null;
+                  const secondaryName = accountSecondaryName(account);
                   return (
                     <Badge key={destination.clientAccountId} variant="outline" className="gap-1.5 py-1">
                       <PlatformIcon platformKey={platform.key} className="size-3" style={{ color: platform.color }} />
-                      {account.name}
-                      {account.handle ? ` · ${account.handle}` : ""}
+                      {accountLabel(account)}
+                      {secondaryName ? ` · ${secondaryName}` : ""}
                     </Badge>
                   );
                 })}

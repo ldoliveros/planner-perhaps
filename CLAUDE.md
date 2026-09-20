@@ -11,9 +11,11 @@ vez de crear/borrar cuentas ad-hoc o tocar clientes reales:
   descartables: se pueden crear, editar o eliminar libremente durante una
   prueba.
 - **Calendarios**: `QA General`, `QA Alterno`.
-- **Cuentas/destinos**: Instagram ×2 (`@qa.sandbox`, `@qa.sandbox.alt`),
-  Facebook (`QA Sandbox`, sin handle — a propósito, para probar el caso
-  "sin handle"), LinkedIn (`@qa-sandbox`).
+- **Cuentas/destinos**: el handle es obligatorio y se guarda SIN `@`
+  (identificador principal; el nombre es opcional). Instagram ×2
+  (`qa.sandbox`, `qa.sandbox.alt`), Facebook (`qa.sandbox`, nombre `QA Sandbox`
+  — mismo handle que el Instagram principal, a propósito, para probar que la
+  unicidad es por cliente + plataforma), LinkedIn (`qa-sandbox`).
 - **Campaña de ejemplo**: `QA Lanzamiento`.
 - **Usuarios QA** (persistentes, no eliminar):
   - `qa-super-admin@perhaps-planner-qa.com` — rol `super_admin`.

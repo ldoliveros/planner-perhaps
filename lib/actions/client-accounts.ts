@@ -15,15 +15,22 @@ export async function saveClientAccount(
   const id = formData.get("id") ? String(formData.get("id")) : null;
   const clientId = String(formData.get("clientId") ?? "");
   const platformId = String(formData.get("platformId") ?? "");
-  const name = String(formData.get("name") ?? "").trim();
-  const handle = String(formData.get("handle") ?? "").trim() || null;
+  // El handle se guarda SIN "@" (es presentación): se recorta y se quita el "@" inicial que el usuario pueda haber escrito.
+  const handle = String(formData.get("handle") ?? "").trim().replace(/^@+/, "");
+  const name = String(formData.get("name") ?? "").trim() || null;
   const url = String(formData.get("url") ?? "").trim() || null;
   const accountTypeIdRaw = String(formData.get("accountTypeId") ?? "").trim();
   const accountTypeId = accountTypeIdRaw && accountTypeIdRaw !== "__none__" ? accountTypeIdRaw : null;
   const active = formData.get("active") === "on";
 
-  if (!clientId || !platformId || !name) {
-    return { error: "Completá plataforma y nombre.", savedAt: null };
+  if (!clientId || !platformId) {
+    return { error: "Elegí una plataforma.", savedAt: null };
+  }
+  if (!handle) {
+    return { error: "Ingresá el handle de la cuenta.", savedAt: null };
+  }
+  if (/\s/.test(handle)) {
+    return { error: "El handle no puede contener espacios.", savedAt: null };
   }
 
   const supabase = await createClient();
@@ -40,7 +47,16 @@ export async function saveClientAccount(
   const { error } = id
     ? await supabase.from("client_accounts").update(payload).eq("id", id)
     : await supabase.from("client_accounts").insert(payload);
-  if (error) return { error: error.message, savedAt: null };
+  if (error) {
+    // La DB es la última barrera: unicidad (cliente, plataforma, handle sin distinguir mayúsculas) y formato.
+    if (error.code === "23505") {
+      return { error: "Ya existe una cuenta con ese handle para este cliente y plataforma.", savedAt: null };
+    }
+    if (error.code === "23514") {
+      return { error: "Handle inválido: no puede estar vacío, empezar con @ ni contener espacios.", savedAt: null };
+    }
+    return { error: error.message, savedAt: null };
+  }
 
   revalidatePath(`/admin/clients/${clientId}`);
   revalidatePath(`/admin/clients/${clientId}/planner`);

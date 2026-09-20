@@ -136,50 +136,50 @@ function ClientAccountFormBody({
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="name">Nombre visible</Label>
+        <Label htmlFor="handle">Handle</Label>
+        <Input
+          id="handle"
+          name="handle"
+          value={handle}
+          onChange={(e) => setHandle(e.target.value)}
+          placeholder="Ej: aionis.health"
+          required
+          autoFocus
+        />
+        <p className="text-xs text-muted-foreground">Sin @. Es el identificador principal de la cuenta.</p>
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="name">Nombre (opcional)</Label>
         <Input
           id="name"
           name="name"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="Ej: Cuenta principal"
-          required
-          autoFocus
+          placeholder="Ej: AIONIS Health"
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="handle">Handle (opcional)</Label>
-          <Input
-            id="handle"
-            name="handle"
-            value={handle}
-            onChange={(e) => setHandle(e.target.value)}
-            placeholder="Ej: @usuario"
-          />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="accountTypeId">Tipo de cuenta (opcional)</Label>
-          <Select
-            name="accountTypeId"
-            value={accountTypeId}
-            onValueChange={(value) => setAccountTypeId(value as string)}
-            items={{ [NO_ACCOUNT_TYPE]: "Sin especificar", ...Object.fromEntries(accountTypes.map((a) => [a.id, a.name])) }}
-          >
-            <SelectTrigger id="accountTypeId" className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={NO_ACCOUNT_TYPE}>Sin especificar</SelectItem>
-              {accountTypes.map((a) => (
-                <SelectItem key={a.id} value={a.id}>
-                  {a.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="accountTypeId">Tipo de cuenta (opcional)</Label>
+        <Select
+          name="accountTypeId"
+          value={accountTypeId}
+          onValueChange={(value) => setAccountTypeId(value as string)}
+          items={{ [NO_ACCOUNT_TYPE]: "Sin especificar", ...Object.fromEntries(accountTypes.map((a) => [a.id, a.name])) }}
+        >
+          <SelectTrigger id="accountTypeId" className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={NO_ACCOUNT_TYPE}>Sin especificar</SelectItem>
+            {accountTypes.map((a) => (
+              <SelectItem key={a.id} value={a.id}>
+                {a.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="flex flex-col gap-1.5">

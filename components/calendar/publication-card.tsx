@@ -7,6 +7,7 @@ import { cn } from "cn";
 import { PublicationQuickActions } from "@/components/calendar/publication-quick-actions";
 import { PlatformIcon } from "@/components/icons/brand-icons";
 import { StatusPill } from "@/components/shared/status-pill";
+import { accountLabel } from "@/lib/account-label";
 import { useLookups } from "@/components/providers/lookups-provider";
 import { formatTime } from "@/lib/date-utils";
 import type { Publication } from "@/types";
@@ -51,7 +52,7 @@ export function PublicationCard({
     .map((d) => getClientAccount(d.clientAccountId))
     .filter((a): a is NonNullable<typeof a> => Boolean(a));
   const uniquePlatformIds = Array.from(new Set(destinationAccounts.map((a) => a.platformId)));
-  const uniqueAccountNames = Array.from(new Set(destinationAccounts.map((a) => a.name)));
+  const uniqueAccountNames = Array.from(new Set(destinationAccounts.map(accountLabel)));
 
   const canManage = Boolean(onEdit && onDuplicate && clientId);
 

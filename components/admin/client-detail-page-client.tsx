@@ -33,6 +33,7 @@ import { toast } from "@/lib/toast";
 import { ClientUserFormDialog } from "@/components/admin/client-user-form-dialog";
 import { ResendInvitationButton } from "@/components/admin/resend-invitation-button";
 import { UserAccessBadge } from "@/components/admin/user-access-badge";
+import { accountLabel } from "@/lib/account-label";
 import type { AccountType, Calendar, Client, ClientAccount, ClientUser, Platform } from "@/types";
 
 interface ClientDetailPageClientProps {
@@ -172,8 +173,8 @@ export function ClientDetailPageClient({
             <SectionColGroup />
             <TableHeader>
               <TableRow>
-                <TableHead>Cuenta</TableHead>
                 <TableHead>Handle</TableHead>
+                <TableHead>Nombre</TableHead>
                 <TableHead>Tipo</TableHead>
                 <TableHead>Estado</TableHead>
                 <TableHead className="text-right">Acciones</TableHead>
@@ -510,10 +511,12 @@ function ClientAccountTableRow({
           {platform && (
             <PlatformIcon platformKey={platform.key} className="size-4 shrink-0" style={{ color: platform.color }} />
           )}
-          <span className="truncate" title={account.name}>{account.name}</span>
+          <span className="truncate" title={account.handle}>{accountLabel(account)}</span>
         </div>
       </TableCell>
-      <TableCell className="truncate text-muted-foreground">{account.handle ?? "—"}</TableCell>
+      <TableCell className="truncate text-muted-foreground" title={account.name ?? undefined}>
+        {account.name ?? "—"}
+      </TableCell>
       <TableCell className="truncate text-muted-foreground">{accountType?.name ?? "—"}</TableCell>
       <TableCell>
         <Badge variant={account.active ? "secondary" : "outline"}>{account.active ? "Activa" : "Inactiva"}</Badge>
@@ -542,7 +545,7 @@ function ClientAccountTableRow({
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>¿Eliminar la cuenta &quot;{account.name}&quot;?</AlertDialogTitle>
+                <AlertDialogTitle>¿Eliminar la cuenta &quot;{accountLabel(account)}&quot;?</AlertDialogTitle>
                 <AlertDialogDescription>
                   {isUsed
                     ? "Esta cuenta fue utilizada en publicaciones y no puede eliminarse. Desactivala en su lugar para conservar el historial."

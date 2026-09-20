@@ -1,4 +1,5 @@
 import type { Calendar, Campaign, ClientAccount, ContentType, Platform, Publication, Status } from "@/types";
+import { accountLabel } from "@/lib/account-label";
 
 /** Columnas del export del Planner, en el orden exacto del archivo. */
 export const PLANNER_CSV_HEADERS = [
@@ -65,7 +66,7 @@ export function buildPlannerCsv(publications: Publication[], lookups: PlannerCsv
     const platformNames = Array.from(
       new Set(accounts.map((a) => platformById.get(a.platformId)?.name).filter((n): n is string => Boolean(n)))
     );
-    const accountNames = accounts.map((a) => a.handle || a.name);
+    const accountNames = accounts.map(accountLabel);
 
     return [
       formatCsvDate(p.publicationDate),

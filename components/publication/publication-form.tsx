@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { StatusPill } from "@/components/shared/status-pill";
+import { accountLabel, accountSecondaryName } from "@/lib/account-label";
 import { Separator } from "@/components/ui/separator";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -228,12 +229,16 @@ export function PublicationForm({
                         <TooltipContent side="top">{platform.name}</TooltipContent>
                       </Tooltip>
                       {accountsByPlatform.get(platform.id)!.map((account) => (
-                        <label key={account.id} className="flex items-center gap-1.5 text-sm text-foreground">
+                        <label
+                          key={account.id}
+                          className="flex items-center gap-1.5 text-sm text-foreground"
+                          title={accountSecondaryName(account) ?? undefined}
+                        >
                           <Checkbox
                             checked={selectedAccountIds.has(account.id)}
                             onCheckedChange={() => toggleDestination(account.id)}
                           />
-                          {account.handle ? account.handle : account.name}
+                          {accountLabel(account)}
                           {!account.active && <span className="text-xs text-muted-foreground">(inactiva)</span>}
                         </label>
                       ))}

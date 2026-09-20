@@ -207,8 +207,8 @@ export type ClientAccountRow = {
   id: string;
   client_id: string;
   platform_id: string;
-  name: string;
-  handle: string | null;
+  name: string | null;
+  handle: string;
   url: string | null;
   account_type_id: string | null;
   active: boolean;
@@ -220,8 +220,8 @@ export type ClientAccountInsert = {
   id?: string;
   client_id: string;
   platform_id: string;
-  name: string;
-  handle?: string | null;
+  name?: string | null;
+  handle: string;
   url?: string | null;
   account_type_id?: string | null;
   active?: boolean;

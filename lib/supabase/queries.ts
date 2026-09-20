@@ -82,10 +82,18 @@ export async function listCalendarsForClient(clientId: string): Promise<Calendar
   return (data ?? []).map(mapCalendar);
 }
 
+/** Orden estable por handle sin distinguir mayúsculas (opcionalmente después de sort_order). */
+function sortAccountsByHandle(accounts: ClientAccount[], options: { bySortOrder?: boolean } = {}): ClientAccount[] {
+  return [...accounts].sort((a, b) => {
+    if (options.bySortOrder && a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
+    return a.handle.localeCompare(b.handle, undefined, { sensitivity: "base" }) || a.id.localeCompare(b.id);
+  });
+}
+
 export async function listAllClientAccountsAdmin(): Promise<ClientAccount[]> {
   const supabase = await createClient();
-  const { data } = await supabase.from("client_accounts").select("*").order("name");
-  return (data ?? []).map(mapClientAccount);
+  const { data } = await supabase.from("client_accounts").select("*");
+  return sortAccountsByHandle((data ?? []).map(mapClientAccount));
 }
 
 export async function listClientAccountsForClient(clientId: string): Promise<ClientAccount[]> {
@@ -93,10 +101,8 @@ export async function listClientAccountsForClient(clientId: string): Promise<Cli
   const { data } = await supabase
     .from("client_accounts")
     .select("*")
-    .eq("client_id", clientId)
-    .order("sort_order")
-    .order("name");
-  return (data ?? []).map(mapClientAccount);
+    .eq("client_id", clientId);
+  return sortAccountsByHandle((data ?? []).map(mapClientAccount), { bySortOrder: true });
 }
 
 export async function listCampaignsForClient(clientId: string): Promise<Campaign[]> {
