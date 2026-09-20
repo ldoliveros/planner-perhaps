@@ -15,12 +15,12 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { PlatformIcon } from "@/components/icons/brand-icons";
+import { StatusPill } from "@/components/shared/status-pill";
 import { deletePublication } from "@/lib/actions/publications";
 import { formatFullDate, formatTime } from "@/lib/date-utils";
 import { toast } from "@/lib/toast";
@@ -307,11 +307,7 @@ export function PublicationsSearchPageClient({
                   </TableCell>
                   <TableCell className="text-muted-foreground">{contentType?.label ?? "—"}</TableCell>
                   <TableCell>
-                    {status && (
-                      <Badge variant="outline" style={{ borderColor: status.color, color: status.color }}>
-                        {status.label}
-                      </Badge>
-                    )}
+                    {status && <StatusPill status={status} size="sm" />}
                   </TableCell>
                   <TableCell className="text-muted-foreground">
                     {formatFullDate(p.publicationDate)}

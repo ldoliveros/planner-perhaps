@@ -26,6 +26,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useLookups } from "@/components/providers/lookups-provider";
+import { StatusPill } from "@/components/shared/status-pill";
 import { deletePublication, setPublicationStatus } from "@/lib/actions/publications";
 import { toast } from "@/lib/toast";
 import { cn } from "cn";
@@ -129,8 +130,7 @@ export function PublicationQuickActions({ publication, clientId, onEdit, onDupli
               <DropdownMenuRadioGroup value={publication.statusId} onValueChange={(value) => handleStatusChange(value as string)}>
                 {statuses.map((status) => (
                   <DropdownMenuRadioItem key={status.id} value={status.id} disabled={statusPending} closeOnClick>
-                    <span className="size-1.5 shrink-0 rounded-full" style={{ backgroundColor: status.color }} />
-                    {status.label}
+                    <StatusPill status={status} />
                   </DropdownMenuRadioItem>
                 ))}
               </DropdownMenuRadioGroup>
