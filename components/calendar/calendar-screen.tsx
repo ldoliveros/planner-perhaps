@@ -11,11 +11,13 @@ import { CalendarFiltersBar, EMPTY_FILTERS, type CalendarFiltersState } from "@/
 import { WeekView } from "@/components/calendar/week-view";
 import { MonthView } from "@/components/calendar/month-view";
 import { AgendaView } from "@/components/calendar/agenda-view";
+import { MobileAgendaView } from "@/components/calendar/mobile-agenda-view";
 import { PublicationDrawer } from "@/components/publication/publication-drawer";
 import { PublicationForm } from "@/components/publication/publication-form";
 import { LookupsProvider } from "@/components/providers/lookups-provider";
 import { formatMonthYear, formatWeekRange, getMonthGridDays, getWeekDays, isSameMonthAs } from "@/lib/date-utils";
 import { usePlannerShortcuts } from "@/lib/use-planner-shortcuts";
+import { useMediaQuery } from "@/lib/use-media-query";
 import { buildPlannerCsv, downloadCsv } from "@/lib/planner-csv";
 import { getRelevantFilterOptions, pruneFilters, withSelectedOptions } from "@/lib/planner-filter-options";
 import { slugify } from "@/lib/slugify";
@@ -56,6 +58,12 @@ export function CalendarScreen({
 
   const rawView = searchParams.get("view");
   const view: CalendarView = rawView === "month" ? "month" : rawView === "list" ? "list" : "week";
+
+  // Se monta UNA sola versión de la vista (desktop o mobile). `null` = todavía sin hidratar (SSR): se emiten
+  // ambas y el CSS (hidden md:flex / md:hidden) muestra la que corresponde, sin parpadeo.
+  const isDesktop = useMediaQuery("(min-width: 768px)");
+  const showDesktopViews = isDesktop !== false;
+  const showMobileViews = isDesktop !== true;
 
   const calendarIds = useMemo(() => {
     const raw = searchParams.get("calendars");
@@ -340,49 +348,33 @@ export function CalendarScreen({
             </Button>
           </div>
         )}
-        {view === "list" ? (
-          <div className="flex flex-1 flex-col">
-            <AgendaView
-              days={agendaDays}
-              publications={filteredPublications}
-              onOpenPublication={setSelectedPublication}
-              onEditPublication={readOnly ? undefined : openEditForm}
-              onDuplicatePublication={readOnly ? undefined : openDuplicateForm}
-              clientId={client.id}
-              showCalendarLabel={showCalendarLabel}
-            />
-          </div>
-        ) : (
-          <>
-            {/* Desktop/tablet: grilla semanal o mensual. Mobile: agenda tipo lista (la grilla de 7 columnas no es legible en pantallas angostas). */}
-            <div className="hidden flex-1 flex-col md:flex">
-              {view === "week" ? (
-                <WeekView
-                  weekDays={weekDays}
-                  publications={filteredPublications}
-                  onOpenPublication={setSelectedPublication}
-                  onEditPublication={readOnly ? undefined : openEditForm}
-                  onDuplicatePublication={readOnly ? undefined : openDuplicateForm}
-                  clientId={client.id}
-                  onCreateForDay={readOnly ? undefined : openCreateForm}
-                  clientColor={client.color}
-                  showCalendarLabel={showCalendarLabel}
-                />
-              ) : (
-                <MonthView
-                  anchorDate={anchorDate}
-                  publications={filteredPublications}
-                  onOpenPublication={setSelectedPublication}
-                  onEditPublication={readOnly ? undefined : openEditForm}
-                  onDuplicatePublication={readOnly ? undefined : openDuplicateForm}
-                  clientId={client.id}
-                  onCreateForDay={readOnly ? undefined : openCreateForm}
-                  clientColor={client.color}
-                  showCalendarLabel={showCalendarLabel}
-                />
-              )}
-            </div>
-            <div className="flex flex-1 flex-col md:hidden">
+        {showDesktopViews && (
+          <div className="hidden flex-1 flex-col md:flex">
+            {view === "week" ? (
+              <WeekView
+                weekDays={weekDays}
+                publications={filteredPublications}
+                onOpenPublication={setSelectedPublication}
+                onEditPublication={readOnly ? undefined : openEditForm}
+                onDuplicatePublication={readOnly ? undefined : openDuplicateForm}
+                clientId={client.id}
+                onCreateForDay={readOnly ? undefined : openCreateForm}
+                clientColor={client.color}
+                showCalendarLabel={showCalendarLabel}
+              />
+            ) : view === "month" ? (
+              <MonthView
+                anchorDate={anchorDate}
+                publications={filteredPublications}
+                onOpenPublication={setSelectedPublication}
+                onEditPublication={readOnly ? undefined : openEditForm}
+                onDuplicatePublication={readOnly ? undefined : openDuplicateForm}
+                clientId={client.id}
+                onCreateForDay={readOnly ? undefined : openCreateForm}
+                clientColor={client.color}
+                showCalendarLabel={showCalendarLabel}
+              />
+            ) : (
               <AgendaView
                 days={agendaDays}
                 publications={filteredPublications}
@@ -392,8 +384,36 @@ export function CalendarScreen({
                 clientId={client.id}
                 showCalendarLabel={showCalendarLabel}
               />
-            </div>
-          </>
+            )}
+          </div>
+        )}
+        {showMobileViews && (
+          <div className="flex flex-1 flex-col md:hidden">
+            {view === "month" ? (
+              // Mes mobile: se mantiene la agenda actual hasta el Bloque C (calendario compacto + día).
+              <AgendaView
+                days={agendaDays}
+                publications={filteredPublications}
+                onOpenPublication={setSelectedPublication}
+                onEditPublication={readOnly ? undefined : openEditForm}
+                onDuplicatePublication={readOnly ? undefined : openDuplicateForm}
+                clientId={client.id}
+                showCalendarLabel={showCalendarLabel}
+              />
+            ) : (
+              <MobileAgendaView
+                mode={view === "list" ? "list" : "week"}
+                days={agendaDays}
+                publications={filteredPublications}
+                onOpenPublication={setSelectedPublication}
+                onEditPublication={readOnly ? undefined : openEditForm}
+                onDuplicatePublication={readOnly ? undefined : openDuplicateForm}
+                clientId={client.id}
+                onCreateForDay={readOnly ? undefined : openCreateForm}
+                showCalendarLabel={showCalendarLabel}
+              />
+            )}
+          </div>
         )}
         <PublicationDrawer
           publication={selectedPublication}
