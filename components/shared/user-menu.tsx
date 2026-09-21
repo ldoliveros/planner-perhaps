@@ -4,7 +4,7 @@ import Link from "next/link";
 import { LogOut, User } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { UserAvatar } from "@/components/shared/user-avatar";
-import { signOut } from "@/lib/actions/auth";
+import { SignOutButton } from "@/components/shared/sign-out-button";
 import { cn } from "cn";
 
 interface UserMenuProps {
@@ -75,15 +75,13 @@ export function UserMenu({
           <User className="size-3.5" />
           Mi perfil
         </Link>
-        <form action={signOut.bind(null, signOutRedirectTo)}>
-          <button
-            type="submit"
-            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 pointer-coarse:min-h-11 text-left text-sm text-foreground hover:bg-muted"
-          >
-            <LogOut className="size-3.5" />
-            Cerrar sesión
-          </button>
-        </form>
+        <SignOutButton
+          redirectTo={signOutRedirectTo}
+          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 pointer-coarse:min-h-11 text-left text-sm text-foreground hover:bg-muted disabled:pointer-events-none disabled:opacity-70"
+        >
+          <LogOut className="size-3.5" />
+          Cerrar sesión
+        </SignOutButton>
       </PopoverContent>
     </Popover>
   );

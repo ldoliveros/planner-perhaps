@@ -7,7 +7,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { getContrastTextColor } from "@/lib/color-contrast";
+import { getContrastTextColor, getReadableTextColor } from "@/lib/color-contrast";
 import { cn } from "cn";
 import type { Client } from "@/types";
 
@@ -58,6 +58,8 @@ export function CalendarHeader({
   mobileFilters,
 }: CalendarHeaderProps) {
   const initialTextColor = getContrastTextColor(client.color);
+  // Vista activa: fondo = color del cliente, texto con el mejor contraste (solo la opción activa).
+  const activeViewStyle = { backgroundColor: client.color, color: getReadableTextColor(client.color) };
 
   return (
     <div className="border-b border-border bg-background">
@@ -182,9 +184,11 @@ export function CalendarHeader({
                   key={option.value}
                   type="button"
                   onClick={() => onViewChange(option.value)}
+                  aria-pressed={view === option.value}
+                  style={view === option.value ? activeViewStyle : undefined}
                   className={cn(
-                    "rounded-md px-2.5 py-1 font-medium transition-colors max-md:flex-1 max-md:py-2 pointer-coarse:py-2.5",
-                    view === option.value ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"
+                    "rounded-md px-2.5 py-1 font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/50 max-md:flex-1 max-md:py-2 pointer-coarse:py-2.5",
+                    view === option.value ? "shadow-xs hover:brightness-95" : "text-muted-foreground hover:text-foreground"
                   )}
                 >
                   {option.label}

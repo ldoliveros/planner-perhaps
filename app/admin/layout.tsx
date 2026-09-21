@@ -1,12 +1,10 @@
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
-import { Button } from "@/components/ui/button";
+import { SignOutButton } from "@/components/shared/sign-out-button";
 import { AdminSidebar } from "@/components/admin/admin-sidebar";
 import { AdminMobileNav } from "@/components/admin/admin-mobile-nav";
 import { UpdateBannerController } from "@/components/shared/update-banner-controller";
 import { createClient } from "@/lib/supabase/server";
-import { getLastSeenVersion } from "@/lib/supabase/queries";
-import { signOut } from "@/lib/actions/auth";
 import { getCurrentReleaseForRole } from "@/lib/changelog";
 import { APP_VERSION } from "@/lib/version";
 
@@ -22,7 +20,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role, full_name, avatar_url")
+    .select("role, full_name, avatar_url, last_seen_version")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -32,11 +30,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         <p className="text-sm text-muted-foreground">
           Tu cuenta ({user.email}) no tiene permisos de administrador todavía.
         </p>
-        <form action={signOut.bind(null, "/login")}>
-          <Button variant="outline" size="sm" type="submit">
-            Cerrar sesión
-          </Button>
-        </form>
+        <SignOutButton variant="button" redirectTo="/login">
+          Cerrar sesión
+        </SignOutButton>
       </div>
     );
   }
@@ -44,7 +40,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const cookieStore = await cookies();
   const defaultCollapsed = cookieStore.get("sidebar_collapsed")?.value === "1";
 
-  const lastSeenVersion = await getLastSeenVersion(user.id);
+  const lastSeenVersion = profile.last_seen_version;
   const currentRelease = getCurrentReleaseForRole(profile.role);
   const showUpdateBanner = currentRelease !== null && lastSeenVersion !== APP_VERSION;
 

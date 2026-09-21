@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useActionState, useEffect, useRef, useState, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
 import { CheckCircle2 } from "lucide-react";
 import { AuthBrandHeader } from "@/components/auth/auth-brand-header";
 import { AuthSplitLayout } from "@/components/auth/auth-split-layout";
@@ -51,15 +52,33 @@ function PasswordForm({
   onMagicLink: () => void;
   onForgot: () => void;
 }) {
+  const router = useRouter();
   const [state, formAction, isPending] = useActionState(signIn, initialSignInState);
+  // Estado que había al enviar: mientras no cambie, la respuesta del servidor todavía no llegó. Da feedback inmediato
+  // en el submit (isPending tarda en reflejarse) y bloquea un segundo envío.
+  const [submittedFrom, setSubmittedFrom] = useState<AuthActionState | null>(null);
+  // Con login correcto el servidor devuelve el destino: se queda "Ingresando…" hasta que la navegación termine.
+  const busy = isPending || submittedFrom === state || Boolean(state.redirectTo);
   const error = state.error ?? (linkError ? "El enlace no es válido o ya venció. Pedí uno nuevo." : null);
+
+  useEffect(() => {
+    if (state.redirectTo) router.replace(state.redirectTo);
+  }, [state.redirectTo, router]);
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    if (busy) {
+      event.preventDefault();
+      return;
+    }
+    setSubmittedFrom(state);
+  }
 
   return (
     <>
       <h1 className="text-3xl font-bold leading-[1.15] tracking-tight text-foreground">Ingresá a tu cuenta</h1>
       <p className="mt-3 text-sm text-muted-foreground">Usá tu email y contraseña para entrar a Perhaps Planner.</p>
 
-      <form action={formAction} className="mt-8 flex flex-col gap-4">
+      <form action={formAction} onSubmit={handleSubmit} className="mt-8 flex flex-col gap-4">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="email">Email</Label>
           <Input
@@ -88,17 +107,17 @@ function PasswordForm({
 
         <Button
           type="submit"
-          disabled={isPending}
+          disabled={busy}
           className="h-11 rounded-xl bg-[#26a9e0] text-white hover:bg-[#1c8fc0] disabled:opacity-60"
         >
-          {isPending ? "Ingresando..." : "Ingresar"}
+          {busy ? "Ingresando…" : "Ingresar"}
         </Button>
 
-        <Button type="button" variant="outline" className="h-11 rounded-xl" onClick={onMagicLink}>
+        <Button type="button" variant="outline" className="h-11 rounded-xl" disabled={busy} onClick={onMagicLink}>
           Ingresar con un enlace por email
         </Button>
 
-        <button type="button" onClick={onForgot} className={LINK_BUTTON_CLASS}>
+        <button type="button" onClick={onForgot} disabled={busy} className={LINK_BUTTON_CLASS}>
           ¿Olvidaste tu contraseña?
         </button>
       </form>

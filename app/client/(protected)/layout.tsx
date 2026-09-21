@@ -1,12 +1,11 @@
 import { redirect } from "next/navigation";
 import Image from "next/image";
-import { Button } from "@/components/ui/button";
+import { SignOutButton } from "@/components/shared/sign-out-button";
 import { PerhapsLogo } from "@/components/branding/perhaps-logo";
 import { UserMenu } from "@/components/shared/user-menu";
 import { UpdateBannerController } from "@/components/shared/update-banner-controller";
 import { getClientById, getCurrentProfile, getLastSeenVersion } from "@/lib/supabase/queries";
 import { getContrastTextColor } from "@/lib/color-contrast";
-import { signOut } from "@/lib/actions/auth";
 import { getCurrentReleaseForRole } from "@/lib/changelog";
 import { APP_VERSION } from "@/lib/version";
 
@@ -23,30 +22,29 @@ export default async function ClientLayout({ children }: { children: React.React
         <p className="text-sm text-muted-foreground">
           Tu cuenta ({profile.email}) todavía no está asociada a un cliente. Contactá a tu equipo de gestión.
         </p>
-        <form action={signOut.bind(null, "/login")}>
-          <Button variant="outline" size="sm" type="submit">
-            Cerrar sesión
-          </Button>
-        </form>
+        <SignOutButton variant="button" redirectTo="/login">
+          Cerrar sesión
+        </SignOutButton>
       </div>
     );
   }
 
-  const client = await getClientById(profile.clientId);
+  // Independientes entre sí: en paralelo (una ida y vuelta menos por carga de página).
+  const [client, lastSeenVersion] = await Promise.all([
+    getClientById(profile.clientId),
+    getLastSeenVersion(profile.userId),
+  ]);
   if (!client) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-background px-4 text-center">
         <p className="text-sm text-muted-foreground">No pudimos cargar tu cuenta. Contactá a tu equipo de gestión.</p>
-        <form action={signOut.bind(null, "/login")}>
-          <Button variant="outline" size="sm" type="submit">
-            Cerrar sesión
-          </Button>
-        </form>
+        <SignOutButton variant="button" redirectTo="/login">
+          Cerrar sesión
+        </SignOutButton>
       </div>
     );
   }
 
-  const lastSeenVersion = await getLastSeenVersion(profile.userId);
   const currentRelease = getCurrentReleaseForRole(profile.role);
   const showUpdateBanner = currentRelease !== null && lastSeenVersion !== APP_VERSION;
 

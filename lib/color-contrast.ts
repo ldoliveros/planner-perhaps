@@ -23,3 +23,25 @@ export function hexToRgba(hex: string, alpha: number): string {
   const { r, g, b } = parseHex(hex);
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
+
+function relativeLuminance(hex: string): number {
+  const { r, g, b } = parseHex(hex);
+  const channel = (v: number) => {
+    const c = v / 255;
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  };
+  return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+}
+
+function contrastRatio(hexA: string, hexB: string): number {
+  const [lighter, darker] = [relativeLuminance(hexA), relativeLuminance(hexB)].sort((a, b) => b - a);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+/**
+ * Como getContrastTextColor pero elige por ratio de contraste WCAG (el mayor entre blanco y el texto oscuro
+ * de la app). Más fiel que YIQ en colores medios (celestes, verdes), donde YIQ puede dejar texto blanco poco legible.
+ */
+export function getReadableTextColor(hex: string): "#0f172a" | "#ffffff" {
+  return contrastRatio(hex, "#ffffff") >= contrastRatio(hex, "#0f172a") ? "#ffffff" : "#0f172a";
+}

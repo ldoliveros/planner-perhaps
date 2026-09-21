@@ -1,12 +1,13 @@
 "use server";
 
-import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getSiteURL } from "@/lib/site-url";
 import { friendlyPasswordError } from "@/lib/friendly-errors";
 
 export interface AuthActionState {
   error: string | null;
+  /** Destino según el rol; el cliente navega ahí (ver signIn). */
+  redirectTo?: string;
 }
 
 export async function signIn(_prevState: AuthActionState, formData: FormData): Promise<AuthActionState> {
@@ -24,9 +25,11 @@ export async function signIn(_prevState: AuthActionState, formData: FormData): P
     return { error: "Email o contraseña incorrectos." };
   }
 
-  // Login único (/login): el destino lo decide el rol, no la pantalla.
+  // Login único (/login): el destino lo decide el rol, no la pantalla. Se devuelve en lugar de usar redirect():
+  // con redirect() el servidor renderiza el destino dentro de la misma respuesta y el navegador lo vuelve a pedir
+  // (en producción sumaba ~3 s); devolviéndolo, el cliente navega y el destino se pide una sola vez.
   const { data: profile } = await supabase.from("profiles").select("role").eq("id", data.user.id).maybeSingle();
-  redirect(profile?.role === "client" ? "/client/planner" : "/admin");
+  return { error: null, redirectTo: profile?.role === "client" ? "/client/planner" : "/admin" };
 }
 
 /** Mensaje para el usuario cuando falla el envío de un link por email (magic link / recuperar contraseña). */
@@ -67,10 +70,11 @@ export async function requestMagicLink(
   return { error: null, sentAt: Date.now() };
 }
 
-export async function signOut(redirectTo: string = "/login") {
+/** Cierra la sesión y devuelve a dónde ir (el cliente navega; ver SignOutButton). */
+export async function signOut(redirectTo: string = "/login"): Promise<{ redirectTo: string }> {
   const supabase = await createClient();
   await supabase.auth.signOut();
-  redirect(redirectTo);
+  return { redirectTo };
 }
 
 export interface PasswordResetState {
