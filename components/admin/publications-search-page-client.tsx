@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Copy, Search, Trash2, X } from "lucide-react";
+import { Copy, ListFilter, Search, Trash2, X } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,7 +21,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { PlatformIcon } from "@/components/icons/brand-icons";
 import { StatusPill } from "@/components/shared/status-pill";
-import { accountLabelsWithPlatform } from "@/lib/account-label";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { CARD_ACTIONS_CLASS, EmptyCard, ResponsiveList, RowCard } from "@/components/admin/responsive-list";
+import { useMediaQuery } from "@/lib/use-media-query";
+import { cn } from "cn";
+import { accountLabel, accountLabelsWithPlatform } from "@/lib/account-label";
 import { deletePublication } from "@/lib/actions/publications";
 import { formatFullDate, formatTime } from "@/lib/date-utils";
 import { toast } from "@/lib/toast";
@@ -69,6 +73,9 @@ export function PublicationsSearchPageClient({
   const [campaign, setCampaign] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  // Una sola versión de filtros/resultados (desktop o mobile); `null` = sin hidratar (ambas + CSS).
+  const isDesktop = useMediaQuery("(min-width: 768px)");
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const calendarsForClient = clientId === ALL ? calendars : calendars.filter((c) => c.clientId === clientId);
   const accountsForClient = clientId === ALL ? clientAccounts : clientAccounts.filter((a) => a.clientId === clientId);
@@ -84,6 +91,17 @@ export function PublicationsSearchPageClient({
     campaign.trim() !== "" ||
     dateFrom !== "" ||
     dateTo !== "";
+
+  // Contador del botón "Filtros" (mobile): categorías restringidas, sin contar el buscador (siempre visible).
+  const activeFilterCount = [
+    clientId !== ALL,
+    calendarId !== ALL,
+    platformId !== ALL,
+    accountId !== ALL,
+    statusId !== ALL,
+    campaign.trim() !== "",
+    dateFrom !== "" || dateTo !== "",
+  ].filter(Boolean).length;
 
   function clearFilters() {
     setSearch("");
@@ -132,26 +150,19 @@ export function PublicationsSearchPageClient({
     campaignMap,
   ]);
 
-  return (
-    <div className="flex flex-col gap-4 p-6">
-      <div>
-        <h1 className="text-lg font-semibold text-foreground">Publicaciones</h1>
-        <p className="text-sm text-muted-foreground">
-          Búsqueda global — el flujo principal para crear y editar contenido sigue siendo el planner de cada cliente.
-        </p>
-      </div>
-
-      <div className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3">
-        <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar por título..."
-            className="pl-8"
-          />
-        </div>
-        <div className="flex flex-wrap gap-2">
+  // Mismos controles para la barra de escritorio (en línea) y el sheet mobile (apilados a todo el ancho).
+  const filterFields = (stacked: boolean) => {
+    const dateField = (label: string, value: string, set: (v: string) => void) =>
+      stacked ? (
+        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+          {label}
+          <Input type="date" value={value} onChange={(e) => set(e.target.value)} className="w-full" />
+        </label>
+      ) : (
+        <Input type="date" aria-label={label} value={value} onChange={(e) => set(e.target.value)} className="w-36" />
+      );
+    return (
+      <>
           <Select
             value={clientId}
             onValueChange={(v) => {
@@ -161,7 +172,7 @@ export function PublicationsSearchPageClient({
             }}
             items={{ [ALL]: "Todos los clientes", ...Object.fromEntries(clients.map((c) => [c.id, clientLabel(c)])) }}
           >
-            <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
+            <SelectTrigger className={stacked ? "w-full" : "w-44"}><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value={ALL}>Todos los clientes</SelectItem>
               {clients.map((c) => (
@@ -175,7 +186,7 @@ export function PublicationsSearchPageClient({
             onValueChange={(v) => setCalendarId(v as string)}
             items={{ [ALL]: "Todos los calendarios", ...Object.fromEntries(calendarsForClient.map((c) => [c.id, calendarLabel(c)])) }}
           >
-            <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
+            <SelectTrigger className={stacked ? "w-full" : "w-44"}><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value={ALL}>Todos los calendarios</SelectItem>
               {calendarsForClient.map((c) => (
@@ -189,7 +200,7 @@ export function PublicationsSearchPageClient({
             onValueChange={(v) => setPlatformId(v as string)}
             items={{ [ALL]: "Todos los canales", ...Object.fromEntries(platforms.map((p) => [p.id, p.name])) }}
           >
-            <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+            <SelectTrigger className={stacked ? "w-full" : "w-40"}><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value={ALL}>Todos los canales</SelectItem>
               {platforms.map((p) => (
@@ -203,7 +214,7 @@ export function PublicationsSearchPageClient({
             onValueChange={(v) => setAccountId(v as string)}
             items={{ [ALL]: "Todas las cuentas", ...Object.fromEntries(accountsForClient.map((a) => [a.id, accountLabels.get(a.id) ?? a.handle])) }}
           >
-            <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
+            <SelectTrigger className={stacked ? "w-full" : "w-44"}><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value={ALL}>Todas las cuentas</SelectItem>
               {accountsForClient.map((a) => (
@@ -217,7 +228,7 @@ export function PublicationsSearchPageClient({
             onValueChange={(v) => setStatusId(v as string)}
             items={{ [ALL]: "Todos los estados", ...Object.fromEntries(statuses.map((s) => [s.id, s.label])) }}
           >
-            <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+            <SelectTrigger className={stacked ? "w-full" : "w-40"}><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value={ALL}>Todos los estados</SelectItem>
               {statuses.map((s) => (
@@ -230,20 +241,61 @@ export function PublicationsSearchPageClient({
             value={campaign}
             onChange={(e) => setCampaign(e.target.value)}
             placeholder="Campaña"
-            className="w-36"
+            className={stacked ? "w-full" : "w-36"}
           />
-          <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="w-36" />
-          <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-36" />
+          {dateField("Desde", dateFrom, setDateFrom)}
+          {dateField("Hasta", dateTo, setDateTo)}
+      </>
+    );
+  };
 
-          {hasActiveFilters && (
-            <Button variant="ghost" size="sm" className="gap-1 text-muted-foreground" onClick={clearFilters}>
-              <X />
-              Limpiar filtros
+  return (
+    <div className="flex flex-col gap-4 p-6">
+      <div>
+        <h1 className="text-lg font-semibold text-foreground">Publicaciones</h1>
+        <p className="text-sm text-muted-foreground">
+          Búsqueda global — el flujo principal para crear y editar contenido sigue siendo el planner de cada cliente.
+        </p>
+      </div>
+
+      <div className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3">
+        <div className="flex items-center gap-2">
+          <div className="relative min-w-0 flex-1">
+            <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar por título..."
+              className="pl-8"
+            />
+          </div>
+          {isDesktop !== true && (
+            <Button variant="outline" className="gap-1.5 md:hidden" onClick={() => setFiltersOpen(true)}>
+              <ListFilter />
+              Filtros
+              {activeFilterCount > 0 && (
+                <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground">
+                  {activeFilterCount}
+                </span>
+              )}
             </Button>
           )}
         </div>
+        {isDesktop !== false && (
+          <div className="flex flex-wrap gap-2 max-md:hidden">
+            {filterFields(false)}
+            {hasActiveFilters && (
+              <Button variant="ghost" size="sm" className="gap-1 text-muted-foreground" onClick={clearFilters}>
+                <X />
+                Limpiar filtros
+              </Button>
+            )}
+          </div>
+        )}
       </div>
 
+      <ResponsiveList
+        table={
       <div className="overflow-hidden rounded-lg border border-border bg-card">
         <Table>
           <TableHeader>
@@ -324,11 +376,104 @@ export function PublicationsSearchPageClient({
           </TableBody>
         </Table>
       </div>
+        }
+        cards={
+          <>
+            {results.length === 0 && (
+              <EmptyCard>
+                {hasActiveFilters ? "No hay publicaciones que coincidan con los filtros." : "Todavía no hay publicaciones."}
+              </EmptyCard>
+            )}
+            {results.map((p) => {
+              const client = clientMap.get(p.clientId);
+              const calendar = calendarMap.get(p.calendarId);
+              const contentType = contentTypeMap.get(p.contentTypeId);
+              const status = statusMap.get(p.statusId);
+              const destinationAccounts = p.destinations
+                .map((d) => clientAccountMap.get(d.clientAccountId))
+                .filter((a): a is ClientAccount => Boolean(a));
+              const uniquePlatformIds = Array.from(new Set(destinationAccounts.map((a) => a.platformId)));
+              return (
+                <RowCard key={p.id}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 flex-col gap-0.5">
+                      <span className="line-clamp-2 font-medium text-foreground">{p.title}</span>
+                      <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        {client && <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: client.color }} />}
+                        <span className="truncate">
+                          {client ? clientLabel(client) : "—"}
+                          {calendar ? ` · ${calendarLabel(calendar)}` : ""}
+                        </span>
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {formatFullDate(p.publicationDate)}
+                        {p.publicationTime ? ` · ${formatTime(p.publicationTime)}` : ""}
+                      </span>
+                    </div>
+                    {status && <StatusPill status={status} size="sm" />}
+                  </div>
+                  {(uniquePlatformIds.length > 0 || contentType) && (
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      {uniquePlatformIds.map((platformId) => {
+                        const platform = platformMap.get(platformId);
+                        if (!platform) return null;
+                        return (
+                          <PlatformIcon
+                            key={platformId}
+                            platformKey={platform.key}
+                            className="size-3.5 shrink-0"
+                            style={{ color: platform.color }}
+                          />
+                        );
+                      })}
+                      <span className="truncate">
+                        {[contentType?.label, destinationAccounts.map(accountLabel).join(", ")].filter(Boolean).join(" · ")}
+                      </span>
+                    </div>
+                  )}
+                  {client && (
+                    <div className={CARD_ACTIONS_CLASS}>
+                      <PublicationRowActions publication={p} clientId={client.id} className="justify-start" />
+                    </div>
+                  )}
+                </RowCard>
+              );
+            })}
+          </>
+        }
+      />
+
+      {isDesktop !== true && (
+        <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}>
+          <SheetContent side="right" mobile="bottom" className="gap-0 p-0 max-md:max-h-[85dvh]">
+            <SheetHeader className="border-b border-border p-4 pr-16">
+              <SheetTitle>Filtros{activeFilterCount > 0 ? ` · ${activeFilterCount}` : ""}</SheetTitle>
+            </SheetHeader>
+            <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">{filterFields(true)}</div>
+            <div className="flex gap-2 border-t border-border p-3">
+              <Button variant="outline" className="flex-1" disabled={!hasActiveFilters} onClick={clearFilters}>
+                Limpiar
+              </Button>
+              <Button className="flex-1" onClick={() => setFiltersOpen(false)}>
+                Listo
+              </Button>
+            </div>
+          </SheetContent>
+        </Sheet>
+      )}
     </div>
   );
 }
 
-function PublicationRowActions({ publication, clientId }: { publication: Publication; clientId: string }) {
+function PublicationRowActions({
+  publication,
+  clientId,
+  className,
+}: {
+  publication: Publication;
+  clientId: string;
+  className?: string;
+}) {
   const router = useRouter();
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -349,7 +494,7 @@ function PublicationRowActions({ publication, clientId }: { publication: Publica
   }
 
   return (
-    <div className="flex justify-end gap-1">
+    <div className={cn("flex justify-end gap-1", className)}>
       <Button
         variant="ghost"
         size="sm"

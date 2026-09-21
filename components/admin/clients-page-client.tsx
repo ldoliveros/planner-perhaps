@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ClientFormDialog } from "@/components/admin/client-form-dialog";
+import { CARD_ACTIONS_CLASS, EmptyCard, ResponsiveList, RowCard } from "@/components/admin/responsive-list";
 import { deleteClient, setClientActive } from "@/lib/actions/clients";
 import { getContrastTextColor } from "@/lib/color-contrast";
 import { toast } from "@/lib/toast";
@@ -80,43 +81,65 @@ function ClientsTable({
   emptyMessage: React.ReactNode;
 }) {
   return (
-    <div className="overflow-hidden rounded-lg border border-border bg-card">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Cliente</TableHead>
-            <TableHead>Calendarios</TableHead>
-            <TableHead>Estado</TableHead>
-            <TableHead className="text-right">Acciones</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {clients.length === 0 && emptyMessage && (
-            <TableRow>
-              <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">
-                {emptyMessage}
-              </TableCell>
-            </TableRow>
-          )}
+    <ResponsiveList
+      table={
+        <div className="overflow-hidden rounded-lg border border-border bg-card">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Cliente</TableHead>
+                <TableHead>Calendarios</TableHead>
+                <TableHead>Estado</TableHead>
+                <TableHead className="text-right">Acciones</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {clients.length === 0 && emptyMessage && (
+                <TableRow>
+                  <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">
+                    {emptyMessage}
+                  </TableCell>
+                </TableRow>
+              )}
+              {clients.map((client) => (
+                <ClientRow
+                  key={client.id}
+                  layout="table"
+                  client={client}
+                  calendarCount={calendarCountByClientId[client.id] ?? 0}
+                  canManage={canManage}
+                />
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      }
+      cards={
+        <>
+          {clients.length === 0 && emptyMessage && <EmptyCard>{emptyMessage}</EmptyCard>}
           {clients.map((client) => (
-            <ClientTableRow
+            <ClientRow
               key={client.id}
+              layout="card"
               client={client}
               calendarCount={calendarCountByClientId[client.id] ?? 0}
               canManage={canManage}
             />
           ))}
-        </TableBody>
-      </Table>
-    </div>
+        </>
+      }
+    />
   );
 }
 
-function ClientTableRow({
+/** Una fila de cliente: tabla en md+ (`layout="table"`) o card en < md (`layout="card"`); misma lógica y acciones. */
+function ClientRow({
+  layout,
   client,
   calendarCount,
   canManage,
 }: {
+  layout: "table" | "card";
   client: Client;
   calendarCount: number;
   canManage: boolean;
@@ -155,77 +178,100 @@ function ClientTableRow({
     });
   }
 
+  const logo = (sizeClass: string, sizes: string) => (
+    <span
+      className={`relative flex ${sizeClass} shrink-0 items-center justify-center overflow-hidden rounded-md text-xs font-semibold`}
+      style={client.logoUrl ? undefined : { backgroundColor: client.color, color: getContrastTextColor(client.color) }}
+    >
+      {client.logoUrl ? (
+        <Image src={client.logoUrl} alt="" fill sizes={sizes} className="object-cover" />
+      ) : (
+        client.name.charAt(0)
+      )}
+    </span>
+  );
+  const statusBadge = <Badge variant={client.active ? "secondary" : "outline"}>{client.active ? "Activo" : "Archivado"}</Badge>;
+
+  const actions = (
+    <>
+      <Button size="sm" className="gap-1.5" nativeButton={false} render={<Link href={`/admin/clients/${client.id}/planner`} />}>
+        <CalendarDays className="size-3.5" />
+        Ver planner
+      </Button>
+      <Button variant="ghost" size="sm" className="gap-1.5" nativeButton={false} render={<Link href={`/admin/clients/${client.id}`} />}>
+        <Pencil className="size-3.5" />
+        Editar
+      </Button>
+      {canManage && (
+        <>
+          <Button variant="ghost" size="sm" className="gap-1.5" disabled={isArchiving} onClick={handleToggleActive}>
+            {client.active ? <Archive className="size-3.5" /> : <ArchiveRestore className="size-3.5" />}
+            {client.active ? "Archivar" : "Restaurar"}
+          </Button>
+          {!client.active && (
+            <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+              <AlertDialogTrigger render={<Button variant="ghost" size="sm" className="gap-1.5 text-destructive" />}>
+                <Trash2 className="size-3.5" />
+                Eliminar definitivamente
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>¿Eliminar el cliente &quot;{client.name}&quot;?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    {canDelete
+                      ? "Esta acción es irreversible. El cliente no tiene calendarios ni historial asociado."
+                      : `Este cliente tiene ${calendarCount} calendario${calendarCount === 1 ? "" : "s"} con historial y no puede eliminarse definitivamente. Podés mantenerlo archivado para conservarlo.`}
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                {error && <p className="text-sm text-destructive">{error}</p>}
+                <AlertDialogFooter>
+                  <AlertDialogCancel>{canDelete ? "Cancelar" : "Entendido"}</AlertDialogCancel>
+                  {canDelete && (
+                    <AlertDialogAction variant="destructive" disabled={isDeleting} onClick={handleConfirmDelete}>
+                      Eliminar definitivamente
+                    </AlertDialogAction>
+                  )}
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
+        </>
+      )}
+    </>
+  );
+
+  if (layout === "card") {
+    return (
+      <RowCard>
+        <div className="flex items-center justify-between gap-3">
+          <Link href={`/admin/clients/${client.id}/planner`} className="flex min-h-11 min-w-0 flex-1 items-center gap-3">
+            {logo("size-10", "40px")}
+            <span className="flex min-w-0 flex-col">
+              <span className="truncate font-medium text-foreground">{client.name}</span>
+              <span className="text-xs text-muted-foreground">
+                {calendarCount} calendario{calendarCount === 1 ? "" : "s"}
+              </span>
+            </span>
+          </Link>
+          {statusBadge}
+        </div>
+        <div className={CARD_ACTIONS_CLASS}>{actions}</div>
+      </RowCard>
+    );
+  }
+
   return (
     <TableRow>
       <TableCell>
         <Link href={`/admin/clients/${client.id}/planner`} className="flex items-center gap-2 hover:underline">
-          <span
-            className="relative flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-md text-xs font-semibold"
-            style={
-              client.logoUrl
-                ? undefined
-                : { backgroundColor: client.color, color: getContrastTextColor(client.color) }
-            }
-          >
-            {client.logoUrl ? (
-              <Image src={client.logoUrl} alt="" fill sizes="32px" className="object-cover" />
-            ) : (
-              client.name.charAt(0)
-            )}
-          </span>
+          {logo("size-8", "32px")}
           <span className="font-medium text-foreground">{client.name}</span>
         </Link>
       </TableCell>
       <TableCell className="text-muted-foreground">{calendarCount}</TableCell>
-      <TableCell>
-        <Badge variant={client.active ? "secondary" : "outline"}>{client.active ? "Activo" : "Archivado"}</Badge>
-      </TableCell>
+      <TableCell>{statusBadge}</TableCell>
       <TableCell className="text-right">
-        <div className="flex justify-end gap-1">
-          <Button size="sm" className="gap-1.5" nativeButton={false} render={<Link href={`/admin/clients/${client.id}/planner`} />}>
-            <CalendarDays className="size-3.5" />
-            Ver planner
-          </Button>
-          <Button variant="ghost" size="sm" className="gap-1.5" nativeButton={false} render={<Link href={`/admin/clients/${client.id}`} />}>
-            <Pencil className="size-3.5" />
-            Editar
-          </Button>
-          {canManage && (
-            <>
-              <Button variant="ghost" size="sm" className="gap-1.5" disabled={isArchiving} onClick={handleToggleActive}>
-                {client.active ? <Archive className="size-3.5" /> : <ArchiveRestore className="size-3.5" />}
-                {client.active ? "Archivar" : "Restaurar"}
-              </Button>
-              {!client.active && (
-                <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-                  <AlertDialogTrigger render={<Button variant="ghost" size="sm" className="gap-1.5 text-destructive" />}>
-                    <Trash2 className="size-3.5" />
-                    Eliminar definitivamente
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>¿Eliminar el cliente &quot;{client.name}&quot;?</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        {canDelete
-                          ? "Esta acción es irreversible. El cliente no tiene calendarios ni historial asociado."
-                          : `Este cliente tiene ${calendarCount} calendario${calendarCount === 1 ? "" : "s"} con historial y no puede eliminarse definitivamente. Podés mantenerlo archivado para conservarlo.`}
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    {error && <p className="text-sm text-destructive">{error}</p>}
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>{canDelete ? "Cancelar" : "Entendido"}</AlertDialogCancel>
-                      {canDelete && (
-                        <AlertDialogAction variant="destructive" disabled={isDeleting} onClick={handleConfirmDelete}>
-                          Eliminar definitivamente
-                        </AlertDialogAction>
-                      )}
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
-              )}
-            </>
-          )}
-        </div>
+        <div className="flex justify-end gap-1">{actions}</div>
       </TableCell>
     </TableRow>
   );

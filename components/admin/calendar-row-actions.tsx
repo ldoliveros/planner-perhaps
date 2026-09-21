@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { CalendarFormDialog } from "@/components/admin/calendar-form-dialog";
 import { deleteCalendar, setCalendarArchived } from "@/lib/actions/calendars";
 import { toast } from "@/lib/toast";
+import { cn } from "cn";
 import type { Calendar, Client } from "@/types";
 
 interface CalendarRowActionsProps {
@@ -26,9 +27,10 @@ interface CalendarRowActionsProps {
   calendar: Calendar;
   publicationCount: number;
   clients?: Client[];
+  className?: string;
 }
 
-export function CalendarRowActions({ client, calendar, publicationCount, clients }: CalendarRowActionsProps) {
+export function CalendarRowActions({ client, calendar, publicationCount, clients, className }: CalendarRowActionsProps) {
   const router = useRouter();
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [isDeleting, startDeleteTransition] = useTransition();
@@ -65,7 +67,7 @@ export function CalendarRowActions({ client, calendar, publicationCount, clients
   }
 
   return (
-    <div className="flex flex-wrap justify-end gap-1">
+    <div className={cn("flex flex-wrap justify-end gap-1", className)}>
       <Button size="sm" nativeButton={false} render={<Link href={`/admin/clients/${client.id}/planner?calendars=${calendar.id}`} />}>
         Ver
       </Button>
