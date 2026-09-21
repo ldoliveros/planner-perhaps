@@ -81,9 +81,7 @@ export default async function ClientLayout({ children }: { children: React.React
         />
       </div>
       {children}
-      {showUpdateBanner && currentRelease && (
-        <UpdateBannerController version={APP_VERSION} entries={currentRelease.entries} />
-      )}
+      {showUpdateBanner && <UpdateBannerController version={APP_VERSION} />}
     </div>
   );
 }

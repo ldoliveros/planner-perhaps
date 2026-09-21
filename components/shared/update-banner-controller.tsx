@@ -3,11 +3,9 @@
 import { useState } from "react";
 import { UpdateBanner } from "@/components/shared/update-banner";
 import { markVersionSeen } from "@/lib/actions/app-meta";
-import type { ChangelogEntry } from "@/lib/changelog";
 
 interface UpdateBannerControllerProps {
   version: string;
-  entries: ChangelogEntry[];
 }
 
 /**
@@ -18,7 +16,7 @@ interface UpdateBannerControllerProps {
  * Si falla, el banner queda abierto con el error visible y el mismo botón
  * sirve para reintentar. Un guard por isSaving evita doble click/doble submit.
  */
-export function UpdateBannerController({ version, entries }: UpdateBannerControllerProps) {
+export function UpdateBannerController({ version }: UpdateBannerControllerProps) {
   const [shown, setShown] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -38,6 +36,6 @@ export function UpdateBannerController({ version, entries }: UpdateBannerControl
 
   if (!shown) return null;
   return (
-    <UpdateBanner version={version} entries={entries} isSaving={isSaving} error={error} onDismiss={handleDismiss} />
+    <UpdateBanner version={version} isSaving={isSaving} error={error} onDismiss={handleDismiss} />
   );
 }

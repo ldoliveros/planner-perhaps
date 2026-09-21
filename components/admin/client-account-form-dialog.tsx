@@ -142,7 +142,7 @@ function ClientAccountFormBody({
           name="handle"
           value={handle}
           onChange={(e) => setHandle(e.target.value)}
-          placeholder="Ej: aionis.health"
+          placeholder="Ej: miempresa"
           required
           autoFocus
         />
@@ -156,7 +156,7 @@ function ClientAccountFormBody({
           name="name"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="Ej: AIONIS Health"
+          placeholder="Ej: Mi Empresa"
         />
       </div>
 

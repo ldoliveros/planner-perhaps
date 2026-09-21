@@ -39,7 +39,11 @@ export default async function ChangelogPage() {
           <p className="text-sm text-muted-foreground">Todavía no hay novedades para mostrar.</p>
         )}
         {releases.map((release) => (
-          <div key={release.version} className="flex flex-col gap-3 border-b border-border pb-8 last:border-0 last:pb-0">
+          <div
+            key={release.version}
+            id={`v${release.version}`}
+            className="flex scroll-mt-6 flex-col gap-3 border-b border-border pb-8 last:border-0 last:pb-0"
+          >
             <div className="flex items-baseline gap-2">
               <h2 className="text-base font-semibold text-foreground">v{release.version}</h2>
               <span className="text-xs text-muted-foreground">{formatReleaseDate(release.date)}</span>

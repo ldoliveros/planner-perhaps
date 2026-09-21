@@ -66,9 +66,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         />
         <main className="min-w-0 flex-1 overflow-y-auto">{children}</main>
       </div>
-      {showUpdateBanner && currentRelease && (
-        <UpdateBannerController version={APP_VERSION} entries={currentRelease.entries} />
-      )}
+      {showUpdateBanner && <UpdateBannerController version={APP_VERSION} />}
     </div>
   );
 }
