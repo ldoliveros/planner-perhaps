@@ -5,7 +5,7 @@ interface AuthSplitLayoutProps {
 }
 
 /**
- * Layout compartido de las pantallas de acceso (/client/login, /login):
+ * Layout compartido de las pantallas de acceso (/login):
  * imagen a la izquierda (~60% desktop, ~50% tablet, oculta en mobile) +
  * panel blanco a la derecha con el contenido de auth. Los formularios y la
  * lógica de cada pantalla son independientes — esto solo resuelve la

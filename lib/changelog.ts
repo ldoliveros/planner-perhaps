@@ -20,6 +20,20 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG: ChangelogRelease[] = [
   {
+    version: "1.3.1",
+    date: "2026-09-21",
+    entries: [
+      {
+        text: "Arrastrar y soltar en la vista Mes: mové una publicación a otro día directamente desde el calendario mensual, conservando su horario (en computadora).",
+        roles: ["super_admin", "account_manager"],
+      },
+      {
+        text: "Un solo acceso para todos: ahora todos ingresan desde la misma pantalla, con email y contraseña o con un enlace por email.",
+        roles: ["super_admin", "account_manager", "client"],
+      },
+    ],
+  },
+  {
     version: "1.3",
     date: "2026-09-21",
     entries: [

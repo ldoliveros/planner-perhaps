@@ -24,7 +24,7 @@ export async function signIn(_prevState: AuthActionState, formData: FormData): P
     return { error: "Email o contraseña incorrectos." };
   }
 
-  // Un único login para /login y /client/login: el destino lo decide el rol, no la pantalla.
+  // Login único (/login): el destino lo decide el rol, no la pantalla.
   const { data: profile } = await supabase.from("profiles").select("role").eq("id", data.user.id).maybeSingle();
   redirect(profile?.role === "client" ? "/client/planner" : "/admin");
 }

@@ -18,5 +18,5 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  return NextResponse.redirect(`${siteURL}/client/login?error=1`);
+  return NextResponse.redirect(`${siteURL}/login?error=1`);
 }

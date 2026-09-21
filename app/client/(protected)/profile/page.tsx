@@ -4,7 +4,7 @@ import { getCurrentProfile } from "@/lib/supabase/queries";
 
 export default async function ClientProfilePage() {
   const profile = await getCurrentProfile();
-  if (!profile) redirect("/client/login");
+  if (!profile) redirect("/login");
 
   return (
     <ProfileForm

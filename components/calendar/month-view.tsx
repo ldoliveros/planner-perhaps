@@ -1,10 +1,13 @@
 "use client";
 
+import type { ButtonHTMLAttributes } from "react";
 import Image from "next/image";
+import { DndContext, DragOverlay, useDraggable } from "@dnd-kit/core";
 import { Plus } from "lucide-react";
 import { isWeekend } from "date-fns";
 import { cn } from "cn";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { DayDropZone, toDateKey, usePublicationDnd } from "@/components/calendar/publication-dnd";
 import { PublicationQuickActions } from "@/components/calendar/publication-quick-actions";
 import { PlatformIcon } from "@/components/icons/brand-icons";
 import { StatusPill } from "@/components/shared/status-pill";
@@ -13,6 +16,7 @@ import { hexToRgba } from "@/lib/color-contrast";
 import {
   formatDayNumber,
   formatFullDateFromDate,
+  formatWeekdayAndDay,
   formatTime,
   getMonthGridDays,
   isSameDayAs,
@@ -31,9 +35,23 @@ interface MonthChipProps {
   onDuplicate?: (publication: Publication) => void;
   clientId?: string;
   showCalendarLabel: boolean;
+  /** Solo en desktop y solo para quien puede mover (Super Admin / Account Manager); ver DraggableMonthChip. */
+  dragRef?: (node: HTMLElement | null) => void;
+  dragProps?: ButtonHTMLAttributes<HTMLButtonElement>;
+  dragState?: "dragging" | "saving";
 }
 
-function MonthChip({ publication, onOpen, onEdit, onDuplicate, clientId, showCalendarLabel }: MonthChipProps) {
+function MonthChip({
+  publication,
+  onOpen,
+  onEdit,
+  onDuplicate,
+  clientId,
+  showCalendarLabel,
+  dragRef,
+  dragProps,
+  dragState,
+}: MonthChipProps) {
   const { getCalendar, getClientAccount, getPlatform, getStatus } = useLookups();
   const canManage = Boolean(onEdit && onDuplicate && clientId);
   const status = getStatus(publication.statusId);
@@ -48,12 +66,23 @@ function MonthChip({ publication, onOpen, onEdit, onDuplicate, clientId, showCal
   );
 
   return (
-    <div className="group/chip relative flex w-full items-start gap-2 rounded-md px-1 py-1 transition-colors hover:bg-muted">
+    <div
+      className={cn(
+        "group/chip relative flex w-full items-start gap-2 rounded-md px-1 py-1 transition-colors hover:bg-muted",
+        dragState === "dragging" && "opacity-40",
+        dragState === "saving" && "animate-pulse opacity-70"
+      )}
+    >
       <button
+        ref={dragRef}
         type="button"
         onClick={onOpen}
         aria-label={publication.title}
-        className="absolute inset-0 z-[1] rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        {...dragProps}
+        className={cn(
+          "absolute inset-0 z-[1] rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          dragProps && "cursor-grab active:cursor-grabbing"
+        )}
       />
       <span className="relative size-12 shrink-0 overflow-hidden rounded-sm bg-muted">
         {primaryAsset?.thumbnailUrl && (
@@ -103,6 +132,26 @@ function MonthChip({ publication, onOpen, onEdit, onDuplicate, clientId, showCal
   );
 }
 
+interface DraggableMonthChipProps extends Omit<MonthChipProps, "dragRef" | "dragProps" | "dragState"> {
+  canMove: boolean;
+  saving: boolean;
+}
+
+/** Chip arrastrable de la vista Mes (mismo esquema que DraggableCard en Semana). */
+function DraggableMonthChip({ publication, canMove, saving, ...chipProps }: DraggableMonthChipProps) {
+  const { setNodeRef, listeners, isDragging } = useDraggable({ id: publication.id, disabled: !canMove || saving });
+
+  return (
+    <MonthChip
+      publication={publication}
+      {...chipProps}
+      dragRef={canMove ? setNodeRef : undefined}
+      dragProps={canMove && !saving ? ((listeners as ButtonHTMLAttributes<HTMLButtonElement> | undefined) ?? {}) : undefined}
+      dragState={saving ? "saving" : isDragging ? "dragging" : undefined}
+    />
+  );
+}
+
 interface MonthDayCellProps {
   day: Date;
   publications: Publication[];
@@ -114,6 +163,9 @@ interface MonthDayCellProps {
   onCreateForDay?: (day: Date) => void;
   clientColor: string;
   showCalendarLabel: boolean;
+  canMove: boolean;
+  saving: Record<string, true>;
+  dragSourceKey: string | null;
 }
 
 function MonthDayCell({
@@ -127,6 +179,9 @@ function MonthDayCell({
   onCreateForDay,
   clientColor,
   showCalendarLabel,
+  canMove,
+  saving,
+  dragSourceKey,
 }: MonthDayCellProps) {
   const today = isToday(day);
   const weekend = isWeekend(day);
@@ -135,11 +190,11 @@ function MonthDayCell({
   const bgClass = today ? "bg-primary/[0.03]" : !weekend && !inCurrentMonth ? "bg-muted/30" : "";
 
   return (
-    <div
-      className={cn(
-        "group/day flex min-h-[232px] flex-col gap-0.5 border-r border-b border-border p-1.5",
-        bgClass
-      )}
+    <DayDropZone
+      dateKey={toDateKey(day)}
+      dragSourceKey={dragSourceKey}
+      disabled={!canMove}
+      className={cn("group/day flex min-h-[232px] flex-col gap-0.5 border-r border-b border-border p-1.5", bgClass)}
       style={!today && weekend ? { backgroundColor: hexToRgba(clientColor, 0.05) } : undefined}
     >
       <div className="flex items-center justify-between">
@@ -170,9 +225,11 @@ function MonthDayCell({
 
       <div className="flex flex-col gap-0.5">
         {visible.map((publication) => (
-          <MonthChip
+          <DraggableMonthChip
             key={publication.id}
             publication={publication}
+            canMove={canMove}
+            saving={publication.id in saving}
             onOpen={() => onOpenPublication(publication)}
             onEdit={onEditPublication}
             onDuplicate={onDuplicatePublication}
@@ -212,7 +269,7 @@ function MonthDayCell({
           </PopoverContent>
         </Popover>
       )}
-    </div>
+    </DayDropZone>
   );
 }
 
@@ -241,45 +298,66 @@ export function MonthView({
 }: MonthViewProps) {
   const gridDays = getMonthGridDays(anchorDate);
   const weekCount = gridDays.length / 7;
+  // Mismo criterio que Semana: solo quien puede editar recibe los callbacks; el permiso real lo aplica RLS.
+  // Arrastrar solo mueve entre los días visibles de la grilla; para otro mes se usa "Cambiar fecha".
+  const canMove = Boolean(onEditPublication && onDuplicatePublication && clientId);
+
+  const { displayedPublications, activePublication, saving, contextProps } = usePublicationDnd(publications, (targetKey) => {
+    const targetDay = gridDays.find((d) => toDateKey(d) === targetKey);
+    return targetDay ? `Publicación movida al ${formatWeekdayAndDay(targetDay)}` : "Publicación movida";
+  });
 
   return (
-    <div className="flex flex-1 flex-col">
-      <div className="grid grid-cols-7 border-b border-border">
-        {WEEKDAY_LABELS.map((label) => (
-          <div
-            key={label}
-            className="py-2 text-center text-[11px] font-medium tracking-wide text-muted-foreground"
-          >
-            {label}
-          </div>
-        ))}
-      </div>
-      <div
-        className="grid flex-1 grid-cols-7 border-t border-l border-border"
-        style={{ gridTemplateRows: `repeat(${weekCount}, minmax(0, 1fr))` }}
-      >
-        {gridDays.map((day) => {
-          const dayPublications = publications
-            .filter((p) => isSameDayAs(p.publicationDate, day))
-            .sort((a, b) => (a.publicationTime ?? "").localeCompare(b.publicationTime ?? ""));
+    <DndContext id="month-view-dnd" {...contextProps}>
+      <div className="flex flex-1 flex-col">
+        <div className="grid grid-cols-7 border-b border-border">
+          {WEEKDAY_LABELS.map((label) => (
+            <div
+              key={label}
+              className="py-2 text-center text-[11px] font-medium tracking-wide text-muted-foreground"
+            >
+              {label}
+            </div>
+          ))}
+        </div>
+        <div
+          className="grid flex-1 grid-cols-7 border-t border-l border-border"
+          style={{ gridTemplateRows: `repeat(${weekCount}, minmax(0, 1fr))` }}
+        >
+          {gridDays.map((day) => {
+            const dayPublications = displayedPublications
+              .filter((p) => isSameDayAs(p.publicationDate, day))
+              .sort((a, b) => (a.publicationTime ?? "").localeCompare(b.publicationTime ?? ""));
 
-          return (
-            <MonthDayCell
-              key={day.toISOString()}
-              day={day}
-              publications={dayPublications}
-              inCurrentMonth={isSameMonthAs(day, anchorDate)}
-              onOpenPublication={onOpenPublication}
-              onEditPublication={onEditPublication}
-              onDuplicatePublication={onDuplicatePublication}
-              clientId={clientId}
-              onCreateForDay={onCreateForDay}
-              clientColor={clientColor}
-              showCalendarLabel={showCalendarLabel}
-            />
-          );
-        })}
+            return (
+              <MonthDayCell
+                key={day.toISOString()}
+                day={day}
+                publications={dayPublications}
+                inCurrentMonth={isSameMonthAs(day, anchorDate)}
+                onOpenPublication={onOpenPublication}
+                onEditPublication={onEditPublication}
+                onDuplicatePublication={onDuplicatePublication}
+                clientId={clientId}
+                onCreateForDay={onCreateForDay}
+                clientColor={clientColor}
+                showCalendarLabel={showCalendarLabel}
+                canMove={canMove}
+                saving={saving}
+                dragSourceKey={activePublication?.publicationDate ?? null}
+              />
+            );
+          })}
+        </div>
       </div>
-    </div>
+
+      <DragOverlay dropAnimation={null}>
+        {activePublication && (
+          <div aria-hidden className="pointer-events-none cursor-grabbing select-none rotate-1 rounded-md bg-card opacity-95 shadow-lg">
+            <MonthChip publication={activePublication} onOpen={() => {}} showCalendarLabel={showCalendarLabel} />
+          </div>
+        )}
+      </DragOverlay>
+    </DndContext>
   );
 }

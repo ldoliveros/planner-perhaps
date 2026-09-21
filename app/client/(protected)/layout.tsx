@@ -14,7 +14,7 @@ export default async function ClientLayout({ children }: { children: React.React
   const profile = await getCurrentProfile();
 
   if (!profile) {
-    redirect("/client/login");
+    redirect("/login");
   }
 
   if (profile.role !== "client" || !profile.clientId) {
@@ -23,7 +23,7 @@ export default async function ClientLayout({ children }: { children: React.React
         <p className="text-sm text-muted-foreground">
           Tu cuenta ({profile.email}) todavía no está asociada a un cliente. Contactá a tu equipo de gestión.
         </p>
-        <form action={signOut.bind(null, "/client/login")}>
+        <form action={signOut.bind(null, "/login")}>
           <Button variant="outline" size="sm" type="submit">
             Cerrar sesión
           </Button>
@@ -37,7 +37,7 @@ export default async function ClientLayout({ children }: { children: React.React
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-background px-4 text-center">
         <p className="text-sm text-muted-foreground">No pudimos cargar tu cuenta. Contactá a tu equipo de gestión.</p>
-        <form action={signOut.bind(null, "/client/login")}>
+        <form action={signOut.bind(null, "/login")}>
           <Button variant="outline" size="sm" type="submit">
             Cerrar sesión
           </Button>
@@ -77,7 +77,7 @@ export default async function ClientLayout({ children }: { children: React.React
           fullName={profile.fullName}
           avatarUrl={profile.avatarUrl}
           profileHref="/client/profile"
-          signOutRedirectTo="/client/login"
+          signOutRedirectTo="/login"
         />
       </div>
       {children}
