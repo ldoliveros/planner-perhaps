@@ -7,7 +7,7 @@ import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { UserAvatar } from "@/components/shared/user-avatar";
-import { changeOwnPassword, type ChangePasswordState } from "@/lib/actions/auth";
+import { changeOwnPassword, requestPasswordReset, type ChangePasswordState, type PasswordResetState } from "@/lib/actions/auth";
 import { updateOwnProfile, type ProfileFormState } from "@/lib/actions/profile";
 import { ROLE_LABELS } from "@/lib/role-labels";
 import { toast } from "@/lib/toast";
@@ -15,6 +15,7 @@ import type { UserRole } from "@/types";
 
 const INITIAL_STATE: ProfileFormState = { error: null, savedAt: null };
 const INITIAL_PASSWORD_STATE: ChangePasswordState = { error: null, savedAt: null };
+const INITIAL_RESET_STATE: PasswordResetState = { error: null, sentAt: null };
 
 interface ProfileFormProps {
   email: string | null;
@@ -76,12 +77,8 @@ export function ProfileForm({ email, fullName, avatarUrl, role }: ProfileFormPro
         </Button>
       </form>
 
-      {role !== "client" && (
-        <>
-          <Separator />
-          <ChangePasswordSection />
-        </>
-      )}
+      <Separator />
+      {role === "client" ? <PasswordByEmailSection email={email} /> : <ChangePasswordSection />}
     </div>
   );
 }
@@ -132,6 +129,39 @@ function ChangePasswordSection() {
 
         <Button type="submit" disabled={isPending} className="w-fit">
           {isPending ? "Actualizando..." : "Actualizar contraseña"}
+        </Button>
+      </form>
+    </div>
+  );
+}
+
+/**
+ * Client User: crear o cambiar contraseña SIN fijarla directamente. Puede no tener una contraseña
+ * actual (entra por link), así que se reutiliza el flujo de recuperación por email: el link llega a
+ * su casilla, abre una sesión de recuperación y /auth/reset-password guarda la nueva contraseña.
+ */
+function PasswordByEmailSection({ email }: { email: string | null }) {
+  const [state, formAction, isPending] = useActionState(requestPasswordReset, INITIAL_RESET_STATE);
+  const lastSentAt = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (state.sentAt && state.sentAt !== lastSentAt.current) {
+      lastSentAt.current = state.sentAt;
+      toast.success("Te enviamos un link a tu email", "Abrilo para crear o cambiar tu contraseña.");
+    }
+  }, [state.sentAt]);
+
+  return (
+    <div className="flex flex-col gap-3">
+      <h2 className="text-sm font-semibold text-foreground">Contraseña</h2>
+      <p className="text-sm text-muted-foreground">
+        Podés ingresar con email y contraseña. Para crearla o cambiarla te enviamos un link seguro a tu email.
+      </p>
+      <form action={formAction} className="flex flex-col gap-3">
+        <input type="hidden" name="email" value={email ?? ""} />
+        {state.error && <p className="text-sm text-destructive">{state.error}</p>}
+        <Button type="submit" variant="outline" disabled={isPending || !email} className="w-fit">
+          {isPending ? "Enviando..." : "Crear o cambiar contraseña"}
         </Button>
       </form>
     </div>

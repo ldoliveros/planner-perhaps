@@ -18,13 +18,22 @@ export async function signIn(_prevState: AuthActionState, formData: FormData): P
   }
 
   const supabase = await createClient();
-  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
   if (error) {
     return { error: "Email o contraseña incorrectos." };
   }
 
-  redirect("/admin");
+  // Un único login para /login y /client/login: el destino lo decide el rol, no la pantalla.
+  const { data: profile } = await supabase.from("profiles").select("role").eq("id", data.user.id).maybeSingle();
+  redirect(profile?.role === "client" ? "/client/planner" : "/admin");
+}
+
+/** Mensaje para el usuario cuando falla el envío de un link por email (magic link / recuperar contraseña). */
+function emailLinkError(error: { code?: string }): string {
+  return error.code === "over_email_send_rate_limit"
+    ? "Pediste el link hace muy poco. Esperá unos segundos e intentá de nuevo."
+    : "No se pudo enviar el link. Intentá de nuevo.";
 }
 
 export interface MagicLinkState {
@@ -43,13 +52,16 @@ export async function requestMagicLink(
 
   const siteURL = await getSiteURL();
   const supabase = await createClient();
+  // shouldCreateUser: false — el link solo entra a usuarios ya invitados; un email desconocido
+  // nunca crea una cuenta. Para no revelar qué emails existen, ese caso (`otp_disabled`) responde
+  // igual que un envío exitoso.
   const { error } = await supabase.auth.signInWithOtp({
     email,
-    options: { emailRedirectTo: `${siteURL}/auth/callback` },
+    options: { emailRedirectTo: `${siteURL}/auth/callback`, shouldCreateUser: false },
   });
 
-  if (error) {
-    return { error: "No se pudo enviar el link. Intentá de nuevo.", sentAt: null };
+  if (error && error.code !== "otp_disabled") {
+    return { error: emailLinkError(error), sentAt: null };
   }
 
   return { error: null, sentAt: Date.now() };
@@ -82,7 +94,7 @@ export async function requestPasswordReset(
   });
 
   if (error) {
-    return { error: "No se pudo enviar el link. Intentá de nuevo.", sentAt: null };
+    return { error: emailLinkError(error), sentAt: null };
   }
 
   return { error: null, sentAt: Date.now() };
@@ -127,8 +139,9 @@ export interface ChangePasswordState {
 }
 
 /**
- * Cambio de contraseña estando logueado (Super Admin / Account Manager —
- * Client User sigue siendo exclusivamente Magic Link). Reautentica con la
+ * Cambio de contraseña estando logueado (Super Admin / Account Manager). El Client User crea o
+ * cambia su contraseña por el flujo de recuperación por email (requestPasswordReset), porque puede
+ * no tener una contraseña actual. Reautentica con la
  * contraseña actual antes de aplicar la nueva: un cambio de contraseña es
  * una operación sensible, no alcanza con tener la sesión abierta.
  */

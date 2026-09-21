@@ -38,9 +38,11 @@ export async function updateOwnProfile(
       .toBuffer();
     const path = `${user.id}/avatar-${Date.now()}.webp`;
 
+    // upsert: false — el path ya es único (timestamp) y el upsert exige un SELECT sobre storage.objects
+    // que la policy avatars_select (eliminada en 20260916000002) ya no concede.
     const { error: uploadError } = await supabase.storage
       .from("avatars")
-      .upload(path, optimized, { contentType: "image/webp", upsert: true });
+      .upload(path, optimized, { contentType: "image/webp", upsert: false });
     if (uploadError) return { error: uploadError.message, savedAt: null };
 
     payload.avatar_url = supabase.storage.from("avatars").getPublicUrl(path).data.publicUrl;
