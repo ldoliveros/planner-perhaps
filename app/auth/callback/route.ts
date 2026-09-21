@@ -18,5 +18,11 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  if (!code) {
+    // Sin `?code=`: es un enlace de invitación (implicit flow), cuya sesión viaja en el fragmento `#...` que el
+    // servidor no ve. El navegador conserva ese fragmento al seguir esta redirección, y /auth/confirm lo procesa.
+    return NextResponse.redirect(`${siteURL}/auth/confirm`);
+  }
+
   return NextResponse.redirect(`${siteURL}/login?error=1`);
 }

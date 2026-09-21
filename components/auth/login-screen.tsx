@@ -99,7 +99,7 @@ function PasswordForm({
         </Button>
 
         <button type="button" onClick={onForgot} className={LINK_BUTTON_CLASS}>
-          Crear o recuperar contraseña
+          ¿Olvidaste tu contraseña?
         </button>
       </form>
     </>

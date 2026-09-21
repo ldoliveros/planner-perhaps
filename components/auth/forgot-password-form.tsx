@@ -9,7 +9,7 @@ import { requestPasswordReset, type PasswordResetState } from "@/lib/actions/aut
 
 const initialResetState: PasswordResetState = { error: null, sentAt: null };
 
-/** Recuperar/crear contraseña por email (pantalla de acceso única /login). */
+/** Recuperar/crear contraseña por email (pantalla de acceso única /login); solo para usuarios existentes. */
 export function ForgotPasswordForm({ onBack, placeholder }: { onBack: () => void; placeholder: string }) {
   const [state, formAction, isPending] = useActionState(requestPasswordReset, initialResetState);
   const [sent, setSent] = useState(false);
@@ -39,7 +39,7 @@ export function ForgotPasswordForm({ onBack, placeholder }: { onBack: () => void
 
   return (
     <>
-      <h1 className="text-3xl font-bold leading-[1.15] tracking-tight text-foreground">Recuperar acceso</h1>
+      <h1 className="text-3xl font-bold leading-[1.15] tracking-tight text-foreground">Recuperar contraseña</h1>
       <p className="mt-3 text-sm text-muted-foreground">Te mandamos un link para elegir una nueva contraseña.</p>
 
       <form action={formAction} className="mt-8 flex flex-col gap-4">

@@ -1,32 +1,24 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CheckCircle2 } from "lucide-react";
 import { AuthBrandHeader } from "@/components/auth/auth-brand-header";
 import { AuthSplitLayout } from "@/components/auth/auth-split-layout";
-import { Button } from "@/components/ui/button";
-import { PasswordInput } from "@/components/ui/password-input";
-import { Label } from "@/components/ui/label";
-import { updatePassword, type UpdatePasswordState } from "@/lib/actions/auth";
+import { SetPasswordForm } from "@/components/auth/set-password-form";
 
-const initialState: UpdatePasswordState = { error: null, savedAt: null };
-
+/** Recuperación de contraseña (usuarios existentes): llegan acá desde el mail de "¿Olvidaste tu contraseña?". */
 export default function ResetPasswordPage() {
-  const [state, formAction, isPending] = useActionState(updatePassword, initialState);
   const router = useRouter();
-  const lastSavedAt = useRef<number | null>(null);
   const [done, setDone] = useState(false);
+  const handleSaved = useCallback(() => setDone(true), []);
 
   useEffect(() => {
-    if (state.savedAt && state.savedAt !== lastSavedAt.current) {
-      lastSavedAt.current = state.savedAt;
-      setDone(true);
-      const timeout = setTimeout(() => router.push("/login"), 1500);
-      return () => clearTimeout(timeout);
-    }
-  }, [state.savedAt, router]);
+    if (!done) return;
+    const timeout = setTimeout(() => router.push("/login"), 1500);
+    return () => clearTimeout(timeout);
+  }, [done, router]);
 
   return (
     <AuthSplitLayout>
@@ -39,53 +31,21 @@ export default function ResetPasswordPage() {
           <p className="text-sm text-muted-foreground">Te llevamos al ingreso en un momento...</p>
         </div>
       ) : (
-        <>
-          <h1 className="text-3xl font-bold leading-[1.15] tracking-tight text-foreground">Nueva contraseña</h1>
-          <p className="mt-3 text-sm text-muted-foreground">Elegí una contraseña de al menos 10 caracteres.</p>
-
-          <form action={formAction} className="mt-8 flex flex-col gap-4">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="password">Nueva contraseña</Label>
-              <PasswordInput
-                id="password"
-                name="password"
-                autoComplete="new-password"
-                minLength={10}
-                required
-                autoFocus
-                className="h-11 rounded-xl px-3.5"
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="confirmPassword">Confirmar contraseña</Label>
-              <PasswordInput
-                id="confirmPassword"
-                name="confirmPassword"
-                autoComplete="new-password"
-                minLength={10}
-                required
-                className="h-11 rounded-xl px-3.5"
-              />
-            </div>
-
-            {state.error && <p className="text-sm text-destructive">{state.error}</p>}
-
-            <Button
-              type="submit"
-              disabled={isPending}
-              className="h-11 rounded-xl bg-[#26a9e0] text-white hover:bg-[#1c8fc0] disabled:opacity-60"
-            >
-              {isPending ? "Guardando..." : "Guardar contraseña"}
-            </Button>
-
+        <SetPasswordForm
+          heading="Nueva contraseña"
+          description="Elegí una contraseña de al menos 10 caracteres."
+          submitLabel="Guardar contraseña"
+          pendingLabel="Guardando..."
+          onSaved={handleSaved}
+          footer={
             <Link
               href="/login"
-              className="text-center text-xs text-muted-foreground hover:text-foreground hover:underline"
+              className="text-center text-xs text-muted-foreground hover:text-foreground hover:underline pointer-coarse:min-h-11"
             >
               Volver a iniciar sesión
             </Link>
-          </form>
-        </>
+          }
+        />
       )}
     </AuthSplitLayout>
   );
