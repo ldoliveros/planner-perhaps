@@ -20,6 +20,24 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG: ChangelogRelease[] = [
   {
+    version: "1.3.3",
+    date: "2026-09-21",
+    entries: [
+      {
+        text: "Nueva identidad: la herramienta ahora es Planner by Perhaps, con un logo renovado en el ingreso y en el menú.",
+        roles: ["super_admin", "account_manager", "client"],
+      },
+      {
+        text: "Vista activa con el color del cliente: en Semana, Mes y Lista, la opción seleccionada se destaca con el color del cliente para que siempre sepas dónde estás.",
+        roles: ["super_admin", "account_manager", "client"],
+      },
+      {
+        text: "Ingreso y cierre de sesión más ágiles: ahora ves \"Ingresando…\" y \"Cerrando sesión…\" al instante, y todo responde más rápido.",
+        roles: ["super_admin", "account_manager", "client"],
+      },
+    ],
+  },
+  {
     version: "1.3.2",
     date: "2026-09-21",
     entries: [
