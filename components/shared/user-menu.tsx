@@ -70,7 +70,7 @@ export function UserMenu({
         </div>
         <Link
           href={profileHref}
-          className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-foreground hover:bg-muted"
+          className="flex items-center gap-2 rounded-md px-2 py-1.5 pointer-coarse:min-h-11 text-sm text-foreground hover:bg-muted"
         >
           <User className="size-3.5" />
           Mi perfil
@@ -78,7 +78,7 @@ export function UserMenu({
         <form action={signOut.bind(null, signOutRedirectTo)}>
           <button
             type="submit"
-            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-foreground hover:bg-muted"
+            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 pointer-coarse:min-h-11 text-left text-sm text-foreground hover:bg-muted"
           >
             <LogOut className="size-3.5" />
             Cerrar sesión

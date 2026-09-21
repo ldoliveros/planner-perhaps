@@ -36,15 +36,32 @@ function SheetOverlay({ className, ...props }: SheetPrimitive.Backdrop.Props) {
   )
 }
 
+/**
+ * Variantes SOLO para < md (en md+ el Sheet conserva su `side`):
+ * - "bottom": hoja desde abajo (ancho completo, hasta 92dvh, esquinas superiores redondeadas).
+ * - "fullscreen": pantalla completa.
+ * Ambas respetan la safe area (env() vale 0 salvo que la página use viewport-fit=cover).
+ * Los modificadores usan `!` porque deben ganarle a los estilos `data-[side=…]` del `side`.
+ */
+const MOBILE_VARIANT_CLASSES = {
+  bottom:
+    "max-md:inset-x-0! max-md:top-auto! max-md:right-0! max-md:bottom-0! max-md:left-0! max-md:h-auto! max-md:max-h-[92dvh] max-md:w-full! max-md:max-w-none! max-md:rounded-t-2xl max-md:border-x-0! max-md:border-t! max-md:border-b-0! max-md:pb-[env(safe-area-inset-bottom)] max-md:data-starting-style:translate-x-0! max-md:data-starting-style:translate-y-8! max-md:data-ending-style:translate-x-0! max-md:data-ending-style:translate-y-8!",
+  fullscreen:
+    "max-md:inset-0! max-md:h-dvh! max-md:w-full! max-md:max-w-none! max-md:rounded-none max-md:border-0! max-md:pt-[env(safe-area-inset-top)] max-md:pb-[env(safe-area-inset-bottom)] max-md:data-starting-style:translate-x-0! max-md:data-starting-style:translate-y-8! max-md:data-ending-style:translate-x-0! max-md:data-ending-style:translate-y-8!",
+} as const
+
 function SheetContent({
   className,
   children,
   side = "right",
   showCloseButton = true,
+  mobile,
   ...props
 }: SheetPrimitive.Popup.Props & {
   side?: "top" | "right" | "bottom" | "left"
   showCloseButton?: boolean
+  /** Presentación alternativa solo en < md: hoja desde abajo o pantalla completa. */
+  mobile?: keyof typeof MOBILE_VARIANT_CLASSES
 }) {
   return (
     <SheetPortal>
@@ -52,12 +69,20 @@ function SheetContent({
       <SheetPrimitive.Popup
         data-slot="sheet-content"
         data-side={side}
+        data-mobile={mobile}
         className={cn(
           "fixed z-50 flex flex-col gap-4 bg-popover bg-clip-padding text-sm text-popover-foreground shadow-lg transition duration-200 ease-in-out data-ending-style:opacity-0 data-starting-style:opacity-0 data-[side=bottom]:inset-x-0 data-[side=bottom]:bottom-0 data-[side=bottom]:h-auto data-[side=bottom]:border-t data-[side=bottom]:data-ending-style:translate-y-[2.5rem] data-[side=bottom]:data-starting-style:translate-y-[2.5rem] data-[side=left]:inset-y-0 data-[side=left]:left-0 data-[side=left]:h-full data-[side=left]:w-3/4 data-[side=left]:border-r data-[side=left]:data-ending-style:translate-x-[-2.5rem] data-[side=left]:data-starting-style:translate-x-[-2.5rem] data-[side=right]:inset-y-0 data-[side=right]:right-0 data-[side=right]:h-full data-[side=right]:w-3/4 data-[side=right]:border-l data-[side=right]:data-ending-style:translate-x-[2.5rem] data-[side=right]:data-starting-style:translate-x-[2.5rem] data-[side=top]:inset-x-0 data-[side=top]:top-0 data-[side=top]:h-auto data-[side=top]:border-b data-[side=top]:data-ending-style:translate-y-[-2.5rem] data-[side=top]:data-starting-style:translate-y-[-2.5rem] data-[side=left]:sm:max-w-sm data-[side=right]:sm:max-w-sm",
+          mobile && MOBILE_VARIANT_CLASSES[mobile],
           className
         )}
         {...props}
       >
+        {mobile === "bottom" && (
+          <span
+            aria-hidden
+            className="pointer-events-none absolute top-2 left-1/2 z-10 h-1 w-10 -translate-x-1/2 rounded-full bg-muted-foreground/30 md:hidden"
+          />
+        )}
         {children}
         {showCloseButton && (
           <SheetPrimitive.Close
@@ -65,7 +90,10 @@ function SheetContent({
             render={
               <Button
                 variant="ghost"
-                className="absolute top-3 right-3"
+                className={cn(
+                  "absolute top-3 right-3",
+                  mobile === "fullscreen" && "max-md:top-[calc(0.75rem+env(safe-area-inset-top))]"
+                )}
                 size="icon-sm"
               />
             }

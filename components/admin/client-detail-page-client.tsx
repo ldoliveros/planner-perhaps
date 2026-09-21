@@ -103,7 +103,7 @@ export function ClientDetailPageClient({
             <h1 className="text-lg font-semibold text-foreground">{client.name}</h1>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             size="sm"
             className="gap-1.5"

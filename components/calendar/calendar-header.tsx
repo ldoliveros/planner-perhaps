@@ -1,8 +1,9 @@
 "use client";
 
 import Image from "next/image";
-import { ChevronLeft, ChevronRight, Download, FolderOpen, Info, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, FolderOpen, Info, MoreHorizontal, Plus } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { getContrastTextColor } from "@/lib/color-contrast";
@@ -10,6 +11,12 @@ import { cn } from "cn";
 import type { Client } from "@/types";
 
 export type CalendarView = "week" | "month" | "list";
+
+const VIEW_OPTIONS: { value: CalendarView; label: string }[] = [
+  { value: "week", label: "Semana" },
+  { value: "month", label: "Mes" },
+  { value: "list", label: "Lista" },
+];
 
 interface CalendarHeaderProps {
   client: Client;
@@ -53,10 +60,10 @@ export function CalendarHeader({
       {/* Acento de color del cliente: identidad, sin teñir el resto de la UI */}
       <div className="h-[3px] w-full" style={{ backgroundColor: client.color }} />
 
-      <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4">
-        <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 max-md:gap-y-2 md:px-6 md:py-4">
+        <div className="flex items-center gap-3 max-md:min-w-0 max-md:flex-1">
           <div
-            className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl text-base font-semibold"
+            className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl text-base font-semibold md:h-11 md:w-11"
             style={
               client.logoUrl
                 ? undefined
@@ -69,14 +76,14 @@ export function CalendarHeader({
               client.name.charAt(0)
             )}
           </div>
-          <div className="leading-tight">
+          <div className="leading-tight max-md:min-w-0">
             {allClients && allClients.length > 1 && onSwitchClient ? (
               <Select
                 value={client.id}
                 onValueChange={(value) => onSwitchClient(value as string)}
                 items={Object.fromEntries(allClients.map((c) => [c.id, c.name]))}
               >
-                <SelectTrigger className="h-auto gap-1 border-none bg-transparent p-0 text-xs font-medium shadow-none" style={{ color: client.color }}>
+                <SelectTrigger className="h-auto gap-1 border-none bg-transparent p-0 text-xs font-medium shadow-none data-[size=default]:pointer-coarse:h-8" style={{ color: client.color }}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -88,12 +95,12 @@ export function CalendarHeader({
                 </SelectContent>
               </Select>
             ) : (
-              <div className="text-xs font-medium" style={{ color: client.color }}>
+              <div className="text-xs font-medium max-md:truncate" style={{ color: client.color }}>
                 {client.name}
               </div>
             )}
-            <h1 className="flex items-center gap-1 text-base font-semibold text-foreground">
-              {calendarLabel}
+            <h1 className="flex items-center gap-1 text-base font-semibold text-foreground max-md:min-w-0">
+              <span className="max-md:truncate">{calendarLabel}</span>
               {calendarDescription && (
                 <Tooltip>
                   <TooltipTrigger
@@ -116,7 +123,39 @@ export function CalendarHeader({
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        {/* Solo < md: acciones principales junto al título, para no gastar una fila entera. */}
+        {(onCreate || onExport || driveFolderUrl) && (
+          <div className="flex items-center gap-1.5 md:hidden">
+            {onCreate && (
+              <Button size="icon" onClick={onCreate} aria-label="Nuevo contenido">
+                <Plus />
+              </Button>
+            )}
+            {(onExport || driveFolderUrl) && (
+              <DropdownMenu>
+                <DropdownMenuTrigger render={<Button variant="outline" size="icon" aria-label="Más acciones" />}>
+                  <MoreHorizontal />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  {driveFolderUrl && (
+                    <DropdownMenuItem render={<a href={driveFolderUrl} target="_blank" rel="noreferrer" />}>
+                      <FolderOpen />
+                      Abrir en Drive
+                    </DropdownMenuItem>
+                  )}
+                  {onExport && (
+                    <DropdownMenuItem onClick={onExport}>
+                      <Download />
+                      Exportar CSV
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </div>
+        )}
+
+        <div className="flex flex-wrap items-center gap-2 max-md:w-full">
           <div className="flex items-center gap-0.5 rounded-lg border border-border p-0.5">
             <Button variant="ghost" size="icon-sm" onClick={onPrev} aria-label="Período anterior">
               <ChevronLeft />
@@ -129,39 +168,22 @@ export function CalendarHeader({
             </Button>
           </div>
 
-          <span className="min-w-[9rem] text-sm text-muted-foreground">{periodLabel}</span>
+          <span className="min-w-[9rem] text-sm text-muted-foreground max-md:min-w-0 max-md:flex-1 max-md:truncate">{periodLabel}</span>
 
-          <div className="flex items-center rounded-lg border border-border p-0.5 text-sm">
-            <button
-              type="button"
-              onClick={() => onViewChange("week")}
-              className={cn(
-                "rounded-md px-2.5 py-1 font-medium transition-colors",
-                view === "week" ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              Semana
-            </button>
-            <button
-              type="button"
-              onClick={() => onViewChange("month")}
-              className={cn(
-                "rounded-md px-2.5 py-1 font-medium transition-colors",
-                view === "month" ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              Mes
-            </button>
-            <button
-              type="button"
-              onClick={() => onViewChange("list")}
-              className={cn(
-                "rounded-md px-2.5 py-1 font-medium transition-colors",
-                view === "list" ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              Lista
-            </button>
+          <div className="flex items-center rounded-lg border border-border p-0.5 text-sm max-md:order-last max-md:w-full">
+            {VIEW_OPTIONS.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => onViewChange(option.value)}
+                className={cn(
+                  "rounded-md px-2.5 py-1 font-medium transition-colors max-md:flex-1 max-md:py-2 pointer-coarse:py-2.5",
+                  view === option.value ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {option.label}
+              </button>
+            ))}
           </div>
 
           {driveFolderUrl && (
@@ -169,7 +191,7 @@ export function CalendarHeader({
               href={driveFolderUrl}
               target="_blank"
               rel="noreferrer"
-              className={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1.5")}
+              className={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1.5 max-md:hidden")}
             >
               <FolderOpen />
               Abrir en Drive
@@ -177,14 +199,14 @@ export function CalendarHeader({
           )}
 
           {onExport && (
-            <Button variant="outline" size="sm" className="gap-1.5" onClick={onExport}>
+            <Button variant="outline" size="sm" className="gap-1.5 max-md:hidden" onClick={onExport}>
               <Download />
               Exportar CSV
             </Button>
           )}
 
           {onCreate && (
-            <Button size="sm" className="gap-1.5" onClick={onCreate}>
+            <Button size="sm" className="gap-1.5 max-md:hidden" onClick={onCreate}>
               <Plus />
               Nuevo contenido
             </Button>
