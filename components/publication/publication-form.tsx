@@ -90,6 +90,8 @@ export function PublicationForm({
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
+  // Autofocus del título solo con puntero fino: en touch abriría el teclado virtual apenas se entra al formulario.
+  const [autoFocusTitle] = useState(() => typeof window !== "undefined" && window.matchMedia("(pointer: fine)").matches);
 
   // Ctrl/Cmd+S guarda este formulario mientras está abierto — solo activo acá
   // (no en un listener global), así que nunca compite con el shortcut del
@@ -169,12 +171,12 @@ export function PublicationForm({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full gap-0 overflow-y-auto sm:max-w-xl">
+      <SheetContent side="right" mobile="fullscreen" className="w-full gap-0 overflow-y-auto sm:max-w-xl">
         <SheetHeader>
           <SheetTitle>{publication ? "Editar contenido" : duplicateFrom ? "Duplicar contenido" : "Nuevo contenido"}</SheetTitle>
         </SheetHeader>
 
-        <form ref={formRef} action={formAction} className="flex flex-col gap-6 px-4 pb-6">
+        <form ref={formRef} action={formAction} className="flex flex-col gap-6 px-4 pb-6 max-md:pb-0">
           {publication && <input type="hidden" name="id" value={publication.id} />}
           <input type="hidden" name="destinations" value={JSON.stringify(destinations)} readOnly />
           <input type="hidden" name="campaignId" value={campaignId} readOnly />
@@ -231,7 +233,7 @@ export function PublicationForm({
                       {accountsByPlatform.get(platform.id)!.map((account) => (
                         <label
                           key={account.id}
-                          className="flex items-center gap-1.5 text-sm text-foreground"
+                          className="flex items-center gap-1.5 text-sm text-foreground pointer-coarse:min-h-11 pointer-coarse:gap-2.5 pointer-coarse:pr-1"
                           title={accountSecondaryName(account) ?? undefined}
                         >
                           <Checkbox
@@ -248,8 +250,8 @@ export function PublicationForm({
             )}
           </section>
 
-          {/* 3. Campaña | Tipo de contenido */}
-          <div className="grid grid-cols-2 gap-3">
+          {/* 3. Campaña | Tipo de contenido (una columna en mobile) */}
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="campaignId">Campaña</Label>
               <CampaignSelect
@@ -293,6 +295,7 @@ export function PublicationForm({
                   type="date"
                   defaultValue={publication?.publicationDate ?? defaultDate ?? ""}
                   required
+                  className="pointer-coarse:h-11"
                 />
               </div>
               <div className="flex flex-col gap-1.5">
@@ -302,6 +305,7 @@ export function PublicationForm({
                   name="publicationTime"
                   type="time"
                   defaultValue={formatTime(publication?.publicationTime ?? null)}
+                  className="pointer-coarse:h-11"
                 />
               </div>
             </div>
@@ -348,14 +352,14 @@ export function PublicationForm({
                   </div>
                 )}
               </div>
-              <div className="flex flex-col gap-1">
+              <div className="flex min-w-0 flex-1 flex-col gap-1">
                 <Input
                   ref={fileInputRef}
                   type="file"
                   name="thumbnail"
                   accept="image/jpeg,image/png,image/webp"
                   onChange={handleThumbnailChange}
-                  className="max-w-64"
+                  className="w-full min-w-0 pointer-coarse:h-11 md:max-w-64"
                 />
                 <p className="text-xs text-muted-foreground">JPG, PNG o WEBP. Se optimiza automáticamente.</p>
               </div>
@@ -370,7 +374,8 @@ export function PublicationForm({
               name="title"
               defaultValue={publication?.title ?? (duplicateFrom ? `${duplicateFrom.title} (copia)` : undefined)}
               required
-              autoFocus
+              autoFocus={autoFocusTitle}
+              className="pointer-coarse:h-11"
             />
           </div>
 
@@ -386,7 +391,7 @@ export function PublicationForm({
           {/* 9. CTA */}
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="cta">CTA</Label>
-            <Input id="cta" name="cta" defaultValue={publication?.cta ?? duplicateFrom?.cta ?? ""} />
+            <Input id="cta" name="cta" defaultValue={publication?.cta ?? duplicateFrom?.cta ?? ""} className="pointer-coarse:h-11" />
           </div>
 
           {/* 10. URL */}
@@ -397,6 +402,7 @@ export function PublicationForm({
               name="externalUrl"
               type="url"
               defaultValue={publication?.externalUrl ?? duplicateFrom?.externalUrl ?? ""}
+              className="pointer-coarse:h-11"
             />
           </div>
 
@@ -413,6 +419,7 @@ export function PublicationForm({
                 type="url"
                 placeholder="https://drive.google.com/drive/folders/..."
                 defaultValue={publication?.driveFolderUrl ?? ""}
+                className="pointer-coarse:h-11"
               />
               <p className="text-xs text-muted-foreground">
                 Pegá el enlace a la carpeta donde están los archivos de esta publicación.
@@ -422,7 +429,7 @@ export function PublicationForm({
 
           {state.error && <p className="text-sm text-destructive">{state.error}</p>}
 
-          <div className="flex items-center justify-between gap-2 border-t border-border pt-4">
+          <div className="flex items-center justify-between gap-2 border-t border-border pt-4 max-md:sticky max-md:bottom-0 max-md:z-10 max-md:-mx-4 max-md:bg-popover max-md:px-4 max-md:pt-3 max-md:pb-[max(0.75rem,env(safe-area-inset-bottom))]">
             {publication ? (
               <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
                 <AlertDialogTrigger render={<Button type="button" variant="destructive" size="sm" />}>
@@ -447,9 +454,15 @@ export function PublicationForm({
             ) : (
               <span />
             )}
-            <Button type="submit" disabled={isPending}>
-              {isPending ? "Guardando..." : "Guardar"}
-            </Button>
+            <div className="flex items-center gap-2">
+              {/* Solo < md: pie fijo con Cancelar + Guardar (en desktop se cierra con la X / Esc). */}
+              <Button type="button" variant="outline" className="md:hidden" onClick={() => onOpenChange(false)}>
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={isPending}>
+                {isPending ? "Guardando..." : "Guardar"}
+              </Button>
+            </div>
           </div>
         </form>
       </SheetContent>

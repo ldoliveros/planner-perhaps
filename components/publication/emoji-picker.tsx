@@ -54,7 +54,7 @@ export function EmojiPicker({ onSelect }: EmojiPickerProps) {
             type="button"
             title="Emoji"
             aria-label="Insertar emoji"
-            className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground pointer-coarse:size-10"
           />
         }
       >
@@ -77,7 +77,7 @@ export function EmojiPicker({ onSelect }: EmojiPickerProps) {
                       setOpen(false);
                     }}
                     aria-label={`Insertar ${emoji}`}
-                    className="flex size-7 items-center justify-center rounded-md text-lg leading-none transition-colors hover:bg-muted"
+                    className="flex size-7 items-center justify-center rounded-md text-lg leading-none transition-colors hover:bg-muted pointer-coarse:size-8"
                   >
                     {emoji}
                   </button>

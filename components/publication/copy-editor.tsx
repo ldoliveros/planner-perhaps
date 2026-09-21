@@ -155,7 +155,7 @@ export function CopyEditor({ id, name, defaultValue }: CopyEditorProps) {
                   type="button"
                   onClick={handleBold}
                   aria-label="Negrita"
-                  className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground pointer-coarse:size-10"
                 />
               }
             >
@@ -171,7 +171,7 @@ export function CopyEditor({ id, name, defaultValue }: CopyEditorProps) {
                   type="button"
                   onClick={handleBulletList}
                   aria-label="Lista con viñetas"
-                  className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground pointer-coarse:size-10"
                 />
               }
             >
@@ -187,7 +187,7 @@ export function CopyEditor({ id, name, defaultValue }: CopyEditorProps) {
                   type="button"
                   onClick={handleNumberedList}
                   aria-label="Lista numerada"
-                  className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground pointer-coarse:size-10"
                 />
               }
             >

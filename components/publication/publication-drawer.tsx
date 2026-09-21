@@ -40,14 +40,14 @@ export function PublicationDrawer({ publication, onOpenChange, onEdit, onDuplica
 
   return (
     <Sheet open={publication !== null} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full gap-0 overflow-y-auto p-0 sm:max-w-lg">
+      <SheetContent side="right" mobile="bottom" className="w-full gap-0 overflow-y-auto p-0 sm:max-w-lg">
         {publication && (
           <>
             <button
               type="button"
               onClick={() => heroAsset?.thumbnailUrl && setLightboxOpen(true)}
               disabled={!heroAsset?.thumbnailUrl}
-              className="relative aspect-16/10 w-full shrink-0 bg-muted disabled:cursor-default"
+              className="relative aspect-16/10 w-full shrink-0 bg-muted disabled:cursor-default max-md:aspect-auto max-md:h-44"
             >
               {heroAsset?.thumbnailUrl ? (
                 <Image
@@ -68,7 +68,7 @@ export function PublicationDrawer({ publication, onOpenChange, onEdit, onDuplica
                   target="_blank"
                   rel="noreferrer"
                   onClick={(e) => e.stopPropagation()}
-                  className="absolute bottom-2 right-2 rounded-md bg-black/60 px-2 py-1 text-xs font-medium text-white backdrop-blur-sm hover:bg-black/75"
+                  className="absolute bottom-2 right-2 rounded-md bg-black/60 px-2 py-1 text-xs font-medium text-white backdrop-blur-sm hover:bg-black/75 pointer-coarse:px-3 pointer-coarse:py-2.5"
                 >
                   Abrir en Drive
                 </a>
@@ -88,7 +88,7 @@ export function PublicationDrawer({ publication, onOpenChange, onEdit, onDuplica
             <div className="flex flex-col gap-5 p-5">
               <SheetHeader className="flex flex-col gap-3 p-0 text-left">
                 {(onEdit || onDuplicate) && (
-                  <div className="flex items-center justify-end gap-1.5">
+                  <div className="flex items-center justify-end gap-1.5 max-md:hidden">
                     {onDuplicate && (
                       <Button size="sm" variant="outline" className="gap-1.5" onClick={() => onDuplicate(publication)}>
                         <Copy className="size-3.5" />
@@ -183,6 +183,24 @@ export function PublicationDrawer({ publication, onOpenChange, onEdit, onDuplica
                 </div>
               )}
             </div>
+
+            {/* Solo < md: acciones principales siempre a mano, sin tapar el contenido (van al final del scroll). */}
+            {(onEdit || onDuplicate) && (
+              <div className="sticky bottom-0 z-10 mt-auto flex gap-2 border-t border-border bg-popover px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:hidden">
+                {onDuplicate && (
+                  <Button variant="outline" className="flex-1 gap-1.5" onClick={() => onDuplicate(publication)}>
+                    <Copy className="size-3.5" />
+                    Duplicar
+                  </Button>
+                )}
+                {onEdit && (
+                  <Button className="flex-1 gap-1.5" onClick={() => onEdit(publication)}>
+                    <Pencil className="size-3.5" />
+                    Editar
+                  </Button>
+                )}
+              </div>
+            )}
           </>
         )}
       </SheetContent>
