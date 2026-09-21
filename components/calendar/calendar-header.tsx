@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import Image from "next/image";
 import { ChevronLeft, ChevronRight, Download, FolderOpen, Info, MoreHorizontal, Plus } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -35,6 +36,8 @@ interface CalendarHeaderProps {
   onExport?: () => void;
   allClients?: { id: string; name: string }[];
   onSwitchClient?: (clientId: string) => void;
+  /** Solo < md: botón "Filtros" que va en la misma fila que el selector Semana/Mes/Lista. */
+  mobileFilters?: ReactNode;
 }
 
 export function CalendarHeader({
@@ -52,6 +55,7 @@ export function CalendarHeader({
   onExport,
   allClients,
   onSwitchClient,
+  mobileFilters,
 }: CalendarHeaderProps) {
   const initialTextColor = getContrastTextColor(client.color);
 
@@ -170,20 +174,24 @@ export function CalendarHeader({
 
           <span className="min-w-[9rem] text-sm text-muted-foreground max-md:min-w-0 max-md:flex-1 max-md:truncate">{periodLabel}</span>
 
-          <div className="flex items-center rounded-lg border border-border p-0.5 text-sm max-md:order-last max-md:w-full">
-            {VIEW_OPTIONS.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                onClick={() => onViewChange(option.value)}
-                className={cn(
-                  "rounded-md px-2.5 py-1 font-medium transition-colors max-md:flex-1 max-md:py-2 pointer-coarse:py-2.5",
-                  view === option.value ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                {option.label}
-              </button>
-            ))}
+          {/* En < md: selector de vista + botón "Filtros" comparten fila (no hay barra de filtros aparte). */}
+          <div className="flex items-center gap-2 max-md:order-last max-md:w-full">
+            <div className="flex items-center rounded-lg border border-border p-0.5 text-sm max-md:flex-1">
+              {VIEW_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => onViewChange(option.value)}
+                  className={cn(
+                    "rounded-md px-2.5 py-1 font-medium transition-colors max-md:flex-1 max-md:py-2 pointer-coarse:py-2.5",
+                    view === option.value ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            {mobileFilters && <div className="md:hidden">{mobileFilters}</div>}
           </div>
 
           {driveFolderUrl && (

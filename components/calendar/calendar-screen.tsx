@@ -7,11 +7,17 @@ import { addMonths, addWeeks, format } from "date-fns";
 import { CalendarDays, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CalendarHeader, type CalendarView } from "@/components/calendar/calendar-header";
-import { CalendarFiltersBar, EMPTY_FILTERS, type CalendarFiltersState } from "@/components/calendar/calendar-filters";
+import {
+  CalendarFiltersBar,
+  EMPTY_FILTERS,
+  MobileFilters,
+  type CalendarFiltersState,
+} from "@/components/calendar/calendar-filters";
 import { WeekView } from "@/components/calendar/week-view";
 import { MonthView } from "@/components/calendar/month-view";
 import { AgendaView } from "@/components/calendar/agenda-view";
 import { MobileAgendaView } from "@/components/calendar/mobile-agenda-view";
+import { MobileMonthView } from "@/components/calendar/mobile-month-view";
 import { PublicationDrawer } from "@/components/publication/publication-drawer";
 import { PublicationForm } from "@/components/publication/publication-form";
 import { LookupsProvider } from "@/components/providers/lookups-provider";
@@ -331,14 +337,28 @@ export function CalendarScreen({
           onExport={readOnly ? undefined : handleExportCsv}
           allClients={allClients}
           onSwitchClient={allClients ? handleSwitchClient : undefined}
+          mobileFilters={
+            showMobileViews ? (
+              <MobileFilters
+                value={activeFilters}
+                onChange={setFilters}
+                options={filterOptions}
+                calendarIds={calendarIds}
+                onCalendarIdsChange={setCalendarIds}
+              />
+            ) : undefined
+          }
         />
-        <CalendarFiltersBar
-          value={activeFilters}
-          onChange={setFilters}
-          options={filterOptions}
-          calendarIds={calendarIds}
-          onCalendarIdsChange={setCalendarIds}
-        />
+        {/* Desktop: barra de filtros inline. Mobile: botón "Filtros" en la cabecera (sin fila propia). */}
+        {showDesktopViews && (
+          <CalendarFiltersBar
+            value={activeFilters}
+            onChange={setFilters}
+            options={filterOptions}
+            calendarIds={calendarIds}
+            onCalendarIdsChange={setCalendarIds}
+          />
+        )}
         {hasActiveFilters && filteredPublications.length === 0 && (
           <div className="flex items-center justify-between gap-3 border-b border-border bg-muted/40 px-6 py-2 text-sm text-muted-foreground">
             No hay publicaciones que coincidan con los filtros actuales.
@@ -390,14 +410,14 @@ export function CalendarScreen({
         {showMobileViews && (
           <div className="flex flex-1 flex-col md:hidden">
             {view === "month" ? (
-              // Mes mobile: se mantiene la agenda actual hasta el Bloque C (calendario compacto + día).
-              <AgendaView
-                days={agendaDays}
+              <MobileMonthView
+                anchorDate={anchorDate}
                 publications={filteredPublications}
                 onOpenPublication={setSelectedPublication}
                 onEditPublication={readOnly ? undefined : openEditForm}
                 onDuplicatePublication={readOnly ? undefined : openDuplicateForm}
                 clientId={client.id}
+                onCreateForDay={readOnly ? undefined : openCreateForm}
                 showCalendarLabel={showCalendarLabel}
               />
             ) : (
