@@ -7,7 +7,7 @@ import { CheckCircle2 } from "lucide-react";
 import { AuthBrandHeader } from "@/components/auth/auth-brand-header";
 import { AuthSplitLayout } from "@/components/auth/auth-split-layout";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { updatePassword, type UpdatePasswordState } from "@/lib/actions/auth";
 
@@ -46,10 +46,9 @@ export default function ResetPasswordPage() {
           <form action={formAction} className="mt-8 flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="password">Nueva contraseña</Label>
-              <Input
+              <PasswordInput
                 id="password"
                 name="password"
-                type="password"
                 autoComplete="new-password"
                 minLength={10}
                 required
@@ -59,10 +58,9 @@ export default function ResetPasswordPage() {
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="confirmPassword">Confirmar contraseña</Label>
-              <Input
+              <PasswordInput
                 id="confirmPassword"
                 name="confirmPassword"
-                type="password"
                 autoComplete="new-password"
                 minLength={10}
                 required

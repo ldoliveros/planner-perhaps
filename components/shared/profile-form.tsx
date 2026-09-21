@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { UserAvatar } from "@/components/shared/user-avatar";
@@ -104,14 +105,13 @@ function ChangePasswordSection() {
       <form key={sessionKey} action={formAction} className="flex flex-col gap-4">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="currentPassword">Contraseña actual</Label>
-          <Input id="currentPassword" name="currentPassword" type="password" autoComplete="current-password" required />
+          <PasswordInput id="currentPassword" name="currentPassword" autoComplete="current-password" required />
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="newPassword">Nueva contraseña</Label>
-          <Input
+          <PasswordInput
             id="newPassword"
             name="newPassword"
-            type="password"
             autoComplete="new-password"
             minLength={10}
             required
@@ -119,10 +119,9 @@ function ChangePasswordSection() {
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="confirmPassword">Confirmar nueva contraseña</Label>
-          <Input
+          <PasswordInput
             id="confirmPassword"
             name="confirmPassword"
-            type="password"
             autoComplete="new-password"
             minLength={10}
             required

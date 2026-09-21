@@ -7,6 +7,7 @@ import { AuthSecondaryLink } from "@/components/auth/auth-secondary-link";
 import { AuthSplitLayout } from "@/components/auth/auth-split-layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { requestPasswordReset, signIn, type AuthActionState, type PasswordResetState } from "@/lib/actions/auth";
 
@@ -53,10 +54,9 @@ function SignInForm({ onForgotPassword }: { onForgotPassword: () => void }) {
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="password">Contraseña</Label>
-          <Input
+          <PasswordInput
             id="password"
             name="password"
-            type="password"
             autoComplete="current-password"
             required
             className="h-11 rounded-xl px-3.5"
