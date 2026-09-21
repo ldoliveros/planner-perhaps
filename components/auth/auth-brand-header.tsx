@@ -1,12 +1,10 @@
-import { PerhapsLogo } from "@/components/branding/perhaps-logo";
+import { PlannerLogo } from "@/components/branding/planner-logo";
 
 export function AuthBrandHeader() {
   return (
     <div className="mb-10 flex flex-col items-start gap-3">
-      <PerhapsLogo height={56} />
-      <span className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-        Planificador editorial
-      </span>
+      <PlannerLogo variant="full" height={72} priority />
+      <span className="text-sm text-muted-foreground">Ideas en orden. Contenido en movimiento.</span>
     </div>
   );
 }

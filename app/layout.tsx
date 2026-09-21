@@ -11,8 +11,9 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Planificador Editorial",
-  description: "Planificador editorial de redes sociales",
+  title: "Planner by Perhaps",
+  description: "Ideas en orden. Contenido en movimiento.",
+  icons: { icon: "/brand/perhaps-planner-favicon.svg" },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

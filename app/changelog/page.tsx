@@ -31,7 +31,7 @@ export default async function ChangelogPage() {
           Volver
         </Link>
         <h1 className="text-xl font-semibold text-foreground">Novedades</h1>
-        <p className="text-sm text-muted-foreground">Perhaps Planner · versión actual v{APP_VERSION}</p>
+        <p className="text-sm text-muted-foreground">Planner by Perhaps · versión actual v{APP_VERSION}</p>
       </div>
 
       <div className="flex flex-col gap-8">

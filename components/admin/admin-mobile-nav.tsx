@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetClose, SheetContent, SheetTitle } from "@/components/ui/sheet";
-import { PerhapsIsologo } from "@/components/branding/perhaps-isologo";
+import { PlannerLogo } from "@/components/branding/planner-logo";
 import { getAdminNavItems } from "@/components/admin/admin-nav-items";
 import { UserMenu } from "@/components/shared/user-menu";
 import { ROLE_LABELS } from "@/lib/role-labels";
@@ -39,18 +39,16 @@ export function AdminMobileNav({ role, email, fullName, avatarUrl }: AdminMobile
         <Button variant="ghost" size="icon-sm" aria-label="Abrir navegación" onClick={() => setOpen(true)}>
           <Menu />
         </Button>
-        <Link href="/admin" className="flex items-center gap-1.5 py-2 text-foreground pointer-coarse:py-3">
-          <PerhapsIsologo size={18} />
-          <span className="text-sm font-bold tracking-tight">Perhaps.</span>
+        <Link href="/admin" aria-label="Planner by Perhaps" className="flex items-center py-1.5 pointer-coarse:py-2.5">
+          <PlannerLogo variant="full" height={26} />
         </Link>
       </div>
 
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent side="left" className="w-72 gap-0 border-none bg-[#111318] p-0 sm:max-w-72" showCloseButton={false}>
           <SheetTitle className="sr-only">Navegación</SheetTitle>
-          <div className="flex items-center gap-2 px-5 pt-[max(1.5rem,env(safe-area-inset-top))] pb-1 text-white">
-            <PerhapsIsologo size={24} />
-            <span className="text-lg font-bold tracking-tight">Perhaps.</span>
+          <div className="flex items-center gap-2 px-5 pt-[max(1.5rem,env(safe-area-inset-top))] pb-5 text-white">
+            <PlannerLogo variant="negative" height={30} />
             <SheetClose
               render={
                 <Button
@@ -63,9 +61,6 @@ export function AdminMobileNav({ role, email, fullName, avatarUrl }: AdminMobile
             >
               <X />
             </SheetClose>
-          </div>
-          <div className="px-5 pb-5 text-[10px] font-semibold tracking-[0.18em] text-white/40 uppercase">
-            Planificador Editorial
           </div>
           <nav className="flex flex-1 flex-col gap-0.5 px-3">
             {items.map((item) => {
@@ -102,7 +97,7 @@ export function AdminMobileNav({ role, email, fullName, avatarUrl }: AdminMobile
               onClick={() => setOpen(false)}
               className="mt-1.5 block truncate rounded-md px-2 py-1 pointer-coarse:py-2.5 text-center text-[10px] text-white/25 transition-colors hover:text-white/60"
             >
-              Perhaps Planner · v{APP_VERSION}
+              Planner by Perhaps · v{APP_VERSION}
             </Link>
           </div>
         </SheetContent>

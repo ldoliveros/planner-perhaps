@@ -77,7 +77,7 @@ export default function AuthConfirmPage() {
       ) : (
         <SetPasswordForm
           heading="Crear tu contraseña"
-          description="Elegí una contraseña de al menos 10 caracteres para entrar a Perhaps Planner."
+          description="Elegí una contraseña de al menos 10 caracteres para entrar a Planner by Perhaps."
           submitLabel="Crear contraseña"
           pendingLabel="Creando..."
           // Navegación completa: la sesión ya está abierta y "/" te lleva a tu pantalla según el rol.

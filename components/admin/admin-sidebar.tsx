@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
-import { PerhapsIsologo } from "@/components/branding/perhaps-isologo";
+import { PlannerLogo } from "@/components/branding/planner-logo";
 import { getAdminNavItems } from "@/components/admin/admin-nav-items";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { UserMenu } from "@/components/shared/user-menu";
@@ -62,10 +62,18 @@ export function AdminSidebar({ role, email, fullName, avatarUrl, defaultCollapse
         overlay && "shadow-2xl shadow-black/40"
       )}
     >
-      <div className={cn("flex items-center gap-2 px-4 pt-5 pb-3", collapsed && "justify-center px-0")}>
-        <Link href="/admin" className={cn("flex min-w-0 items-center gap-2 text-white", !collapsed && "flex-1")}>
-          <PerhapsIsologo size={22} />
-          {!collapsed && <span className="truncate text-base font-bold tracking-tight">Perhaps.</span>}
+      <div className={cn("flex items-center gap-2 px-4 pt-5 pb-4", collapsed && "justify-center px-0 pb-3")}>
+        <Link
+          href="/admin"
+          aria-label="Planner by Perhaps"
+          className={cn("flex min-w-0 items-center text-white", !collapsed && "flex-1")}
+        >
+          {/* Abierta: logo negativo completo. Cerrada: isotipo (favicon). */}
+          {collapsed ? (
+            <PlannerLogo variant="icon" height={32} className="rounded-md" />
+          ) : (
+            <PlannerLogo variant="negative" height={28} />
+          )}
         </Link>
         {!collapsed && (
           <Tooltip>
@@ -86,11 +94,7 @@ export function AdminSidebar({ role, email, fullName, avatarUrl, defaultCollapse
         )}
       </div>
 
-      {!collapsed ? (
-        <div className="px-4 pb-4 text-[10px] font-semibold tracking-[0.18em] text-white/40 uppercase">
-          Planificador Editorial
-        </div>
-      ) : (
+      {collapsed && (
         <div className="flex justify-center pb-4">
           <Tooltip>
             <TooltipTrigger
@@ -159,7 +163,7 @@ export function AdminSidebar({ role, email, fullName, avatarUrl, defaultCollapse
             collapsed && "px-0"
           )}
         >
-          {collapsed ? `v${APP_VERSION}` : `Perhaps Planner · v${APP_VERSION}`}
+          {collapsed ? `v${APP_VERSION}` : `Planner by Perhaps · v${APP_VERSION}`}
         </Link>
       </div>
     </aside>

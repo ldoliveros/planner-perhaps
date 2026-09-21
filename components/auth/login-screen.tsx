@@ -76,7 +76,7 @@ function PasswordForm({
   return (
     <>
       <h1 className="text-3xl font-bold leading-[1.15] tracking-tight text-foreground">Ingresá a tu cuenta</h1>
-      <p className="mt-3 text-sm text-muted-foreground">Usá tu email y contraseña para entrar a Perhaps Planner.</p>
+      <p className="mt-3 text-sm text-muted-foreground">Usá tu email y contraseña para entrar a Planner by Perhaps.</p>
 
       <form action={formAction} onSubmit={handleSubmit} className="mt-8 flex flex-col gap-4">
         <div className="flex flex-col gap-1.5">

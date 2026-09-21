@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import Image from "next/image";
 import { SignOutButton } from "@/components/shared/sign-out-button";
-import { PerhapsLogo } from "@/components/branding/perhaps-logo";
+import { PlannerLogo } from "@/components/branding/planner-logo";
 import { UserMenu } from "@/components/shared/user-menu";
 import { UpdateBannerController } from "@/components/shared/update-banner-controller";
 import { getClientById, getCurrentProfile, getLastSeenVersion } from "@/lib/supabase/queries";
@@ -52,7 +52,7 @@ export default async function ClientLayout({ children }: { children: React.React
     <div className="flex min-h-screen flex-1 flex-col bg-background">
       <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-1.5 sm:gap-4 sm:px-4">
         <div className="flex min-w-0 items-center gap-2 sm:gap-3">
-          <PerhapsLogo height={16} className="shrink-0" />
+          <PlannerLogo variant="full" height={26} />
           <span className="hidden h-4 w-px shrink-0 bg-border sm:block" />
           <div className="flex min-w-0 items-center gap-1.5">
             <div

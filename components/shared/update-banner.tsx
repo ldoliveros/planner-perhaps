@@ -26,7 +26,7 @@ export function UpdateBanner({ version, isSaving, error, onDismiss }: UpdateBann
       aria-label="Nueva versión disponible"
       className="fixed right-4 bottom-4 z-50 flex w-[min(360px,calc(100vw-2rem))] flex-col gap-1 rounded-xl border border-border bg-card p-4 shadow-lg max-md:inset-x-0 max-md:right-0 max-md:bottom-0 max-md:w-full max-md:rounded-b-none max-md:border-x-0 max-md:border-b-0 max-md:pb-[max(1rem,env(safe-area-inset-bottom))]"
     >
-      <h3 className="text-sm font-semibold text-foreground">Perhaps Planner se actualizó a v{version}</h3>
+      <h3 className="text-sm font-semibold text-foreground">Planner by Perhaps se actualizó a v{version}</h3>
       <p className="text-sm text-muted-foreground">Descubrí las últimas mejoras y novedades del Planner.</p>
       {error && <p className="text-xs text-destructive">{error}</p>}
       <div className="mt-2 flex items-center justify-between gap-2">
