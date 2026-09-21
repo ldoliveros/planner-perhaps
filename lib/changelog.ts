@@ -20,6 +20,49 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG: ChangelogRelease[] = [
   {
+    version: "1.3",
+    date: "2026-09-21",
+    entries: [
+      {
+        text: "Planner optimizado para mobile: ahora podés trabajar cómodamente desde el teléfono.",
+        roles: ["super_admin", "account_manager", "client"],
+      },
+      {
+        text: "Semana, Mes y Lista adaptados al teléfono: cada vista se reorganiza para que el calendario sea claro y fácil de recorrer en pantallas chicas.",
+        roles: ["super_admin", "account_manager", "client"],
+      },
+      {
+        text: "Filtros en mobile: filtrá por calendario, canal, estado y más desde un panel pensado para el teléfono.",
+        roles: ["super_admin", "account_manager", "client"],
+      },
+      {
+        text: "Publicaciones desde el celular: ver, editar, duplicar y cambiar la fecha de una publicación sin necesidad de una computadora.",
+        roles: ["super_admin", "account_manager"],
+      },
+      {
+        // Variante de consulta: el Client User solo ve el Planner (read-only).
+        text: "Publicaciones desde el celular: abrí y revisá cada publicación con todos sus detalles desde el teléfono.",
+        roles: ["client"],
+      },
+      {
+        text: "Administrador adaptado al teléfono: clientes, calendarios, cuentas, equipo y publicaciones se ven en tarjetas fáciles de usar, y los formularios y paneles se ajustan a la pantalla.",
+        roles: ["super_admin", "account_manager"],
+      },
+      {
+        text: "Ingreso más flexible: ahora podés entrar con tu email y contraseña, o pedir un enlace por email si preferís.",
+        roles: ["client"],
+      },
+      {
+        text: "Mi perfil: sumá tu nombre y tu foto, y creá o cambiá tu contraseña cuando quieras.",
+        roles: ["client"],
+      },
+      {
+        text: "Mejoras generales de experiencia y seguridad: ver u ocultar la contraseña al ingresarla, un aviso de novedades más simple y otros ajustes para que todo funcione de forma más clara y segura.",
+        roles: ["super_admin", "account_manager", "client"],
+      },
+    ],
+  },
+  {
     version: "1.2.1",
     date: "2026-09-20",
     entries: [
