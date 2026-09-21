@@ -20,6 +20,16 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG: ChangelogRelease[] = [
   {
+    version: "1.3.2",
+    date: "2026-09-21",
+    entries: [
+      {
+        text: "Mejoramos el acceso de nuevos usuarios: al recibir una invitación, ahora podés crear tu contraseña y acceder directamente a Perhaps Planner.",
+        roles: ["super_admin", "account_manager", "client"],
+      },
+    ],
+  },
+  {
     version: "1.3.1",
     date: "2026-09-21",
     entries: [
