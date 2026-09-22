@@ -194,6 +194,11 @@ export async function listTeamMembers(): Promise<TeamMember[]> {
   await requireSuperAdmin();
   const supabase = await createClient();
 
+  // getAccessStatusById() (Auth Admin API) no depende de profiles/assignments/clients — se dispara ya
+  // mismo en paralelo con esa cadena en vez de esperar a que termine, para no sumarle un salto más al
+  // waterfall (era el último await de la función, puramente secuencial sin necesidad).
+  const accessByIdPromise = getAccessStatusById();
+
   const { data: profilesData } = await supabase
     .from("profiles")
     .select("id, email, full_name, avatar_url, role, created_at")
@@ -212,7 +217,7 @@ export async function listTeamMembers(): Promise<TeamMember[]> {
     clientIds.length > 0 ? await supabase.from("clients").select("id, name").in("id", clientIds) : { data: [] };
   const clientNameById = new Map((clientsData ?? []).map((c) => [c.id, c.name]));
 
-  const accessById = await getAccessStatusById();
+  const accessById = await accessByIdPromise;
 
   return members.map((m) => ({
     id: m.id,

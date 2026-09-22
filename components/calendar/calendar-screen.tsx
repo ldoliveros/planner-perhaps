@@ -79,6 +79,13 @@ export function CalendarScreen({
     return raw.split(",").filter((id) => validIds.has(id));
   }, [searchParams, calendars]);
 
+  // `view` y `calendars` (abajo) se reflejan en la URL con la History API nativa, no con router.replace().
+  // `calendars`, `publications` y el resto ya están cargados en el cliente — el cambio de vista o de
+  // calendarios visibles es puramente local (useMemo más abajo). router.replace() dispara una navegación real
+  // de Next (re-ejecuta el Server Component de la página y vuelve a pedir todo a Supabase) solo para cambiar
+  // qué se renderiza con datos que ya tenemos; history.replaceState() actualiza la URL sin eso — Next sincroniza
+  // usePathname()/useSearchParams() con la History API nativa (ver docs de next/navigation), así que `view`/
+  // `calendarIds` (derivados de searchParams más abajo) se actualizan igual, solo que sin roundtrip al server.
   const setView = useCallback(
     (next: CalendarView) => {
       const params = new URLSearchParams(searchParams.toString());
@@ -88,11 +95,10 @@ export function CalendarScreen({
         params.set("view", next);
       }
       const query = params.toString();
-      router.replace(`${pathname}${query ? `?${query}` : ""}`, { scroll: false });
+      window.history.replaceState(null, "", `${pathname}${query ? `?${query}` : ""}`);
     },
-    [pathname, router, searchParams]
+    [pathname, searchParams]
   );
-
 
   const setCalendarIds = useCallback(
     (ids: string[]) => {
@@ -103,9 +109,9 @@ export function CalendarScreen({
         params.set("calendars", ids.join(","));
       }
       const query = params.toString();
-      router.replace(`${pathname}${query ? `?${query}` : ""}`, { scroll: false });
+      window.history.replaceState(null, "", `${pathname}${query ? `?${query}` : ""}`);
     },
-    [pathname, router, searchParams]
+    [pathname, searchParams]
   );
 
   // Deep-link (Compartir y /admin/publications): ?publication=<id> abre el drawer directo al montar (lectura
@@ -285,7 +291,8 @@ export function CalendarScreen({
 
   // El parámetro solo vive mientras el drawer abierto por el link esté abierto: al cerrarlo (o al pasar a
   // editar/duplicar) se limpia de la URL para que recargar o copiar la barra no vuelva a abrirlo. Si el id no
-  // existe o no es accesible, se avisa una sola vez y también se limpia.
+  // existe o no es accesible, se avisa una sola vez y también se limpia. History API nativa (no router.replace):
+  // cerrar el drawer no debe volver a pedir el planner entero, igual que el cambio de vista de arriba.
   useEffect(() => {
     if (selectedPublication || !searchParams.has("publication")) return;
     if (missingSharedPublication.current) {
@@ -300,8 +307,8 @@ export function CalendarScreen({
     const params = new URLSearchParams(searchParams.toString());
     params.delete("publication");
     const query = params.toString();
-    router.replace(`${pathname}${query ? `?${query}` : ""}`, { scroll: false });
-  }, [selectedPublication, searchParams, pathname, router]);
+    window.history.replaceState(null, "", `${pathname}${query ? `?${query}` : ""}`);
+  }, [selectedPublication, searchParams, pathname]);
 
   usePlannerShortcuts({
     overlayOpen: formState.open || selectedPublication !== null,
