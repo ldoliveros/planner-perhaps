@@ -43,9 +43,18 @@ export async function resendInvitation(userId: string): Promise<{ error: string 
   const email = profile.email ?? authUser.email;
   if (!email) return { error: "Este usuario no tiene un email registrado.", email: null };
 
+  // Mismo client_name que en el alta original (inviteClientUser): si es Client User, se vuelve a
+  // resolver desde `clients` (no se persiste en profiles); si es de Equipo, `client_id` es null y no se
+  // envía client_name — la plantilla de Supabase distingue por la presencia de esa key en user_metadata.
+  let clientName: string | null = null;
+  if (profile.client_id) {
+    const { data: client } = await admin.from("clients").select("name").eq("id", profile.client_id).maybeSingle();
+    clientName = client?.name ?? null;
+  }
+
   const siteURL = await getSiteURL();
   const { data, error } = await admin.auth.admin.inviteUserByEmail(email, {
-    data: profile.full_name ? { full_name: profile.full_name } : undefined,
+    data: { ...(profile.full_name ? { full_name: profile.full_name } : {}), ...(clientName ? { client_name: clientName } : {}) },
     redirectTo: `${siteURL}/auth/callback`,
   });
   if (error) return { error: friendlyInviteError(error, { resend: true }), email: null };

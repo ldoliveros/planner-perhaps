@@ -32,15 +32,17 @@ export async function inviteClientUser(
 
   // El cliente destino debe existir: evita crear una invitación (usuario Auth
   // ya creado y con mail enviado) huérfana, sin profile asociado, por un
-  // clientId inválido o de un cliente ya eliminado.
-  const { data: targetClient } = await admin.from("clients").select("id").eq("id", clientId).maybeSingle();
+  // clientId inválido o de un cliente ya eliminado. `name` viaja como
+  // client_name en el user_metadata de la invitación (ver más abajo), para
+  // que la plantilla de Supabase pueda personalizar el email por cliente.
+  const { data: targetClient } = await admin.from("clients").select("id, name").eq("id", clientId).maybeSingle();
   if (!targetClient) {
     return { error: "El cliente indicado no existe.", savedAt: null };
   }
 
   const siteURL = await getSiteURL();
   const { data, error } = await admin.auth.admin.inviteUserByEmail(email, {
-    data: fullName ? { full_name: fullName } : undefined,
+    data: { ...(fullName ? { full_name: fullName } : {}), client_name: targetClient.name },
     redirectTo: `${siteURL}/auth/callback`,
   });
   if (error) {
