@@ -7,6 +7,7 @@ import { cn } from "cn";
 import { PublicationQuickActions } from "@/components/calendar/publication-quick-actions";
 import { PlatformIcon } from "@/components/icons/brand-icons";
 import { StatusPill } from "@/components/shared/status-pill";
+import { ClientBadge } from "@/components/shared/client-badge";
 import { accountLabel } from "@/lib/account-label";
 import { useLookups } from "@/components/providers/lookups-provider";
 import { formatTime } from "@/lib/date-utils";
@@ -18,6 +19,8 @@ interface PublicationCardProps {
   onEdit?: (publication: Publication) => void;
   onDuplicate?: (publication: Publication) => void;
   clientId?: string;
+  /** Solo Publicaciones (contexto "global"): logo + nombre del cliente, arriba del título. */
+  showClient?: boolean;
   showCalendarLabel?: boolean;
   /**
    * Drag & Drop en Semana (Bloque D). El botón que cubre la card es el activador
@@ -35,15 +38,17 @@ export function PublicationCard({
   onEdit,
   onDuplicate,
   clientId,
+  showClient,
   showCalendarLabel,
   dragRef,
   dragProps,
   dragState,
 }: PublicationCardProps) {
-  const { getCalendar, getClientAccount, getContentType, getPlatform, getStatus } = useLookups();
+  const { getCalendar, getClient, getClientAccount, getContentType, getPlatform, getStatus } = useLookups();
   const contentType = getContentType(publication.contentTypeId);
   const status = getStatus(publication.statusId);
   const calendar = showCalendarLabel ? getCalendar(publication.calendarId) : undefined;
+  const client = showClient ? getClient(publication.clientId) : undefined;
   const primaryAsset = publication.assets.find((a) => a.isPrimary) ?? null;
   const heroAsset = primaryAsset ?? publication.assets[0] ?? null;
   const fileAssetCount = publication.assets.filter((a) => !a.isPrimary).length;
@@ -131,6 +136,7 @@ export function PublicationCard({
             />
           </div>
         </div>
+        {client && <ClientBadge client={client} size="sm" />}
         <p className="line-clamp-2 text-[13px] font-medium leading-snug text-foreground">{publication.title}</p>
         {calendar && (
           <span className="w-fit rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">

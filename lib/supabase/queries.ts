@@ -139,6 +139,27 @@ export async function listAllPublicationsAdmin(): Promise<Publication[]> {
   return withSignedThumbnails(supabase, publications);
 }
 
+/**
+ * Publicaciones de TODOS los clientes (Publicaciones/calendario global), acotadas a un rango de fechas —
+ * a diferencia de listAllPublicationsAdmin() (todo el histórico, usado hoy solo por el CSV de esa sección).
+ * Publicaciones global multiplica el volumen de un único cliente por la cantidad de clientes de la agencia,
+ * así que no puede asumir "traer todo": cada carga pide solo el rango que la UI necesita en ese momento
+ * (ver CalendarScreen en modo global, que expande el rango cargado bajo demanda, no todo de una vez).
+ * RLS (`publications_manage` / `publications_select_own`) sigue aplicando: Account Manager ve únicamente sus
+ * clientes asignados, Super Admin ve todos — sin lógica de permisos extra acá.
+ */
+export async function listPublicationsInRange(from: string, to: string): Promise<Publication[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("publications")
+    .select(PUBLICATION_SELECT)
+    .gte("publication_date", from)
+    .lte("publication_date", to)
+    .order("publication_date");
+  const publications = (data ?? []).map(mapPublication);
+  return withSignedThumbnails(supabase, publications);
+}
+
 export async function getPublicationById(id: string): Promise<Publication | null> {
   const supabase = await createClient();
   const { data } = await supabase.from("publications").select(PUBLICATION_SELECT).eq("id", id).maybeSingle();

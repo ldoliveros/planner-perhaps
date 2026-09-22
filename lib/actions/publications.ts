@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import sharp from "sharp";
 import { createClient } from "@/lib/supabase/server";
+import { listPublicationsInRange } from "@/lib/supabase/queries";
+import type { Publication } from "@/types";
 
 export interface PublicationFormState {
   error: string | null;
@@ -148,6 +150,7 @@ export async function savePublication(
   revalidatePath(`/admin/clients/${clientId}/planner`);
   revalidatePath(`/admin/clients/${clientId}`);
   revalidatePath("/admin/calendars");
+  revalidatePath("/admin/publications");
   return { error: null, savedAt: Date.now() };
 }
 
@@ -185,6 +188,7 @@ export async function setPublicationStatus(
   revalidatePath(`/admin/clients/${updated.client_id}/planner`);
   revalidatePath(`/admin/clients/${updated.client_id}`);
   revalidatePath("/admin/calendars");
+  revalidatePath("/admin/publications");
   return { error: null };
 }
 
@@ -218,6 +222,7 @@ export async function movePublicationToDate(
   revalidatePath(`/admin/clients/${updated.client_id}/planner`);
   revalidatePath(`/admin/clients/${updated.client_id}`);
   revalidatePath("/admin/calendars");
+  revalidatePath("/admin/publications");
   return { error: null };
 }
 
@@ -229,5 +234,19 @@ export async function deletePublication(publicationId: string, clientId: string)
   revalidatePath(`/admin/clients/${clientId}/planner`);
   revalidatePath(`/admin/clients/${clientId}`);
   revalidatePath("/admin/calendars");
+  revalidatePath("/admin/publications");
   return { error: null };
+}
+
+/**
+ * Trae publicaciones de un rango de fechas para Publicaciones (calendario global). La llama CalendarScreen en
+ * modo "global" cuando el usuario navega a un período fuera del rango ya cargado, o amplía Desde/Hasta en
+ * Lista más allá de lo que ya tiene — nunca al solo cambiar de vista (Semana/Mes/Lista) dentro de lo ya
+ * cargado, eso sigue siendo 100% local. No es una mutación: es una lectura acotada por fecha, expuesta como
+ * Server Action (en vez de un Route Handler) para reusar el mismo mecanismo de serialización y RLS que el
+ * resto de las acciones del proyecto.
+ */
+export async function fetchPublicationsInRange(from: string, to: string): Promise<{ publications: Publication[] }> {
+  const publications = await listPublicationsInRange(from, to);
+  return { publications };
 }

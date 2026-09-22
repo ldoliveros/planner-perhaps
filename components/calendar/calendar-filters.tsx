@@ -6,8 +6,16 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { PublicationSearchBox } from "@/components/calendar/publication-search-box";
 import { useLookups } from "@/components/providers/lookups-provider";
 import type { FilterOption, RelevantFilterOptions } from "@/lib/planner-filter-options";
+
+/** Desde/Hasta de Lista vive en el header (CalendarHeader), no acá — ver `HeaderDateRangeValue`. Se mantiene
+ * este tipo exportado porque `CalendarScreen` lo sigue usando para el estado de ese rango. */
+export interface DateRangeValue {
+  from: string;
+  to: string;
+}
 
 export interface CalendarFiltersState {
   platformIds: string[];
@@ -33,6 +41,19 @@ function toggle(list: string[], id: string): string[] {
 // link desde Admin > Publicaciones a una publicación histórica), para no "perder" ese filtro silenciosamente.
 function getSelectableCalendars<T extends { id: string; status: string }>(calendars: T[], calendarIds: string[]): T[] {
   return calendars.filter((c) => c.status !== "archived" || calendarIds.includes(c.id));
+}
+
+// Mismo criterio que los calendarios: clientes archivados/inactivos no se ofrecen salvo que ya estén seleccionados.
+function getSelectableClients<T extends { id: string; active: boolean }>(clients: T[], clientIds: string[]): T[] {
+  return clients.filter((c) => c.active || clientIds.includes(c.id));
+}
+
+// Publicaciones (global): con Cliente activo, "Calendario" ofrece solo los de esos clientes — misma dependencia
+// que ya tenía el buscador anterior de Publicaciones. Sin Cliente elegido (o fuera del contexto global,
+// `clientIds` en `undefined`), no restringe nada.
+function scopeCalendarsToClients<T extends { clientId: string }>(calendars: T[], clientIds?: string[]): T[] {
+  if (!clientIds || clientIds.length === 0) return calendars;
+  return calendars.filter((c) => clientIds.includes(c.clientId));
 }
 
 function FilterPopover({
@@ -105,6 +126,17 @@ interface CalendarFiltersProps {
   options: RelevantFilterOptions;
   calendarIds: string[];
   onCalendarIdsChange: (ids: string[]) => void;
+  /** Solo Publicaciones (contexto "global"): filtro Cliente, exclusivo de ese contexto. */
+  clientIds?: string[];
+  onClientIdsChange?: (ids: string[]) => void;
+  /**
+   * Buscador compacto, como primer control de la barra — solo en `CalendarFiltersBar` (desktop). El mobile lo
+   * mantiene en su propia fila (siempre visible, fuera del sheet de Filtros), así que `MobileFilters` no lo usa.
+   */
+  search?: string;
+  onSearchChange?: (value: string) => void;
+  /** Solo Publicaciones (contexto "global"): true mientras `ensureRange` trae un rango nuevo en segundo plano. */
+  searchLoading?: boolean;
 }
 
 export function CalendarFiltersBar({
@@ -113,9 +145,15 @@ export function CalendarFiltersBar({
   options,
   calendarIds,
   onCalendarIdsChange,
+  clientIds,
+  onClientIdsChange,
+  search,
+  onSearchChange,
+  searchLoading,
 }: CalendarFiltersProps) {
-  const { calendars, clientAccounts } = useLookups();
-  const selectableCalendars = getSelectableCalendars(calendars, calendarIds);
+  const { calendars, clientAccounts, clients } = useLookups();
+  const selectableCalendars = getSelectableCalendars(scopeCalendarsToClients(calendars, clientIds), calendarIds);
+  const selectableClients = clientIds ? getSelectableClients(clients, clientIds) : [];
   const hasActiveFilters =
     value.platformIds.length > 0 ||
     value.accountIds.length > 0 ||
@@ -125,8 +163,17 @@ export function CalendarFiltersBar({
 
   return (
     <div className="flex flex-wrap items-center gap-2 border-b border-border bg-background px-6 py-3 max-md:hidden">
-      <ListFilter className="mr-1 size-4 text-muted-foreground" />
+      {onSearchChange && <PublicationSearchBox value={search ?? ""} onChange={onSearchChange} />}
+      {searchLoading && <span className="text-xs text-muted-foreground">Cargando más publicaciones…</span>}
 
+      {onClientIdsChange && selectableClients.length > 1 && (
+        <FilterPopover
+          label="Cliente"
+          options={selectableClients.map((c) => ({ id: c.id, label: c.name }))}
+          selected={clientIds ?? []}
+          onChange={onClientIdsChange}
+        />
+      )}
       {selectableCalendars.length > 1 && (
         <FilterPopover
           label="Calendario"
@@ -178,11 +225,17 @@ export function CalendarFiltersBar({
   );
 }
 
-/** Cantidad de filtros activos (categorías con al menos una opción elegida). Calendarios cuenta solo si hay restricción. */
-function countActiveFilters(value: CalendarFiltersState, calendarIds: string[]): number {
-  return [value.platformIds, value.accountIds, value.contentTypeIds, value.statusIds, value.campaigns, calendarIds].filter(
-    (list) => list.length > 0
-  ).length;
+/** Cantidad de filtros activos (categorías con al menos una opción elegida). Calendarios/Cliente cuentan solo si hay restricción. */
+function countActiveFilters(value: CalendarFiltersState, calendarIds: string[], clientIds: string[] = []): number {
+  return [
+    value.platformIds,
+    value.accountIds,
+    value.contentTypeIds,
+    value.statusIds,
+    value.campaigns,
+    calendarIds,
+    clientIds,
+  ].filter((list) => list.length > 0).length;
 }
 
 function FilterSection({
@@ -248,15 +301,25 @@ function FilterSection({
  * opciones relevantes que la barra de escritorio (recibe el mismo `options`; no recalcula nada). "Limpiar" deja
  * todo sin restricciones (incluye Calendarios → todos); "Listo" cierra.
  */
-export function MobileFilters({ value, onChange, options, calendarIds, onCalendarIdsChange }: CalendarFiltersProps) {
-  const { calendars, clientAccounts } = useLookups();
+export function MobileFilters({
+  value,
+  onChange,
+  options,
+  calendarIds,
+  onCalendarIdsChange,
+  clientIds,
+  onClientIdsChange,
+}: CalendarFiltersProps) {
+  const { calendars, clientAccounts, clients } = useLookups();
   const [open, setOpen] = useState(false);
-  const selectableCalendars = getSelectableCalendars(calendars, calendarIds);
-  const count = countActiveFilters(value, calendarIds);
+  const selectableCalendars = getSelectableCalendars(scopeCalendarsToClients(calendars, clientIds), calendarIds);
+  const selectableClients = clientIds ? getSelectableClients(clients, clientIds) : [];
+  const count = countActiveFilters(value, calendarIds, clientIds);
 
   function clearAll() {
     onChange(EMPTY_FILTERS);
     if (calendarIds.length > 0) onCalendarIdsChange([]);
+    if (onClientIdsChange && clientIds && clientIds.length > 0) onClientIdsChange([]);
   }
 
   return (
@@ -276,6 +339,14 @@ export function MobileFilters({ value, onChange, options, calendarIds, onCalenda
             <SheetTitle>Filtros{count > 0 ? ` · ${count}` : ""}</SheetTitle>
           </SheetHeader>
           <div className="min-h-0 flex-1 overflow-y-auto">
+            {onClientIdsChange && selectableClients.length > 1 && (
+              <FilterSection
+                label="Cliente"
+                options={selectableClients.map((c) => ({ id: c.id, label: c.name }))}
+                selected={clientIds ?? []}
+                onChange={onClientIdsChange}
+              />
+            )}
             {selectableCalendars.length > 1 && (
               <FilterSection
                 label="Calendarios"

@@ -1,10 +1,11 @@
 "use client";
 
 import { format } from "date-fns";
+import { es } from "date-fns/locale";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PublicationCompactCard } from "@/components/calendar/publication-compact-card";
-import { formatFullDateFromDate, isSameDayAs, isToday } from "@/lib/date-utils";
+import { formatDayAbbr, formatFullDateFromDate, isSameDayAs, isToday } from "@/lib/date-utils";
 import type { Publication } from "@/types";
 
 interface MobileAgendaViewProps {
@@ -15,7 +16,10 @@ interface MobileAgendaViewProps {
   onOpenPublication: (publication: Publication) => void;
   onEditPublication?: (publication: Publication) => void;
   onDuplicatePublication?: (publication: Publication) => void;
-  clientId?: string;
+  /** Ver WeekView.getClientId — misma generalización cliente/global. */
+  getClientId?: (publication: Publication) => string | undefined;
+  /** Solo Publicaciones (contexto "global"): logo + nombre del cliente en cada card. */
+  showClient?: boolean;
   /** Solo Super Admin / Account Manager: crea una publicación con esa fecha preseleccionada. */
   onCreateForDay?: (day: Date) => void;
   showCalendarLabel: boolean;
@@ -31,7 +35,8 @@ export function MobileAgendaView({
   onOpenPublication,
   onEditPublication,
   onDuplicatePublication,
-  clientId,
+  getClientId,
+  showClient,
   onCreateForDay,
   showCalendarLabel,
 }: MobileAgendaViewProps) {
@@ -51,24 +56,38 @@ export function MobileAgendaView({
     <div className="flex flex-col pb-6">
       {groups.map(({ day, items }) => {
         const dateKey = format(day, "yyyy-MM-dd");
-        const label = formatFullDateFromDate(day);
+        const fullLabel = formatFullDateFromDate(day);
         return (
-          <section key={dateKey} aria-label={label}>
-            <div className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-border bg-background px-4 py-1">
-              <div className="flex min-h-9 items-center gap-2">
-                <h2 className="text-sm font-semibold text-foreground">{label}</h2>
-                {isToday(day) && (
-                  <span className="rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-semibold text-primary-foreground">
-                    Hoy
+          <section key={dateKey} aria-label={fullLabel}>
+            {/* Lista: fecha en formato compacto (número + mes/día abreviados), sin repetirla por publicación —
+                mismo espíritu que la columna de fecha de Lista en desktop, adaptado a una sola fila mobile.
+                Semana conserva su encabezado actual (no forma parte de este rediseño). */}
+            <div className="sticky top-0 z-10 flex items-center gap-2.5 border-b border-border bg-background px-4 py-1.5">
+              {mode === "list" ? (
+                <div className="flex min-h-9 items-center gap-2">
+                  <span className="text-lg font-bold leading-none text-foreground">{format(day, "d")}</span>
+                  <span className="text-[10px] font-semibold uppercase leading-tight tracking-wide text-muted-foreground">
+                    {format(day, "LLL", { locale: es }).replace(".", "")}
+                    <br />
+                    {formatDayAbbr(day)}
                   </span>
-                )}
-              </div>
+                </div>
+              ) : (
+                <div className="flex min-h-9 items-center gap-2">
+                  <h2 className="text-sm font-semibold text-foreground">{fullLabel}</h2>
+                </div>
+              )}
+              {isToday(day) && (
+                <span className="rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-semibold text-primary-foreground">
+                  Hoy
+                </span>
+              )}
               {onCreateForDay && (
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="-mr-2"
-                  aria-label={`Nuevo contenido el ${label}`}
+                  className="-mr-2 ml-auto"
+                  aria-label={`Nuevo contenido el ${fullLabel}`}
                   onClick={() => onCreateForDay(day)}
                 >
                   <Plus />
@@ -86,7 +105,8 @@ export function MobileAgendaView({
                     onOpen={() => onOpenPublication(publication)}
                     onEdit={onEditPublication}
                     onDuplicate={onDuplicatePublication}
-                    clientId={clientId}
+                    clientId={getClientId?.(publication)}
+                    showClient={showClient}
                     showCalendarLabel={showCalendarLabel}
                   />
                 ))

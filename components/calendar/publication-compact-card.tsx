@@ -5,6 +5,7 @@ import { ImageIcon } from "lucide-react";
 import { PublicationQuickActions } from "@/components/calendar/publication-quick-actions";
 import { PlatformIcon } from "@/components/icons/brand-icons";
 import { StatusPill } from "@/components/shared/status-pill";
+import { ClientBadge } from "@/components/shared/client-badge";
 import { useLookups } from "@/components/providers/lookups-provider";
 import { formatTime } from "@/lib/date-utils";
 import type { Publication } from "@/types";
@@ -16,6 +17,8 @@ interface PublicationCompactCardProps {
   onEdit?: (publication: Publication) => void;
   onDuplicate?: (publication: Publication) => void;
   clientId?: string;
+  /** Solo Publicaciones (contexto "global"): logo + nombre del cliente, arriba del título. */
+  showClient?: boolean;
   showCalendarLabel?: boolean;
 }
 
@@ -29,11 +32,13 @@ export function PublicationCompactCard({
   onEdit,
   onDuplicate,
   clientId,
+  showClient,
   showCalendarLabel,
 }: PublicationCompactCardProps) {
-  const { getCalendar, getClientAccount, getPlatform, getStatus } = useLookups();
+  const { getCalendar, getClient, getClientAccount, getPlatform, getStatus } = useLookups();
   const status = getStatus(publication.statusId);
   const calendar = showCalendarLabel ? getCalendar(publication.calendarId) : undefined;
+  const client = showClient ? getClient(publication.clientId) : undefined;
   const heroAsset = publication.assets.find((a) => a.isPrimary) ?? publication.assets[0] ?? null;
   const platformIds = Array.from(
     new Set(
@@ -65,6 +70,7 @@ export function PublicationCompactCard({
         )}
       </span>
       <div className="flex min-w-0 flex-1 flex-col gap-1">
+        {client && <ClientBadge client={client} size="sm" />}
         <p className="line-clamp-2 text-sm leading-snug font-medium text-foreground">{publication.title}</p>
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           {status && <StatusPill status={status} size="sm" />}

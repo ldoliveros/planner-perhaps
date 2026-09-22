@@ -10,6 +10,7 @@ import { DayDropZone, toDateKey, usePublicationDnd } from "@/components/calendar
 import { PublicationQuickActions } from "@/components/calendar/publication-quick-actions";
 import { PlatformIcon } from "@/components/icons/brand-icons";
 import { StatusPill } from "@/components/shared/status-pill";
+import { ClientBadge } from "@/components/shared/client-badge";
 import { useLookups } from "@/components/providers/lookups-provider";
 import { hexToRgba } from "@/lib/color-contrast";
 import {
@@ -36,6 +37,8 @@ interface MonthChipProps {
   onEdit?: (publication: Publication) => void;
   onDuplicate?: (publication: Publication) => void;
   clientId?: string;
+  /** Solo Publicaciones (contexto "global"): logo muy pequeño + nombre del cliente, de forma adaptativa. */
+  showClient?: boolean;
   showCalendarLabel: boolean;
   /** Solo en desktop y solo para quien puede mover (Super Admin / Account Manager); ver DraggableMonthChip. */
   dragRef?: (node: HTMLElement | null) => void;
@@ -49,15 +52,19 @@ function MonthChip({
   onEdit,
   onDuplicate,
   clientId,
+  showClient,
   showCalendarLabel,
   dragRef,
   dragProps,
   dragState,
 }: MonthChipProps) {
-  const { getCalendar, getClientAccount, getPlatform, getStatus } = useLookups();
+  const { getCalendar, getClient, getClientAccount, getPlatform, getStatus } = useLookups();
   const canManage = Boolean(onEdit && onDuplicate && clientId);
   const status = getStatus(publication.statusId);
-  const calendar = showCalendarLabel ? getCalendar(publication.calendarId) : undefined;
+  // En Publicaciones (global) el cliente reemplaza al calendario en esta línea — prioridad 1 es reconocer el
+  // cliente (spec), y el chip no tiene alto para las dos cosas sin romper la densidad de Mes.
+  const client = showClient ? getClient(publication.clientId) : undefined;
+  const calendar = !showClient && showCalendarLabel ? getCalendar(publication.calendarId) : undefined;
   const primaryAsset = publication.assets.find((a) => a.isPrimary) ?? publication.assets[0];
   const uniquePlatformIds = Array.from(
     new Set(
@@ -124,11 +131,12 @@ function MonthChip({
           </span>
         )}
         <span className="line-clamp-2 text-[11px] font-medium text-foreground">{publication.title}</span>
-        {(publication.publicationTime || calendar) && (
+        {(publication.publicationTime || calendar || client) && (
           <span className="flex min-w-0 items-center gap-1 text-[9.5px] text-muted-foreground">
             {publication.publicationTime && (
               <span className="shrink-0 tabular-nums">{formatTime(publication.publicationTime)}</span>
             )}
+            {client && <ClientBadge client={client} size="xs" className="min-w-0" />}
             {calendar && <span className="truncate">{calendar.name}</span>}
           </span>
         )}
@@ -164,7 +172,8 @@ interface MonthDayCellProps {
   onOpenPublication: (publication: Publication) => void;
   onEditPublication?: (publication: Publication) => void;
   onDuplicatePublication?: (publication: Publication) => void;
-  clientId?: string;
+  getClientId?: (publication: Publication) => string | undefined;
+  showClient?: boolean;
   onCreateForDay?: (day: Date) => void;
   clientColor: string;
   showCalendarLabel: boolean;
@@ -180,7 +189,8 @@ function MonthDayCell({
   onOpenPublication,
   onEditPublication,
   onDuplicatePublication,
-  clientId,
+  getClientId,
+  showClient,
   onCreateForDay,
   clientColor,
   showCalendarLabel,
@@ -242,7 +252,8 @@ function MonthDayCell({
             onOpen={() => onOpenPublication(publication)}
             onEdit={onEditPublication}
             onDuplicate={onDuplicatePublication}
-            clientId={clientId}
+            clientId={getClientId?.(publication)}
+            showClient={showClient}
             showCalendarLabel={showCalendarLabel}
           />
         ))}
@@ -257,7 +268,9 @@ interface MonthViewProps {
   onOpenPublication: (publication: Publication) => void;
   onEditPublication?: (publication: Publication) => void;
   onDuplicatePublication?: (publication: Publication) => void;
-  clientId?: string;
+  /** Ver WeekViewProps.getClientId — misma generalización, mismo criterio en las dos vistas. */
+  getClientId?: (publication: Publication) => string | undefined;
+  showClient?: boolean;
   onCreateForDay?: (day: Date) => void;
   clientColor: string;
   showCalendarLabel: boolean;
@@ -269,7 +282,8 @@ export function MonthView({
   onOpenPublication,
   onEditPublication,
   onDuplicatePublication,
-  clientId,
+  getClientId,
+  showClient,
   onCreateForDay,
   clientColor,
   showCalendarLabel,
@@ -278,7 +292,7 @@ export function MonthView({
   const weekCount = gridDays.length / 7;
   // Mismo criterio que Semana: solo quien puede editar recibe los callbacks; el permiso real lo aplica RLS.
   // Arrastrar solo mueve entre los días visibles de la grilla; para otro mes se usa "Cambiar fecha".
-  const canMove = Boolean(onEditPublication && onDuplicatePublication && clientId);
+  const canMove = Boolean(onEditPublication && onDuplicatePublication && getClientId);
 
   const { displayedPublications, activePublication, saving, contextProps } = usePublicationDnd(publications, (targetKey) => {
     const targetDay = gridDays.find((d) => toDateKey(d) === targetKey);
@@ -321,7 +335,8 @@ export function MonthView({
                 onOpenPublication={onOpenPublication}
                 onEditPublication={onEditPublication}
                 onDuplicatePublication={onDuplicatePublication}
-                clientId={clientId}
+                getClientId={getClientId}
+                showClient={showClient}
                 onCreateForDay={onCreateForDay}
                 clientColor={clientColor}
                 showCalendarLabel={showCalendarLabel}
@@ -337,7 +352,7 @@ export function MonthView({
       <DragOverlay dropAnimation={null}>
         {activePublication && (
           <div aria-hidden className="pointer-events-none cursor-grabbing select-none rotate-1 rounded-md bg-card opacity-95 shadow-lg">
-            <MonthChip publication={activePublication} onOpen={() => {}} showCalendarLabel={showCalendarLabel} />
+            <MonthChip publication={activePublication} onOpen={() => {}} showClient={showClient} showCalendarLabel={showCalendarLabel} />
           </div>
         )}
       </DragOverlay>

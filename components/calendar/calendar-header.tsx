@@ -5,6 +5,8 @@ import Image from "next/image";
 import { ChevronLeft, ChevronRight, Download, FolderOpen, Info, MoreHorizontal, Plus } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { getContrastTextColor, getReadableTextColor } from "@/lib/color-contrast";
@@ -12,6 +14,11 @@ import { cn } from "cn";
 import type { Client } from "@/types";
 
 export type CalendarView = "week" | "month" | "list";
+
+export interface HeaderDateRangeValue {
+  from: string;
+  to: string;
+}
 
 const VIEW_OPTIONS: { value: CalendarView; label: string }[] = [
   { value: "week", label: "Semana" },
@@ -25,17 +32,22 @@ interface CalendarHeaderProps {
   /** Descripcion del calendario actual — solo cuando hay exactamente uno seleccionado. */
   calendarDescription?: string | null;
   driveFolderUrl: string | null;
+  /** Ignorado en Lista: ahí la navegación temporal se reemplaza por Desde/Hasta (ver `dateRange`). */
   periodLabel: string;
   view: CalendarView;
   onViewChange: (view: CalendarView) => void;
   onPrev: () => void;
   onNext: () => void;
+  /** En Lista, además de llevar `anchorDate` a hoy, restablece `dateRange` a su rango por defecto. */
   onToday: () => void;
   onCreate?: () => void;
   /** Exportar CSV del contexto actual. Solo se pasa a quien puede editar (no Client User). */
   onExport?: () => void;
   allClients?: { id: string; name: string }[];
   onSwitchClient?: (clientId: string) => void;
+  /** Solo Lista: Desde/Hasta reemplaza a ← Hoy → + período visible (no es la navegación de Semana/Mes). */
+  dateRange?: HeaderDateRangeValue;
+  onDateRangeChange?: (value: HeaderDateRangeValue) => void;
   /** Solo < md: botón "Filtros" que va en la misma fila que el selector Semana/Mes/Lista. */
   mobileFilters?: ReactNode;
 }
@@ -55,6 +67,8 @@ export function CalendarHeader({
   onExport,
   allClients,
   onSwitchClient,
+  dateRange,
+  onDateRangeChange,
   mobileFilters,
 }: CalendarHeaderProps) {
   const initialTextColor = getContrastTextColor(client.color);
@@ -162,19 +176,54 @@ export function CalendarHeader({
         )}
 
         <div className="flex flex-wrap items-center gap-2 max-md:w-full">
-          <div className="flex items-center gap-0.5 rounded-lg border border-border p-0.5">
-            <Button variant="ghost" size="icon-sm" onClick={onPrev} aria-label="Período anterior">
-              <ChevronLeft />
-            </Button>
-            <Button variant="ghost" size="sm" onClick={onToday}>
-              Hoy
-            </Button>
-            <Button variant="ghost" size="icon-sm" onClick={onNext} aria-label="Período siguiente">
-              <ChevronRight />
-            </Button>
-          </div>
+          {view === "list" ? (
+            // Lista: Desde/Hasta reemplaza a ← Hoy → + período visible — no es la navegación de Semana/Mes, es
+            // el rango propio de Lista. Sin flechas anterior/siguiente (no aplican a un rango de fechas); "Hoy"
+            // se conserva y restablece ese rango a su período por defecto alrededor de la fecha actual.
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Label className="text-xs text-muted-foreground">Desde</Label>
+              <Input
+                type="date"
+                aria-label="Desde"
+                value={dateRange?.from ?? ""}
+                onChange={(e) => onDateRangeChange?.({ from: e.target.value, to: dateRange?.to ?? "" })}
+                className="h-8 w-[8.5rem] pointer-coarse:h-9"
+              />
+              <span className="text-muted-foreground" aria-hidden>
+                ·
+              </span>
+              <Label className="text-xs text-muted-foreground">Hasta</Label>
+              <Input
+                type="date"
+                aria-label="Hasta"
+                value={dateRange?.to ?? ""}
+                onChange={(e) => onDateRangeChange?.({ from: dateRange?.from ?? "", to: e.target.value })}
+                className="h-8 w-[8.5rem] pointer-coarse:h-9"
+              />
+              <span className="text-muted-foreground" aria-hidden>
+                ·
+              </span>
+              <Button variant="ghost" size="sm" onClick={onToday}>
+                Hoy
+              </Button>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center gap-0.5 rounded-lg border border-border p-0.5">
+                <Button variant="ghost" size="icon-sm" onClick={onPrev} aria-label="Período anterior">
+                  <ChevronLeft />
+                </Button>
+                <Button variant="ghost" size="sm" onClick={onToday}>
+                  Hoy
+                </Button>
+                <Button variant="ghost" size="icon-sm" onClick={onNext} aria-label="Período siguiente">
+                  <ChevronRight />
+                </Button>
+              </div>
 
-          <span className="min-w-[9rem] text-sm text-muted-foreground max-md:min-w-0 max-md:flex-1 max-md:truncate">{periodLabel}</span>
+              <span className="min-w-[9rem] text-sm text-muted-foreground max-md:min-w-0 max-md:flex-1 max-md:truncate">{periodLabel}</span>
+            </>
+          )}
 
           {/* En < md: selector de vista + botón "Filtros" comparten fila (no hay barra de filtros aparte). */}
           <div className="flex items-center gap-2 max-md:order-last max-md:w-full">

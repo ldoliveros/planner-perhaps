@@ -22,7 +22,9 @@ interface MobileMonthViewProps {
   onOpenPublication: (publication: Publication) => void;
   onEditPublication?: (publication: Publication) => void;
   onDuplicatePublication?: (publication: Publication) => void;
-  clientId?: string;
+  /** Ver WeekView.getClientId — misma generalización cliente/global. */
+  getClientId?: (publication: Publication) => string | undefined;
+  showClient?: boolean;
   /** Solo Super Admin / Account Manager: crea una publicación con el día seleccionado preseleccionado. */
   onCreateForDay?: (day: Date) => void;
   showCalendarLabel: boolean;
@@ -39,7 +41,8 @@ export function MobileMonthView({
   onOpenPublication,
   onEditPublication,
   onDuplicatePublication,
-  clientId,
+  getClientId,
+  showClient,
   onCreateForDay,
   showCalendarLabel,
 }: MobileMonthViewProps) {
@@ -150,7 +153,8 @@ export function MobileMonthView({
                 onOpen={() => onOpenPublication(publication)}
                 onEdit={onEditPublication}
                 onDuplicate={onDuplicatePublication}
-                clientId={clientId}
+                clientId={getClientId?.(publication)}
+                showClient={showClient}
                 showCalendarLabel={showCalendarLabel}
               />
             ))

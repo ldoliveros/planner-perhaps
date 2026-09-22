@@ -19,6 +19,7 @@ interface DraggableCardProps {
   onEdit?: (publication: Publication) => void;
   onDuplicate?: (publication: Publication) => void;
   clientId?: string;
+  showClient?: boolean;
   showCalendarLabel: boolean;
 }
 
@@ -42,7 +43,14 @@ interface WeekViewProps {
   onOpenPublication: (publication: Publication) => void;
   onEditPublication?: (publication: Publication) => void;
   onDuplicatePublication?: (publication: Publication) => void;
-  clientId?: string;
+  /**
+   * Cliente dueño de cada card. En el Planner de un cliente es siempre el mismo (`() => client.id`); en
+   * Publicaciones (calendario global) cada publicación resuelve al suyo (`(p) => p.clientId`) — así se
+   * reutiliza esta misma vista en los dos contextos sin bifurcarla.
+   */
+  getClientId?: (publication: Publication) => string | undefined;
+  /** Solo Publicaciones (contexto "global"): logo + nombre del cliente debajo del título. */
+  showClient?: boolean;
   onCreateForDay?: (day: Date) => void;
   clientColor: string;
   showCalendarLabel: boolean;
@@ -54,14 +62,15 @@ export function WeekView({
   onOpenPublication,
   onEditPublication,
   onDuplicatePublication,
-  clientId,
+  getClientId,
+  showClient,
   onCreateForDay,
   clientColor,
   showCalendarLabel,
 }: WeekViewProps) {
   // Mismo criterio que el `•••` (Bloque C): solo quien puede editar recibe los callbacks.
   // El permiso real lo sigue aplicando RLS en movePublicationToDate.
-  const canMove = Boolean(onEditPublication && onDuplicatePublication && clientId);
+  const canMove = Boolean(onEditPublication && onDuplicatePublication && getClientId);
 
   const { displayedPublications, activePublication, saving, contextProps } = usePublicationDnd(publications, (targetKey) => {
     const targetDay = weekDays.find((d) => toDateKey(d) === targetKey);
@@ -120,7 +129,8 @@ export function WeekView({
                     onOpen={() => onOpenPublication(publication)}
                     onEdit={onEditPublication}
                     onDuplicate={onDuplicatePublication}
-                    clientId={clientId}
+                    clientId={getClientId?.(publication)}
+                    showClient={showClient}
                     showCalendarLabel={showCalendarLabel}
                   />
                 ))}
@@ -133,7 +143,7 @@ export function WeekView({
       <DragOverlay dropAnimation={null}>
         {activePublication && (
           <div aria-hidden className="pointer-events-none cursor-grabbing select-none rotate-1 opacity-95 shadow-lg">
-            <PublicationCard publication={activePublication} onOpen={() => {}} showCalendarLabel={showCalendarLabel} />
+            <PublicationCard publication={activePublication} onOpen={() => {}} showClient={showClient} showCalendarLabel={showCalendarLabel} />
           </div>
         )}
       </DragOverlay>
