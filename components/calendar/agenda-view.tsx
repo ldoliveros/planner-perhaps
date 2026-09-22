@@ -60,7 +60,7 @@ export function AgendaView({
             <TableHead>Tipo</TableHead>
             <TableHead>Estado</TableHead>
             <TableHead>Fecha</TableHead>
-            {canManage && <TableHead className="sticky right-0 w-10 bg-background"></TableHead>}
+            <TableHead className="sticky right-0 w-10 bg-background"></TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -120,17 +120,15 @@ export function AgendaView({
                   {formatFullDate(publication.publicationDate)}
                   {publication.publicationTime ? ` · ${formatTime(publication.publicationTime)}` : ""}
                 </TableCell>
-                {canManage && (
-                  <TableCell className="sticky right-0 w-10 bg-background text-right" onClick={(e) => e.stopPropagation()}>
-                    <PublicationQuickActions
-                      publication={publication}
-                      clientId={clientId!}
-                      onEdit={() => onEditPublication!(publication)}
-                      onDuplicate={() => onDuplicatePublication!(publication)}
-                      className="ml-auto size-7"
-                    />
-                  </TableCell>
-                )}
+                <TableCell className="sticky right-0 w-10 bg-background text-right" onClick={(e) => e.stopPropagation()}>
+                  <PublicationQuickActions
+                    publication={publication}
+                    clientId={clientId}
+                    onEdit={canManage ? () => onEditPublication!(publication) : undefined}
+                    onDuplicate={canManage ? () => onDuplicatePublication!(publication) : undefined}
+                    className="ml-auto size-7"
+                  />
+                </TableCell>
               </TableRow>
             );
           })}

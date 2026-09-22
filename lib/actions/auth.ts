@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { getSiteURL } from "@/lib/site-url";
 import { friendlyPasswordError } from "@/lib/friendly-errors";
+import { sanitizeNext } from "@/lib/safe-next";
 
 export interface AuthActionState {
   error: string | null;
@@ -28,8 +29,11 @@ export async function signIn(_prevState: AuthActionState, formData: FormData): P
   // Login único (/login): el destino lo decide el rol, no la pantalla. Se devuelve en lugar de usar redirect():
   // con redirect() el servidor renderiza el destino dentro de la misma respuesta y el navegador lo vuelve a pedir
   // (en producción sumaba ~3 s); devolviéndolo, el cliente navega y el destino se pide una sola vez.
+  // Si venía de una ruta protegida (`next`, p. ej. un link compartido) y es de su rol, continúa ahí; si no, al destino del rol.
   const { data: profile } = await supabase.from("profiles").select("role").eq("id", data.user.id).maybeSingle();
-  return { error: null, redirectTo: profile?.role === "client" ? "/client/planner" : "/admin" };
+  const isClient = profile?.role === "client";
+  const next = sanitizeNext(formData.get("next"), isClient ? "client" : "staff");
+  return { error: null, redirectTo: next ?? (isClient ? "/client/planner" : "/admin") };
 }
 
 /** Mensaje para el usuario cuando falla el envío de un link por email (magic link / recuperar contraseña). */
@@ -55,12 +59,15 @@ export async function requestMagicLink(
 
   const siteURL = await getSiteURL();
   const supabase = await createClient();
+  // Con `next` (venía de un link compartido), /auth/callback continúa ahí después de validar el link.
+  const next = sanitizeNext(formData.get("next"));
+  const callbackURL = `${siteURL}/auth/callback${next ? `?next=${encodeURIComponent(next)}` : ""}`;
   // shouldCreateUser: false — el link solo entra a usuarios ya invitados; un email desconocido
   // nunca crea una cuenta. Para no revelar qué emails existen, ese caso (`otp_disabled`) responde
   // igual que un envío exitoso.
   const { error } = await supabase.auth.signInWithOtp({
     email,
-    options: { emailRedirectTo: `${siteURL}/auth/callback`, shouldCreateUser: false },
+    options: { emailRedirectTo: callbackURL, shouldCreateUser: false },
   });
 
   if (error && error.code !== "otp_disabled") {

@@ -31,17 +31,13 @@ export async function proxy(request: NextRequest) {
   const isAdminLoginRoute = pathname === "/login";
   const isClientLoginRoute = pathname === "/client/login";
 
-  if (isAdminRoute && !user) {
+  // Sin sesión: a /login con `next` = ruta original CON su query (p. ej. ?publication=<id> de un link compartido),
+  // para continuar ahí después de ingresar. /login valida `next` (ver lib/safe-next.ts).
+  if ((isAdminRoute || isClientRoute) && !user) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
-    url.searchParams.set("next", pathname);
-    return NextResponse.redirect(url);
-  }
-
-  if (isClientRoute && !user) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/login";
-    url.searchParams.set("next", pathname);
+    url.search = "";
+    url.searchParams.set("next", `${pathname}${request.nextUrl.search}`);
     return NextResponse.redirect(url);
   }
 

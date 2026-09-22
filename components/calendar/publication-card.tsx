@@ -109,32 +109,28 @@ export function PublicationCard({
       </div>
 
       <div className="flex flex-1 flex-col gap-1.5 border-l-[3px] p-2" style={{ borderLeftColor: status?.color }}>
-        {(uniquePlatformIds.length > 0 || canManage) && (
-          <div className="flex items-center justify-between gap-1">
-            <div className="flex items-center gap-1">
-              {uniquePlatformIds.map((platformId) => {
-                const platform = getPlatform(platformId);
-                if (!platform) return null;
-                return (
-                  <span key={platformId} title={platform.name}>
-                    <PlatformIcon platformKey={platform.key} className="size-3.5" style={{ color: platform.color }} />
-                  </span>
-                );
-              })}
-            </div>
-            {canManage && (
-              <div className="relative z-10 -my-1 -mr-1 shrink-0">
-                <PublicationQuickActions
-                  publication={publication}
-                  clientId={clientId!}
-                  onEdit={() => onEdit!(publication)}
-                  onDuplicate={() => onDuplicate!(publication)}
-                  className="size-6"
-                />
-              </div>
-            )}
+        <div className="flex items-center justify-between gap-1">
+          <div className="flex items-center gap-1">
+            {uniquePlatformIds.map((platformId) => {
+              const platform = getPlatform(platformId);
+              if (!platform) return null;
+              return (
+                <span key={platformId} title={platform.name}>
+                  <PlatformIcon platformKey={platform.key} className="size-3.5" style={{ color: platform.color }} />
+                </span>
+              );
+            })}
           </div>
-        )}
+          <div className="relative z-10 -my-1 -mr-1 shrink-0">
+            <PublicationQuickActions
+              publication={publication}
+              clientId={clientId}
+              onEdit={canManage ? () => onEdit!(publication) : undefined}
+              onDuplicate={canManage ? () => onDuplicate!(publication) : undefined}
+              className="size-6"
+            />
+          </div>
+        </div>
         <p className="line-clamp-2 text-[13px] font-medium leading-snug text-foreground">{publication.title}</p>
         {calendar && (
           <span className="w-fit rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">

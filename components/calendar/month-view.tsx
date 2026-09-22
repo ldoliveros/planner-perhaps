@@ -6,7 +6,6 @@ import { DndContext, DragOverlay, useDraggable } from "@dnd-kit/core";
 import { Plus } from "lucide-react";
 import { isWeekend } from "date-fns";
 import { cn } from "cn";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { DayDropZone, toDateKey, usePublicationDnd } from "@/components/calendar/publication-dnd";
 import { PublicationQuickActions } from "@/components/calendar/publication-quick-actions";
 import { PlatformIcon } from "@/components/icons/brand-icons";
@@ -15,7 +14,6 @@ import { useLookups } from "@/components/providers/lookups-provider";
 import { hexToRgba } from "@/lib/color-contrast";
 import {
   formatDayNumber,
-  formatFullDateFromDate,
   formatWeekdayAndDay,
   formatTime,
   getMonthGridDays,
@@ -26,7 +24,11 @@ import {
 import type { Publication } from "@/types";
 
 const WEEKDAY_LABELS = ["LUN", "MAR", "MIÉ", "JUE", "VIE", "SÁB", "DOM"];
-const MAX_VISIBLE_PER_DAY = 3;
+// Alto mínimo de un chip completo (pill de estado + íconos de canal, título de 2 líneas y hora/calendario): evita
+// que un chip con menos contenido (sin hora, sin calendario) se vea más bajo que sus vecinos. No fija cuántos
+// chips entran por día — eso lo decide el alto real de la fila, que reparte dinámicamente el alto disponible
+// (ver el grid de más abajo); si no entran todos, el área de contenidos de ESE día scrollea.
+const CHIP_MIN_HEIGHT = 64;
 
 interface MonthChipProps {
   publication: Publication;
@@ -67,8 +69,9 @@ function MonthChip({
 
   return (
     <div
+      style={{ minHeight: CHIP_MIN_HEIGHT }}
       className={cn(
-        "group/chip relative flex w-full items-start gap-2 rounded-md px-1 py-1 transition-colors hover:bg-muted",
+        "group/chip relative flex w-full shrink-0 items-start gap-2 rounded-md px-1 py-1 transition-colors hover:bg-muted",
         dragState === "dragging" && "opacity-40",
         dragState === "saving" && "animate-pulse opacity-70"
       )}
@@ -89,19 +92,37 @@ function MonthChip({
           <Image src={primaryAsset.thumbnailUrl} alt="" fill sizes="48px" className="object-cover" />
         )}
       </span>
-      {canManage && (
-        <div className="absolute right-0.5 top-0.5 z-10 opacity-100 transition-opacity [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover/chip:opacity-100 [@media(hover:hover)]:group-focus-within/chip:opacity-100">
-          <PublicationQuickActions
-            publication={publication}
-            clientId={clientId!}
-            onEdit={() => onEdit!(publication)}
-            onDuplicate={() => onDuplicate!(publication)}
-            className="size-5 bg-background/90 shadow-xs"
-          />
-        </div>
-      )}
+      <div className="absolute right-0.5 top-0.5 z-10 opacity-100 transition-opacity [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover/chip:opacity-100 [@media(hover:hover)]:group-focus-within/chip:opacity-100">
+        <PublicationQuickActions
+          publication={publication}
+          clientId={clientId}
+          onEdit={canManage ? () => onEdit!(publication) : undefined}
+          onDuplicate={canManage ? () => onDuplicate!(publication) : undefined}
+          className="size-5 bg-background/90 shadow-xs"
+        />
+      </div>
       <span className="flex min-w-0 flex-1 flex-col gap-0.5 leading-tight">
-        {status && <StatusPill status={status} size="xs" />}
+        {(status || uniquePlatformIds.length > 0) && (
+          <span className="flex min-w-0 items-center justify-between gap-1">
+            {status && <StatusPill status={status} size="xs" />}
+            {uniquePlatformIds.length > 0 && (
+              <span className="ml-auto flex shrink-0 items-center gap-0.5">
+                {uniquePlatformIds.slice(0, 3).map((platformId) => {
+                  const platform = getPlatform(platformId);
+                  if (!platform) return null;
+                  return (
+                    <PlatformIcon
+                      key={platformId}
+                      platformKey={platform.key}
+                      className="size-2.5 shrink-0"
+                      style={{ color: platform.color }}
+                    />
+                  );
+                })}
+              </span>
+            )}
+          </span>
+        )}
         <span className="line-clamp-2 text-[11px] font-medium text-foreground">{publication.title}</span>
         {(publication.publicationTime || calendar) && (
           <span className="flex min-w-0 items-center gap-1 text-[9.5px] text-muted-foreground">
@@ -109,22 +130,6 @@ function MonthChip({
               <span className="shrink-0 tabular-nums">{formatTime(publication.publicationTime)}</span>
             )}
             {calendar && <span className="truncate">{calendar.name}</span>}
-          </span>
-        )}
-        {uniquePlatformIds.length > 0 && (
-          <span className="flex items-center gap-0.5">
-            {uniquePlatformIds.slice(0, 3).map((platformId) => {
-              const platform = getPlatform(platformId);
-              if (!platform) return null;
-              return (
-                <PlatformIcon
-                  key={platformId}
-                  platformKey={platform.key}
-                  className="size-2.5 shrink-0"
-                  style={{ color: platform.color }}
-                />
-              );
-            })}
           </span>
         )}
       </span>
@@ -185,8 +190,6 @@ function MonthDayCell({
 }: MonthDayCellProps) {
   const today = isToday(day);
   const weekend = isWeekend(day);
-  const visible = publications.slice(0, MAX_VISIBLE_PER_DAY);
-  const overflowCount = publications.length - visible.length;
   const bgClass = today ? "bg-primary/[0.03]" : !weekend && !inCurrentMonth ? "bg-muted/30" : "";
 
   return (
@@ -194,10 +197,14 @@ function MonthDayCell({
       dateKey={toDateKey(day)}
       dragSourceKey={dragSourceKey}
       disabled={!canMove}
-      className={cn("group/day flex min-h-[232px] flex-col gap-0.5 border-r border-b border-border p-1.5", bgClass)}
+      // `min-h-0`: la celda es una fila de la grilla (alto fijo, repartido dinámicamente entre las semanas del
+      // mes — ver el `grid` de MonthView) y no un contenido que empuja su fila a crecer. Sin esto, el número de
+      // día y el "+" seguirían fijos por su propio contenido, pero el área de chips (flex-1 de abajo) no tendría
+      // límite real para activar su scroll interno.
+      className={cn("group/day flex min-h-0 flex-col gap-0.5 border-r border-b border-border p-1.5", bgClass)}
       style={!today && weekend ? { backgroundColor: hexToRgba(clientColor, 0.05) } : undefined}
     >
-      <div className="flex items-center justify-between">
+      <div className="flex shrink-0 items-center justify-between">
         <span
           className={cn(
             "flex size-5 shrink-0 items-center justify-center rounded-full text-[11px] font-medium",
@@ -223,8 +230,10 @@ function MonthDayCell({
         )}
       </div>
 
-      <div className="flex flex-col gap-0.5">
-        {visible.map((publication) => (
+      {/* Ocupa todo el alto que sobra en la celda (cuántos chips entran depende de ese alto, no de un número
+          fijo); si no entran todos, scrollea solo esta área — el número de día de arriba queda fijo. */}
+      <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto overflow-x-hidden overscroll-contain [scrollbar-width:thin]">
+        {publications.map((publication) => (
           <DraggableMonthChip
             key={publication.id}
             publication={publication}
@@ -238,37 +247,6 @@ function MonthDayCell({
           />
         ))}
       </div>
-
-      {overflowCount > 0 && (
-        <Popover>
-          <PopoverTrigger
-            render={
-              <button
-                type="button"
-                className="mt-0.5 self-start rounded-md px-1 py-0.5 text-left text-[10.5px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
-              />
-            }
-          >
-            +{overflowCount} más
-          </PopoverTrigger>
-          <PopoverContent align="start" className="w-72">
-            <div className="mb-1 px-1 text-xs font-medium text-muted-foreground">{formatFullDateFromDate(day)}</div>
-            <div className="flex flex-col gap-0.5">
-              {publications.map((publication) => (
-                <MonthChip
-                  key={publication.id}
-                  publication={publication}
-                  onOpen={() => onOpenPublication(publication)}
-                  onEdit={onEditPublication}
-                  onDuplicate={onDuplicatePublication}
-                  clientId={clientId}
-                  showCalendarLabel={showCalendarLabel}
-                />
-              ))}
-            </div>
-          </PopoverContent>
-        </Popover>
-      )}
     </DayDropZone>
   );
 }
@@ -309,8 +287,8 @@ export function MonthView({
 
   return (
     <DndContext id="month-view-dnd" {...contextProps}>
-      <div className="flex flex-1 flex-col">
-        <div className="grid grid-cols-7 border-b border-border">
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="grid shrink-0 grid-cols-7 border-b border-border">
           {WEEKDAY_LABELS.map((label) => (
             <div
               key={label}
@@ -320,8 +298,13 @@ export function MonthView({
             </div>
           ))}
         </div>
+        {/* `minmax(0, 1fr)`, no `minmax(auto, 1fr)`: con "auto" cada fila crece hasta la altura de su contenido
+            (lo que traía el espacio vacío para meses con pocas publicaciones y el desborde de página para meses
+            con muchas). Con "0" las 5 o 6 semanas se reparten en partes iguales el alto real del contenedor
+            (dado por `min-h-0 flex-1` de arriba, acotado a su vez por el layout del Planner), sea cual sea el
+            contenido — y cada celda decide cuántos chips entran ahí y scrollea el resto (ver MonthDayCell). */}
         <div
-          className="grid flex-1 grid-cols-7 border-t border-l border-border"
+          className="grid min-h-0 flex-1 grid-cols-7 border-t border-l border-border"
           style={{ gridTemplateRows: `repeat(${weekCount}, minmax(0, 1fr))` }}
         >
           {gridDays.map((day) => {

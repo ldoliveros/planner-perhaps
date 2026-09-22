@@ -12,7 +12,7 @@ import type { Publication } from "@/types";
 interface PublicationCompactCardProps {
   publication: Publication;
   onOpen: () => void;
-  /** Los tres juntos habilitan las Quick Actions (Super Admin / Account Manager). El Client User no los pasa. */
+  /** Los tres juntos habilitan las Quick Actions completas (Super Admin / Account Manager). El Client User no los pasa y ve solo "Compartir". */
   onEdit?: (publication: Publication) => void;
   onDuplicate?: (publication: Publication) => void;
   clientId?: string;
@@ -87,17 +87,15 @@ export function PublicationCompactCard({
         </div>
         {calendar && <span className="truncate text-[11px] text-muted-foreground">{calendar.name}</span>}
       </div>
-      {canManage && (
-        <div className="relative z-10 -my-1 -mr-1 shrink-0">
-          <PublicationQuickActions
-            publication={publication}
-            clientId={clientId!}
-            onEdit={() => onEdit!(publication)}
-            onDuplicate={() => onDuplicate!(publication)}
-            className="size-11"
-          />
-        </div>
-      )}
+      <div className="relative z-10 -my-1 -mr-1 shrink-0">
+        <PublicationQuickActions
+          publication={publication}
+          clientId={clientId}
+          onEdit={canManage ? () => onEdit!(publication) : undefined}
+          onDuplicate={canManage ? () => onDuplicate!(publication) : undefined}
+          className="size-11"
+        />
+      </div>
     </div>
   );
 }

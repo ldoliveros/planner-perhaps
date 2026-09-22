@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { addMonths, addWeeks, format } from "date-fns";
 import { CalendarDays, X } from "lucide-react";
+import { cn } from "cn";
 import { Button } from "@/components/ui/button";
 import { CalendarHeader, type CalendarView } from "@/components/calendar/calendar-header";
 import {
@@ -107,14 +108,19 @@ export function CalendarScreen({
     [pathname, router, searchParams]
   );
 
-  const [anchorDate, setAnchorDate] = useState(() => new Date());
-  const [filters, setFilters] = useState<CalendarFiltersState>(EMPTY_FILTERS);
-  // Deep-link desde /admin/publications: ?publication=<id> abre el drawer directo
-  // al montar (lectura única — no reacciona a cambios posteriores del param).
-  const [selectedPublication, setSelectedPublication] = useState<Publication | null>(() => {
-    const targetId = searchParams.get("publication");
-    return targetId ? (publications.find((p) => p.id === targetId) ?? null) : null;
+  // Deep-link (Compartir y /admin/publications): ?publication=<id> abre el drawer directo al montar (lectura
+  // única — no reacciona a cambios posteriores del param). `publications` ya viene filtrada por RLS, así que un id
+  // ajeno o inexistente simplemente no aparece: no se muestra nada y se avisa (ver el efecto de abajo).
+  const [shared] = useState(() => {
+    const id = searchParams.get("publication");
+    return { id, publication: id ? (publications.find((p) => p.id === id) ?? null) : null };
   });
+  const [anchorDate, setAnchorDate] = useState(() =>
+    shared.publication ? new Date(`${shared.publication.publicationDate}T00:00:00`) : new Date()
+  );
+  const [filters, setFilters] = useState<CalendarFiltersState>(EMPTY_FILTERS);
+  const [selectedPublication, setSelectedPublication] = useState<Publication | null>(shared.publication);
+  const missingSharedPublication = useRef(Boolean(shared.id) && !shared.publication);
   // Deep-link desde /admin/publications: ?duplicate=<id> abre el form ya precargado
   // como duplicado (misma lectura única que ?publication=, al montar).
   const [formState, setFormState] = useState<{
@@ -277,6 +283,26 @@ export function CalendarScreen({
     setFormState({ open: true, duplicateFrom: publication });
   }
 
+  // El parámetro solo vive mientras el drawer abierto por el link esté abierto: al cerrarlo (o al pasar a
+  // editar/duplicar) se limpia de la URL para que recargar o copiar la barra no vuelva a abrirlo. Si el id no
+  // existe o no es accesible, se avisa una sola vez y también se limpia.
+  useEffect(() => {
+    if (selectedPublication || !searchParams.has("publication")) return;
+    if (missingSharedPublication.current) {
+      missingSharedPublication.current = false;
+      // Un tick después: el Toaster (padre) se suscribe al manager en un efecto que corre después de los de sus
+      // hijos, así que un toast emitido en el primer commit se perdería. Sin cleanup a propósito (StrictMode).
+      setTimeout(
+        () => toast.error("No pudimos abrir la publicación", "Puede que se haya eliminado o que no tengas acceso a ella."),
+        0
+      );
+    }
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("publication");
+    const query = params.toString();
+    router.replace(`${pathname}${query ? `?${query}` : ""}`, { scroll: false });
+  }, [selectedPublication, searchParams, pathname, router]);
+
   usePlannerShortcuts({
     overlayOpen: formState.open || selectedPublication !== null,
     onNewPublication: readOnly ? undefined : () => openCreateForm(),
@@ -369,7 +395,11 @@ export function CalendarScreen({
           </div>
         )}
         {showDesktopViews && (
-          <div className="hidden flex-1 flex-col md:flex">
+          // `min-h-0` solo en Mes: sin eso, un flex item se niega a encoger por debajo de la altura de su
+          // contenido y termina desbordando `main` (scroll de página) — es lo que MonthView necesita para
+          // ajustarse al alto disponible y manejar el sobrante con scroll interno por día. Semana y Lista se
+          // dejan con su comportamiento actual (pueden crecer más que el viewport y scrollear la página).
+          <div className={cn("hidden flex-1 flex-col md:flex", view === "month" && "min-h-0")}>
             {view === "week" ? (
               <WeekView
                 weekDays={weekDays}

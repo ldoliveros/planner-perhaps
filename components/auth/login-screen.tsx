@@ -26,7 +26,7 @@ const LINK_BUTTON_CLASS =
  * principal, enlace por email como alternativa y recuperación de contraseña. Es el mismo usuario de
  * Auth en los tres casos; el destino lo decide el rol (`signIn` y `/auth/callback` → `/`).
  */
-export function LoginScreen({ linkError }: { linkError: boolean }) {
+export function LoginScreen({ linkError, next }: { linkError: boolean; next?: string }) {
   const [mode, setMode] = useState<Mode>("password");
 
   return (
@@ -34,9 +34,14 @@ export function LoginScreen({ linkError }: { linkError: boolean }) {
       <AuthBrandHeader />
 
       {mode === "password" && (
-        <PasswordForm linkError={linkError} onMagicLink={() => setMode("magic")} onForgot={() => setMode("forgot")} />
+        <PasswordForm
+          linkError={linkError}
+          next={next}
+          onMagicLink={() => setMode("magic")}
+          onForgot={() => setMode("forgot")}
+        />
       )}
-      {mode === "magic" && <MagicLinkForm onBack={() => setMode("password")} />}
+      {mode === "magic" && <MagicLinkForm next={next} onBack={() => setMode("password")} />}
       {mode === "forgot" && <ForgotPasswordForm onBack={() => setMode("password")} placeholder={EMAIL_PLACEHOLDER} />}
     </AuthSplitLayout>
   );
@@ -45,10 +50,12 @@ export function LoginScreen({ linkError }: { linkError: boolean }) {
 /** Acceso principal: email + contraseña. */
 function PasswordForm({
   linkError,
+  next,
   onMagicLink,
   onForgot,
 }: {
   linkError: boolean;
+  next?: string;
   onMagicLink: () => void;
   onForgot: () => void;
 }) {
@@ -79,6 +86,7 @@ function PasswordForm({
       <p className="mt-3 text-sm text-muted-foreground">Usá tu email y contraseña para entrar a Planner by Perhaps.</p>
 
       <form action={formAction} onSubmit={handleSubmit} className="mt-8 flex flex-col gap-4">
+        {next && <input type="hidden" name="next" value={next} />}
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="email">Email</Label>
           <Input
@@ -126,7 +134,7 @@ function PasswordForm({
 }
 
 /** Alternativa: link de acceso por email (mismo usuario; no crea cuentas nuevas ni revela si el email existe). */
-function MagicLinkForm({ onBack }: { onBack: () => void }) {
+function MagicLinkForm({ next, onBack }: { next?: string; onBack: () => void }) {
   const [state, formAction, isPending] = useActionState(requestMagicLink, initialMagicState);
   const [sent, setSent] = useState(false);
   const lastSentAt = useRef<number | null>(null);
@@ -163,6 +171,7 @@ function MagicLinkForm({ onBack }: { onBack: () => void }) {
       <p className="mt-3 text-sm text-muted-foreground">Te enviaremos un enlace seguro a tu email para ingresar.</p>
 
       <form action={formAction} className="mt-8 flex flex-col gap-4">
+        {next && <input type="hidden" name="next" value={next} />}
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="magic-email">Email</Label>
           <Input

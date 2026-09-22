@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { CalendarDays, Copy, MoreHorizontal, Pencil, RefreshCcw, Trash2 } from "lucide-react";
+import { CalendarDays, Copy, MoreHorizontal, Pencil, RefreshCcw, Share2, Trash2 } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -33,27 +33,32 @@ import { StatusPill } from "@/components/shared/status-pill";
 import { deletePublication, movePublicationToDate, setPublicationStatus } from "@/lib/actions/publications";
 import { formatFullDateFromDate } from "@/lib/date-utils";
 import { toast } from "@/lib/toast";
+import { useCopyToClipboard } from "@/lib/use-copy-to-clipboard";
 import { cn } from "cn";
 import type { Publication } from "@/types";
 
 interface PublicationQuickActionsProps {
   publication: Publication;
-  clientId: string;
-  onEdit: () => void;
-  onDuplicate: () => void;
+  clientId?: string;
+  /** Sin `onEdit`/`onDuplicate`/`clientId` (Client User, solo lectura) el menú ofrece únicamente "Compartir". */
+  onEdit?: () => void;
+  onDuplicate?: () => void;
   className?: string;
 }
 
 /**
  * Menú `•••` reutilizado por Semana/Mes/Lista (Bloque C). Centraliza Editar,
- * Duplicar, Cambiar fecha, Cambiar estado y Eliminar en un solo componente — Editar/Duplicar
+ * Duplicar, Compartir, Cambiar fecha, Cambiar estado y Eliminar en un solo componente — Editar/Duplicar
  * delegan al PublicationForm existente vía callbacks (vive un nivel arriba,
  * en CalendarScreen); Cambiar estado y Eliminar son autosuficientes acá,
- * mismo patrón que ya usaban el drawer y el propio formulario.
+ * mismo patrón que ya usaban el drawer y el propio formulario. Compartir no modifica contenido, así que
+ * está disponible también en solo lectura (Client User): ahí es la única acción del menú.
  */
 export function PublicationQuickActions({ publication, clientId, onEdit, onDuplicate, className }: PublicationQuickActionsProps) {
   const { statuses } = useLookups();
   const router = useRouter();
+  const { copy } = useCopyToClipboard();
+  const canManage = Boolean(onEdit && onDuplicate && clientId);
   const [statusPending, setStatusPending] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -67,6 +72,18 @@ export function PublicationQuickActions({ publication, clientId, onEdit, onDupli
   // el menú queda deshabilitado: si no, "Editar" podría abrir el formulario con
   // el estado viejo de la publicación y pisar el cambio al guardar.
   const busy = statusPending || isRefreshing || movingDate;
+
+  // Link universal (mismo formato para todos los roles, no depende de la pantalla desde la que se comparte):
+  // /p/<id> (app/p/[id]/page.tsx) resuelve el destino según quién lo abra — Admin/Account Manager a su Planner,
+  // Client al suyo — y respeta RLS; sin sesión, pasa por /login y continúa ahí (ver lib/safe-next.ts).
+  async function handleShare() {
+    const url = `${window.location.origin}/p/${publication.id}`;
+    if (await copy(url)) {
+      toast.success("Link copiado");
+    } else {
+      toast.error("No se pudo copiar el link", "Tu navegador bloqueó el acceso al portapapeles.");
+    }
+  }
 
   async function handleMoveDate(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -115,7 +132,7 @@ export function PublicationQuickActions({ publication, clientId, onEdit, onDupli
   function handleConfirmDelete() {
     startDeleteTransition(async () => {
       setDeleteError(null);
-      const result = await deletePublication(publication.id, clientId);
+      const result = await deletePublication(publication.id, clientId!);
       if (result.error) {
         setDeleteError(result.error);
         toast.error("No se pudo eliminar", result.error);
@@ -149,90 +166,109 @@ export function PublicationQuickActions({ publication, clientId, onEdit, onDupli
           <MoreHorizontal className="size-4" />
         </DropdownMenuTrigger>
         <DropdownMenuContent onClick={(e) => e.stopPropagation()}>
-          <DropdownMenuItem onClick={onEdit}>
-            <Pencil />
-            Editar
+          {canManage && (
+            <>
+              <DropdownMenuItem onClick={onEdit}>
+                <Pencil />
+                Editar
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={onDuplicate}>
+                <Copy />
+                Duplicar
+              </DropdownMenuItem>
+            </>
+          )}
+          <DropdownMenuItem onClick={handleShare}>
+            <Share2 />
+            Compartir
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={onDuplicate}>
-            <Copy />
-            Duplicar
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => {
-              setDateValue(publication.publicationDate);
-              setDateOpen(true);
-            }}
-          >
-            <CalendarDays />
-            Cambiar fecha
-          </DropdownMenuItem>
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger>
-              <RefreshCcw />
-              Cambiar estado
-            </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent>
-              <DropdownMenuRadioGroup value={publication.statusId} onValueChange={(value) => handleStatusChange(value as string)}>
-                {statuses.map((status) => (
-                  <DropdownMenuRadioItem key={status.id} value={status.id} disabled={statusPending} closeOnClick>
-                    <StatusPill status={status} />
-                  </DropdownMenuRadioItem>
-                ))}
-              </DropdownMenuRadioGroup>
-            </DropdownMenuSubContent>
-          </DropdownMenuSub>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem variant="destructive" onClick={() => setDeleteOpen(true)}>
-            <Trash2 />
-            Eliminar
-          </DropdownMenuItem>
+          {canManage && (
+            <>
+              <DropdownMenuItem
+                onClick={() => {
+                  setDateValue(publication.publicationDate);
+                  setDateOpen(true);
+                }}
+              >
+                <CalendarDays />
+                Cambiar fecha
+              </DropdownMenuItem>
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>
+                  <RefreshCcw />
+                  Cambiar estado
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  <DropdownMenuRadioGroup
+                    value={publication.statusId}
+                    onValueChange={(value) => handleStatusChange(value as string)}
+                  >
+                    {statuses.map((status) => (
+                      <DropdownMenuRadioItem key={status.id} value={status.id} disabled={statusPending} closeOnClick>
+                        <StatusPill status={status} />
+                      </DropdownMenuRadioItem>
+                    ))}
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem variant="destructive" onClick={() => setDeleteOpen(true)}>
+                <Trash2 />
+                Eliminar
+              </DropdownMenuItem>
+            </>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <Dialog open={dateOpen} onOpenChange={setDateOpen}>
-        <DialogContent className="sm:max-w-sm" onClick={(e) => e.stopPropagation()}>
-          <form onSubmit={handleMoveDate} className="grid gap-4">
-            <DialogHeader>
-              <DialogTitle>Cambiar fecha</DialogTitle>
-              <DialogDescription>Elegí el nuevo día para &quot;{publication.title}&quot;. La hora se conserva.</DialogDescription>
-            </DialogHeader>
-            <Input
-              type="date"
-              required
-              aria-label="Nueva fecha"
-              value={dateValue}
-              onChange={(e) => setDateValue(e.target.value)}
-              className="pointer-coarse:h-11"
-            />
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setDateOpen(false)}>
-                Cancelar
-              </Button>
-              <Button type="submit" disabled={movingDate || !dateValue}>
-                {movingDate ? "Moviendo..." : "Mover"}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      {canManage && (
+        <>
+          <Dialog open={dateOpen} onOpenChange={setDateOpen}>
+            <DialogContent className="sm:max-w-sm" onClick={(e) => e.stopPropagation()}>
+              <form onSubmit={handleMoveDate} className="grid gap-4">
+                <DialogHeader>
+                  <DialogTitle>Cambiar fecha</DialogTitle>
+                  <DialogDescription>Elegí el nuevo día para &quot;{publication.title}&quot;. La hora se conserva.</DialogDescription>
+                </DialogHeader>
+                <Input
+                  type="date"
+                  required
+                  aria-label="Nueva fecha"
+                  value={dateValue}
+                  onChange={(e) => setDateValue(e.target.value)}
+                  className="pointer-coarse:h-11"
+                />
+                <DialogFooter>
+                  <Button type="button" variant="outline" onClick={() => setDateOpen(false)}>
+                    Cancelar
+                  </Button>
+                  <Button type="submit" disabled={movingDate || !dateValue}>
+                    {movingDate ? "Moviendo..." : "Mover"}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
 
-      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-        <AlertDialogContent onClick={(e) => e.stopPropagation()}>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Eliminar publicación</AlertDialogTitle>
-            <AlertDialogDescription>
-              ¿Seguro que querés eliminar &quot;{publication.title}&quot;? Esta acción no se puede deshacer.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          {deleteError && <p className="text-sm text-destructive">{deleteError}</p>}
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" disabled={isDeleting} onClick={handleConfirmDelete}>
-              Eliminar
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+          <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+            <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Eliminar publicación</AlertDialogTitle>
+                <AlertDialogDescription>
+                  ¿Seguro que querés eliminar &quot;{publication.title}&quot;? Esta acción no se puede deshacer.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              {deleteError && <p className="text-sm text-destructive">{deleteError}</p>}
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction variant="destructive" disabled={isDeleting} onClick={handleConfirmDelete}>
+                  Eliminar
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </>
+      )}
     </>
   );
 }
