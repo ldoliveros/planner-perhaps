@@ -249,6 +249,19 @@ async function claimSend(
   return { claimed: true, rowId: retried.id };
 }
 
+/**
+ * Determina si un usuario ya aceptó su invitación y sigue activo, usando ÚNICAMENTE datos reales de
+ * Supabase Auth (email_confirmed_at + banned_until) — nunca se infiere desde `profiles` (un usuario
+ * invitado ya tiene fila en profiles antes de confirmar). Equivalente a deriveUserAccessStatus() de
+ * lib/user-access.ts (Next.js) === "active"; se reimplementa standalone acá a propósito: agenda.ts no
+ * puede importar módulos con alias `@/` (Deno los despliega vía import relativo/npm:, no resuelve
+ * paths de bundler de Next).
+ */
+function isConfirmedActiveAuthUser(user: { email_confirmed_at?: string | null; banned_until?: string | null }): boolean {
+  if (user.banned_until && new Date(user.banned_until).getTime() > Date.now()) return false;
+  return Boolean(user.email_confirmed_at);
+}
+
 async function sendViaResend(params: { resendApiKey: string; from: string; to: string; subject: string; html: string }) {
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -292,6 +305,24 @@ export async function runDailyAgenda(options: AgendaOptions): Promise<AgendaRunR
     if (error) throw error;
     candidates = data ?? [];
   }
+
+  // 1b) Regla obligatoria: además de role + daily_agenda_enabled, el usuario tiene que estar
+  // confirmado/activo en Auth (aceptó la invitación). Bug real detectado en QA del 2026-09-25: un
+  // Account Manager invitado pero sin confirmar recibía la agenda igual. Se aplica también en modo QA
+  // (testUserId): un usuario sin confirmar no debería poder disparar un envío real ni de prueba.
+  const { data: authList, error: authListErr } = await supabase.auth.admin.listUsers({ perPage: 200 });
+  if (authListErr) throw authListErr;
+  const authById = new Map(authList.users.map((u: { id: string }) => [u.id, u]));
+  if (testUserId) {
+    const authUser = authById.get(testUserId);
+    if (!authUser || !isConfirmedActiveAuthUser(authUser)) {
+      throw new Error(`testUserId ${testUserId} no está confirmado/activo en Auth — no recibiría la agenda real.`);
+    }
+  }
+  candidates = candidates.filter((c) => {
+    const authUser = authById.get(c.id);
+    return authUser ? isConfirmedActiveAuthUser(authUser) : false;
+  });
 
   // 2) Catálogo de estados "pendientes" (id -> label/color) — una sola vez para toda la corrida.
   const { data: statuses, error: statusesErr } = await supabase
