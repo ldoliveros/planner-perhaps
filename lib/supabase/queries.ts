@@ -318,9 +318,14 @@ export async function getDailyAgendaPreference(userId: string): Promise<boolean>
 }
 
 /**
- * Integrantes con acceso a un cliente (header del Planner de cliente, NO Publicaciones global —
- * eso lo decide el call site, que solo pasa `clientId` desde las páginas de un único cliente):
- * Super Admin + Account Managers asignados a `clientId` + Client Users de `clientId`.
+ * Integrantes que PARTICIPAN de un cliente (header del Planner de cliente, NO Publicaciones global —
+ * eso lo decide el call site, que solo pasa `clientId` desde las páginas de un único cliente). Esto
+ * representa participación, no autorización:
+ * - Account Manager: aparece si tiene `user_client_assignments` para este cliente.
+ * - Super Admin: aparece SOLO si tiene `user_client_assignments` para este cliente (igual que Account
+ *   Manager — su acceso real sigue siendo global vía is_super_admin(), sin cambios; la asignación acá
+ *   es puramente de participación/listado, ver 20260915000001_role_hierarchy.sql).
+ * - Client User: aparece si pertenece al cliente vía `profiles.client_id`.
  *
  * Autoriza con can_view_client() (mismo helper security definer que ya usa el resto del proyecto,
  * EXECUTE ya concedido a `authenticated`) y, si autoriza, resuelve con service_role — profiles no
@@ -343,23 +348,51 @@ export async function listClientMembers(clientId: string): Promise<ClientMember[
 
   const admin = createAdminClient();
   const MEMBER_SELECT = "id, full_name, email, avatar_url, role";
-  const [{ data: superAdmins }, { data: assignments }, { data: clientUsers }] = await Promise.all([
-    admin.from("profiles").select(MEMBER_SELECT).eq("role", "super_admin"),
+  const [{ data: assignments }, { data: clientUsers }] = await Promise.all([
     admin.from("user_client_assignments").select("user_id").eq("client_id", clientId),
     admin.from("profiles").select(MEMBER_SELECT).eq("role", "client").eq("client_id", clientId),
   ]);
 
-  const accountManagerIds = (assignments ?? []).map((a) => a.user_id);
-  const { data: accountManagers } =
-    accountManagerIds.length > 0
-      ? await admin.from("profiles").select(MEMBER_SELECT).in("id", accountManagerIds)
-      : { data: [] as NonNullable<typeof superAdmins> };
+  // Super Admin y Account Manager: ambos se resuelven igual, solo por asignación explícita a este
+  // cliente (participación). Se filtra por rol acá (no solo por id) para no arrastrar por error un
+  // Client User que tuviera alguna asignación residual.
+  const assignedIds = (assignments ?? []).map((a) => a.user_id);
+  const { data: assignedStaff } =
+    assignedIds.length > 0
+      ? await admin.from("profiles").select(MEMBER_SELECT).in("id", assignedIds).in("role", ["super_admin", "account_manager"])
+      : { data: [] as NonNullable<typeof clientUsers> };
 
-  return [...(superAdmins ?? []), ...(accountManagers ?? []), ...(clientUsers ?? [])].map((p) => ({
-    id: p.id,
-    fullName: p.full_name,
-    email: p.email,
-    avatarUrl: p.avatar_url,
-    role: p.role,
-  }));
+  const allMembers = [...(assignedStaff ?? []), ...(clientUsers ?? [])];
+
+  // Excluir invitaciones pendientes: el estado real viene de Auth (email_confirmed_at vía
+  // deriveUserAccessStatus), nunca se infiere desde `profiles` (un usuario invitado ya tiene fila en
+  // profiles antes de aceptar). Si Auth no responde a tiempo, se listan todos — no bloquear el header por esto.
+  const confirmedIds = await getConfirmedUserIds(admin, allMembers.map((m) => m.id));
+
+  return allMembers
+    .filter((p) => confirmedIds === null || confirmedIds.has(p.id))
+    .map((p) => ({
+      id: p.id,
+      fullName: p.full_name,
+      email: p.email,
+      avatarUrl: p.avatar_url,
+      role: p.role,
+    }));
+}
+
+/**
+ * IDs de `ids` que ya confirmaron su email (aceptaron la invitación), según Supabase Auth. Devuelve
+ * null si Auth no responde a tiempo, para que el caller decida no bloquear la UI por esto (mismo
+ * patrón de timeout que getAccessStatusById, sin requerir Super Admin: listClientMembers la usan
+ * los 3 roles).
+ */
+async function getConfirmedUserIds(admin: ReturnType<typeof createAdminClient>, ids: string[]): Promise<Set<string> | null> {
+  if (ids.length === 0) return new Set();
+  const authList = await Promise.race([
+    admin.auth.admin.listUsers({ perPage: 200 }).then((res) => res.data.users),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000)),
+  ]);
+  if (!authList) return null;
+  const idSet = new Set(ids);
+  return new Set(authList.filter((u) => idSet.has(u.id) && deriveUserAccessStatus(u) !== "invited").map((u) => u.id));
 }

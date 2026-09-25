@@ -150,7 +150,7 @@ export function CalendarHeader({
 
         {members && members.length > 0 && (
           <div className="hidden md:flex">
-            <AvatarStack members={members} />
+            <AvatarStack members={members} clientColor={client.color} />
           </div>
         )}
 

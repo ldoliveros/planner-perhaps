@@ -163,18 +163,16 @@ function CreateBody({ clients, onDone }: { clients: Client[]; onDone: () => void
         </Select>
       </div>
 
-      {role === "account_manager" && (
-        <div className="flex flex-col gap-1.5">
-          <Label>Clientes asignados</Label>
-          <ClientChecklist clients={clients} selectedIds={selectedClientIds} onToggle={toggleClient} />
-        </div>
-      )}
-
-      {role === "super_admin" && (
-        <p className="rounded-lg border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
-          Un Super Admin tiene acceso global a todos los clientes — no se le asignan clientes puntuales.
-        </p>
-      )}
+      <div className="flex flex-col gap-1.5">
+        <Label>{role === "super_admin" ? "Clientes en los que participa" : "Clientes asignados"}</Label>
+        {role === "super_admin" && (
+          <p className="text-xs text-muted-foreground">
+            Esto solo define en qué clientes aparecés como integrante. Tu acceso como Super Admin sigue siendo
+            global.
+          </p>
+        )}
+        <ClientChecklist clients={clients} selectedIds={selectedClientIds} onToggle={toggleClient} />
+      </div>
 
       {state.error && <p className="text-sm text-destructive">{state.error}</p>}
 
@@ -264,9 +262,7 @@ function EditBody({ member, clients, onDone }: { member: TeamMember; clients: Cl
     startSaveTransition(async () => {
       const results = await Promise.all([
         updateTeamMemberName(member.id, fullName),
-        member.role === "account_manager"
-          ? saveTeamMemberAssignments(member.id, selectedClientIds)
-          : Promise.resolve({ error: null }),
+        saveTeamMemberAssignments(member.id, selectedClientIds),
       ]);
       const failure = results.find((r) => r.error)?.error;
       if (failure) {
@@ -448,12 +444,16 @@ function EditBody({ member, clients, onDone }: { member: TeamMember; clients: Cl
         )}
       </div>
 
-      {(pendingRole === "account_manager" || member.role === "account_manager") && (
-        <div className="flex flex-col gap-1.5">
-          <Label>Clientes asignados</Label>
-          <ClientChecklist clients={clients} selectedIds={selectedClientIds} onToggle={toggleClient} />
-        </div>
-      )}
+      <div className="flex flex-col gap-1.5">
+        <Label>{pendingRole === "super_admin" ? "Clientes en los que participa" : "Clientes asignados"}</Label>
+        {pendingRole === "super_admin" && (
+          <p className="text-xs text-muted-foreground">
+            Esto solo define en qué clientes aparecés como integrante. Tu acceso como Super Admin sigue siendo
+            global.
+          </p>
+        )}
+        <ClientChecklist clients={clients} selectedIds={selectedClientIds} onToggle={toggleClient} />
+      </div>
 
       {error && <p className="text-sm text-destructive">{error}</p>}
 

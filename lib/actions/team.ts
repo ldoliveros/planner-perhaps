@@ -104,9 +104,9 @@ export async function inviteTeamMember(
 
   const admin = createAdminClient();
 
-  // Un Super Admin tiene acceso global: no se le crean asignaciones aunque
-  // el form las mande (defensa extra, la UI ya no las muestra para este rol).
-  const effectiveClientIds = role === "account_manager" ? clientIds : [];
+  // Ambos roles pueden llevar asignaciones: para Account Manager restringen su acceso real; para
+  // Super Admin son solo participación/listado (su acceso sigue siendo global vía is_super_admin()).
+  const effectiveClientIds = clientIds;
   if (effectiveClientIds.length > 0) {
     const clientsError = await findInvalidClientIds(admin, effectiveClientIds);
     if (clientsError) return { error: clientsError, savedAt: null };
@@ -169,9 +169,6 @@ export async function saveTeamMemberAssignments(
   const admin = createAdminClient();
   const target = await getTeamMemberTarget(admin, userId);
   if (target.error) return { error: target.error };
-  if (target.role !== "account_manager") {
-    return { error: "Un Super Admin tiene acceso global: no se le asignan clientes." };
-  }
 
   const uniqueClientIds = Array.from(new Set(clientIds));
   const clientsError = await findInvalidClientIds(admin, uniqueClientIds);
@@ -227,10 +224,18 @@ export async function changeTeamMemberRole(
     const assignError = await replaceAssignments(admin, userId, uniqueClientIds);
     if (assignError) return { error: assignError };
   } else {
-    // account_manager -> super_admin: las asignaciones existentes quedan en
-    // DB (no condicionan más su acceso, ya tiene acceso global).
+    // account_manager -> super_admin: ya no condicionan su acceso (pasa a ser global), pero siguen
+    // usándose como participación/listado — se actualizan con lo que mandó el caller (por default,
+    // el checklist ya traía las asignaciones previas, así que quedan preservadas salvo que se cambien).
+    const uniqueClientIds = Array.from(new Set(clientIds));
+    const clientsError = await findInvalidClientIds(admin, uniqueClientIds);
+    if (clientsError) return { error: clientsError };
+
     const { error: roleError } = await admin.from("profiles").update({ role: "super_admin" }).eq("id", userId);
     if (roleError) return { error: roleError.message };
+
+    const assignError = await replaceAssignments(admin, userId, uniqueClientIds);
+    if (assignError) return { error: assignError };
   }
 
   revalidatePath("/admin/team");
