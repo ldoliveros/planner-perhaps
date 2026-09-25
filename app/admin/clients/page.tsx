@@ -1,20 +1,26 @@
 import { ClientsPageClient } from "@/components/admin/clients-page-client";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentProfile, listClients } from "@/lib/supabase/queries";
+import { getCurrentProfile, listCalendars, listClients } from "@/lib/supabase/queries";
 
 export default async function ClientsPage() {
-  const [clients, supabase, profile] = await Promise.all([listClients(), createClient(), getCurrentProfile()]);
-  const { data: calendars } = await supabase.from("calendars").select("client_id");
+  const [clients, calendars, supabase, profile] = await Promise.all([
+    listClients(),
+    listCalendars(),
+    createClient(),
+    getCurrentProfile(),
+  ]);
+  const { data: publications } = await supabase.from("publications").select("calendar_id");
 
-  const calendarCountByClientId: Record<string, number> = {};
-  for (const row of calendars ?? []) {
-    calendarCountByClientId[row.client_id] = (calendarCountByClientId[row.client_id] ?? 0) + 1;
+  const publicationCountByCalendarId: Record<string, number> = {};
+  for (const row of publications ?? []) {
+    publicationCountByCalendarId[row.calendar_id] = (publicationCountByCalendarId[row.calendar_id] ?? 0) + 1;
   }
 
   return (
     <ClientsPageClient
       clients={clients}
-      calendarCountByClientId={calendarCountByClientId}
+      calendars={calendars}
+      publicationCountByCalendarId={publicationCountByCalendarId}
       canCreateClients={profile?.role === "super_admin"}
     />
   );

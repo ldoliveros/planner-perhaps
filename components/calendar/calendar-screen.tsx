@@ -34,7 +34,7 @@ import { slugify } from "@/lib/slugify";
 import { toast } from "@/lib/toast";
 import { fetchPublicationsInRange } from "@/lib/actions/publications";
 import type { Lookups } from "@/lib/supabase/queries";
-import type { Calendar, Campaign, Client, ClientAccount, Publication } from "@/types";
+import type { Calendar, Campaign, Client, ClientAccount, ClientMember, Publication } from "@/types";
 
 /**
  * "Cliente" sintético para el header en Publicaciones (calendario global): CalendarHeader, WeekView y MonthView
@@ -65,6 +65,9 @@ interface CalendarScreenProps {
   readOnly?: boolean;
   /** Solo admin: habilita el selector compacto de cliente en el header (Planner de un cliente). */
   allClients?: { id: string; name: string }[];
+  /** Solo Planner de cliente (nunca se pasa desde Publicaciones global): integrantes con acceso a
+   * este cliente, para el AvatarStack del header. */
+  members?: ClientMember[];
   /**
    * Publicaciones (calendario global de la agencia): presente SOLO en ese contexto. `publications` llega
    * acotada a `initialRange` — no "todo el histórico de todos los clientes" (no escala) — y esta pantalla
@@ -86,6 +89,7 @@ export function CalendarScreen({
   lookups,
   readOnly = false,
   allClients,
+  members,
   global,
 }: CalendarScreenProps) {
   const isGlobal = Boolean(global);
@@ -490,6 +494,7 @@ export function CalendarScreen({
             onToday={() => {}}
             allClients={allClients}
             onSwitchClient={allClients ? handleSwitchClient : undefined}
+            members={!isGlobal ? members : undefined}
           />
           <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
             <CalendarDays className="size-8 text-muted-foreground/40" />
@@ -529,6 +534,7 @@ export function CalendarScreen({
           onExport={canCreateOrExport ? handleExportCsv : undefined}
           allClients={allClients}
           onSwitchClient={allClients ? handleSwitchClient : undefined}
+          members={!isGlobal ? members : undefined}
           dateRange={view === "list" ? { from: dateFrom, to: dateTo } : undefined}
           onDateRangeChange={view === "list" ? setDateRange : undefined}
           mobileFilters={

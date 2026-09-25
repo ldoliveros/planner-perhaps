@@ -20,6 +20,7 @@ import type {
   Campaign,
   Client,
   ClientAccount,
+  ClientMember,
   ClientUser,
   UserAccessStatus,
   ContentType,
@@ -301,4 +302,64 @@ export async function getLastSeenVersion(userId: string): Promise<string | null>
   const supabase = await createClient();
   const { data } = await supabase.from("profiles").select("last_seen_version").eq("id", userId).maybeSingle();
   return data?.last_seen_version ?? null;
+}
+
+/**
+ * Preferencia "Agenda diaria por email" del usuario actual (Mi perfil, staff). Separada de
+ * getCurrentProfile() por el mismo motivo que getLastSeenVersion(): depende de
+ * profiles.daily_agenda_enabled, columna todavía no aplicada contra la base compartida (ver
+ * supabase/migrations/20260924000001_daily_agenda_preference.sql). Devuelve `true` (default ON) si la
+ * columna no existe todavía o no hay fila — nunca rompe la carga de "Mi perfil".
+ */
+export async function getDailyAgendaPreference(userId: string): Promise<boolean> {
+  const supabase = await createClient();
+  const { data } = await supabase.from("profiles").select("daily_agenda_enabled").eq("id", userId).maybeSingle();
+  return data?.daily_agenda_enabled ?? true;
+}
+
+/**
+ * Integrantes con acceso a un cliente (header del Planner de cliente, NO Publicaciones global —
+ * eso lo decide el call site, que solo pasa `clientId` desde las páginas de un único cliente):
+ * Super Admin + Account Managers asignados a `clientId` + Client Users de `clientId`.
+ *
+ * Autoriza con can_view_client() (mismo helper security definer que ya usa el resto del proyecto,
+ * EXECUTE ya concedido a `authenticated`) y, si autoriza, resuelve con service_role — profiles no
+ * tiene una policy de SELECT que permita a un Account Manager o Client User leer perfiles ajenos (por
+ * diseño, ver 20260915000001_role_hierarchy.sql), así que no hay forma de resolver esto solo con RLS
+ * sin ensanchar esa policy. Se prefiere este camino (autorización explícita + lectura acotada) antes
+ * que abrir profiles a más lectores.
+ */
+export async function listClientMembers(clientId: string): Promise<ClientMember[]> {
+  const supabase = await createClient();
+  // Cast puntual: can_view_client() no está tipada en Database["public"]["Functions"] (ver el comentario
+  // en database.types.ts sobre por qué agregarla ahí rompe la inferencia de OTRAS queries de este archivo).
+  // Se castea el cliente completo (no el método suelto): `rpc` depende de `this` internamente, así que
+  // extraerlo a una variable aparte rompe esa referencia en tiempo de ejecución.
+  const supabaseWithRpc = supabase as unknown as {
+    rpc(fn: "can_view_client", args: { target_client_id: string }): Promise<{ data: boolean | null; error: unknown }>;
+  };
+  const { data: allowed } = await supabaseWithRpc.rpc("can_view_client", { target_client_id: clientId });
+  if (!allowed) return [];
+
+  const admin = createAdminClient();
+  const MEMBER_SELECT = "id, full_name, email, avatar_url, role";
+  const [{ data: superAdmins }, { data: assignments }, { data: clientUsers }] = await Promise.all([
+    admin.from("profiles").select(MEMBER_SELECT).eq("role", "super_admin"),
+    admin.from("user_client_assignments").select("user_id").eq("client_id", clientId),
+    admin.from("profiles").select(MEMBER_SELECT).eq("role", "client").eq("client_id", clientId),
+  ]);
+
+  const accountManagerIds = (assignments ?? []).map((a) => a.user_id);
+  const { data: accountManagers } =
+    accountManagerIds.length > 0
+      ? await admin.from("profiles").select(MEMBER_SELECT).in("id", accountManagerIds)
+      : { data: [] as NonNullable<typeof superAdmins> };
+
+  return [...(superAdmins ?? []), ...(accountManagers ?? []), ...(clientUsers ?? [])].map((p) => ({
+    id: p.id,
+    fullName: p.full_name,
+    email: p.email,
+    avatarUrl: p.avatar_url,
+    role: p.role,
+  }));
 }

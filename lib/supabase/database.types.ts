@@ -33,6 +33,9 @@ export type ProfileRow = {
   // v1.2 Bloque A — supabase/migrations/20260917000001_last_seen_version.sql
   // (columna todavia no aplicada contra la base compartida: ver informe de Bloque A).
   last_seen_version: string | null;
+  // Agenda diaria por email — supabase/migrations/20260924000001_daily_agenda_preference.sql
+  // (columna todavia no aplicada contra la base compartida).
+  daily_agenda_enabled: boolean;
 };
 export type ProfileInsert = Omit<ProfileRow, "created_at">;
 export type ProfileUpdate = Partial<ProfileInsert>;
@@ -324,6 +327,11 @@ export type Database = {
       campaigns: { Row: CampaignRow; Insert: CampaignInsert; Update: CampaignUpdate; Relationships: [] };
     };
     Views: Record<string, never>;
+    // No se tipa can_view_client() (security definer, 20260915000001_role_hierarchy.sql) acá a
+    // propósito: agregar una entrada no vacía a Functions descompensa la inferencia de tipos de
+    // postgrest-js para OTRAS queries de este archivo (los `select("*, publication_destinations(*)...")`
+    // dejan de resolver la relación y tiran SelectQueryError) — riesgo verificado, no vale la pena para
+    // una sola función. listClientMembers() la invoca con un cast puntual, ver ese sitio.
     Functions: Record<string, never>;
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;

@@ -6,9 +6,10 @@ import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { Switch } from "@/components/ui/switch";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { changeOwnPassword, requestPasswordReset, type ChangePasswordState, type PasswordResetState } from "@/lib/actions/auth";
-import { updateOwnProfile, type ProfileFormState } from "@/lib/actions/profile";
+import { updateDailyAgendaPreference, updateOwnProfile, type ProfileFormState } from "@/lib/actions/profile";
 import { ROLE_LABELS } from "@/lib/role-labels";
 import { toast } from "@/lib/toast";
 import type { UserRole } from "@/types";
@@ -22,9 +23,12 @@ interface ProfileFormProps {
   fullName: string | null;
   avatarUrl: string | null;
   role: UserRole;
+  /** Solo staff (role !== "client"): valor inicial de la Agenda diaria por email. Ausente si role es
+   * "client" (la sección Notificaciones no se renderiza para ese rol). */
+  dailyAgendaEnabled?: boolean;
 }
 
-export function ProfileForm({ email, fullName, avatarUrl, role }: ProfileFormProps) {
+export function ProfileForm({ email, fullName, avatarUrl, role, dailyAgendaEnabled }: ProfileFormProps) {
   const [state, formAction, isPending] = useActionState(updateOwnProfile, INITIAL_STATE);
   const lastSavedAt = useRef<number | null>(null);
   const [name, setName] = useState(fullName ?? "");
@@ -79,6 +83,13 @@ export function ProfileForm({ email, fullName, avatarUrl, role }: ProfileFormPro
 
       <Separator />
       {role === "client" ? <PasswordByEmailSection email={email} /> : <ChangePasswordSection />}
+
+      {role !== "client" && (
+        <>
+          <Separator />
+          <NotificationsSection initialEnabled={dailyAgendaEnabled ?? true} />
+        </>
+      )}
     </div>
   );
 }
@@ -164,6 +175,44 @@ function PasswordByEmailSection({ email }: { email: string | null }) {
           {isPending ? "Enviando..." : "Crear o cambiar contraseña"}
         </Button>
       </form>
+    </div>
+  );
+}
+
+/**
+ * Solo staff (role !== "client", ver ProfileForm). Toggle inmediato — sin botón "Guardar" aparte,
+ * mismo criterio que otros toggles puntuales del proyecto (ej. cambiar estado de una publicación):
+ * actualiza optimista, revierte + toast de error si falla la Server Action.
+ */
+function NotificationsSection({ initialEnabled }: { initialEnabled: boolean }) {
+  const [enabled, setEnabled] = useState(initialEnabled);
+  const [isPending, setIsPending] = useState(false);
+
+  async function handleChange(next: boolean) {
+    setEnabled(next);
+    setIsPending(true);
+    const result = await updateDailyAgendaPreference(next);
+    setIsPending(false);
+    if (result.error) {
+      setEnabled(!next);
+      toast.error("No se pudo guardar", result.error);
+      return;
+    }
+    toast.success(next ? "Agenda diaria activada" : "Agenda diaria desactivada");
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <h2 className="text-sm font-semibold text-foreground">Notificaciones</h2>
+      <label className="flex items-center justify-between gap-4">
+        <span className="flex flex-col gap-0.5 pr-2">
+          <span className="text-sm font-medium text-foreground">Agenda diaria por email</span>
+          <span className="text-xs text-muted-foreground">
+            Recibí cada mañana un resumen de los contenidos pendientes del día.
+          </span>
+        </span>
+        <Switch checked={enabled} onCheckedChange={handleChange} disabled={isPending} />
+      </label>
     </div>
   );
 }

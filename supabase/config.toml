@@ -1,0 +1,7 @@
+# Config mínima: solo lo necesario para la Edge Function "daily-agenda" (Etapa 2). El resto del proyecto
+# (Auth, DB, Storage) sigue administrado por Dashboard, no por este archivo — no agregar más bloques acá
+# sin necesidad puntual.
+[functions.daily-agenda]
+# auth:'secret' (ver index.ts) valida por API key (apikey: service_role), no por JWT de usuario —
+# verify_jwt=true rechazaría esa misma llamada antes de que el handler la vea.
+verify_jwt = false

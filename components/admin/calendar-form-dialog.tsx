@@ -26,37 +26,53 @@ const INITIAL_STATE: CalendarFormState = { error: null, savedAt: null, calendarI
 
 interface CalendarFormDialogBaseProps {
   calendar?: Calendar;
-  trigger?: React.ReactElement;
+  /** `null` omite el trigger propio: útil cuando otro elemento (ej. un ítem de menú) controla `open`. */
+  trigger?: React.ReactElement | null;
   onSaved?: (calendarId: string) => void;
+  /** Apertura controlada externamente (ej. desde un DropdownMenuItem). Sin esto, el diálogo maneja su propio estado. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 type CalendarFormDialogProps =
   | (CalendarFormDialogBaseProps & { clients: Client[]; lockedClient?: undefined })
   | (CalendarFormDialogBaseProps & { clients?: undefined; lockedClient: Client });
 
-export function CalendarFormDialog({ clients, lockedClient, calendar, trigger, onSaved }: CalendarFormDialogProps) {
-  const [open, setOpen] = useState(false);
+export function CalendarFormDialog({
+  clients,
+  lockedClient,
+  calendar,
+  trigger,
+  onSaved,
+  open: openProp,
+  onOpenChange,
+}: CalendarFormDialogProps) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = openProp ?? internalOpen;
   // Se incrementa cada vez que el diálogo se abre, para remontar CalendarFormBody
   // (un guardado anterior fallido no debe dejar el error/campos pegados).
   const [sessionKey, setSessionKey] = useState(0);
 
   function handleOpenChange(next: boolean) {
     if (next) setSessionKey((k) => k + 1);
-    setOpen(next);
+    setInternalOpen(next);
+    onOpenChange?.(next);
   }
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger
-        render={
-          trigger ?? (
-            <Button size="sm" className="gap-1.5">
-              <Plus />
-              Nuevo calendario
-            </Button>
-          )
-        }
-      />
+      {trigger !== null && (
+        <DialogTrigger
+          render={
+            trigger ?? (
+              <Button size="sm" className="gap-1.5">
+                <Plus />
+                Nuevo calendario
+              </Button>
+            )
+          }
+        />
+      )}
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{calendar ? "Editar calendario" : "Nuevo calendario"}</DialogTitle>
@@ -67,7 +83,7 @@ export function CalendarFormDialog({ clients, lockedClient, calendar, trigger, o
           lockedClient={lockedClient}
           calendar={calendar}
           onSaved={(calendarId) => {
-            setOpen(false);
+            handleOpenChange(false);
             onSaved?.(calendarId);
           }}
         />

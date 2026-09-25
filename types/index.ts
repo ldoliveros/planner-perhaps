@@ -16,6 +16,17 @@ export interface ClientUser {
   accessStatus?: UserAccessStatus;
 }
 
+/** Integrante con acceso a un cliente puntual (header del Planner) — Super Admin + Account Managers
+ * asignados + Client Users de ese cliente. Deliberadamente liviano (sin accessStatus/assignedClients):
+ * es solo para mostrar avatar+nombre+rol, no para administrar usuarios (eso ya lo cubre TeamMember). */
+export interface ClientMember {
+  id: string;
+  fullName: string | null;
+  email: string | null;
+  avatarUrl: string | null;
+  role: UserRole;
+}
+
 export interface TeamMember {
   id: string;
   email: string | null;

@@ -6,6 +6,7 @@ import {
   listCalendarsForClient,
   listCampaignsForClient,
   listClientAccountsForClient,
+  listClientMembers,
   listClients,
   listPublicationsForClient,
 } from "@/lib/supabase/queries";
@@ -16,13 +17,14 @@ export default async function ClientPlannerPage({ params }: { params: Promise<{ 
   const client = await getClientById(id);
   if (!client) notFound();
 
-  const [calendars, publications, clientAccounts, campaigns, lookups, allClients] = await Promise.all([
+  const [calendars, publications, clientAccounts, campaigns, lookups, allClients, members] = await Promise.all([
     listCalendarsForClient(client.id),
     listPublicationsForClient(client.id),
     listClientAccountsForClient(client.id),
     listCampaignsForClient(client.id),
     getLookups(),
     listClients(),
+    listClientMembers(client.id),
   ]);
 
   return (
@@ -36,6 +38,7 @@ export default async function ClientPlannerPage({ params }: { params: Promise<{ 
       allClients={allClients
         .filter((c) => c.active || c.id === client.id)
         .map((c) => ({ id: c.id, name: c.name }))}
+      members={members}
     />
   );
 }

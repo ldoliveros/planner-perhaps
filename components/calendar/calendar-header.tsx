@@ -9,9 +9,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { AvatarStack } from "@/components/shared/avatar-stack";
 import { getContrastTextColor, getReadableTextColor } from "@/lib/color-contrast";
 import { cn } from "cn";
-import type { Client } from "@/types";
+import type { Client, ClientMember } from "@/types";
 
 export type CalendarView = "week" | "month" | "list";
 
@@ -45,6 +46,9 @@ interface CalendarHeaderProps {
   onExport?: () => void;
   allClients?: { id: string; name: string }[];
   onSwitchClient?: (clientId: string) => void;
+  /** Solo Planner de cliente (nunca Publicaciones global — el call site no lo pasa ahí): integrantes con
+   * acceso a este cliente, avatares superpuestos + tooltip. Ausente/vacío no renderiza nada. */
+  members?: ClientMember[];
   /** Solo Lista: Desde/Hasta reemplaza a ← Hoy → + período visible (no es la navegación de Semana/Mes). */
   dateRange?: HeaderDateRangeValue;
   onDateRangeChange?: (value: HeaderDateRangeValue) => void;
@@ -67,6 +71,7 @@ export function CalendarHeader({
   onExport,
   allClients,
   onSwitchClient,
+  members,
   dateRange,
   onDateRangeChange,
   mobileFilters,
@@ -142,6 +147,12 @@ export function CalendarHeader({
             </h1>
           </div>
         </div>
+
+        {members && members.length > 0 && (
+          <div className="hidden md:flex">
+            <AvatarStack members={members} />
+          </div>
+        )}
 
         {/* Solo < md: acciones principales junto al título, para no gastar una fila entera. */}
         {(onCreate || onExport || driveFolderUrl) && (

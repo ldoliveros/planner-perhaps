@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Archive, ArchiveRestore, Pencil, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -16,6 +16,12 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { CalendarFormDialog } from "@/components/admin/calendar-form-dialog";
 import { deleteCalendar, setCalendarArchived } from "@/lib/actions/calendars";
 import { toast } from "@/lib/toast";
@@ -28,11 +34,14 @@ interface CalendarRowActionsProps {
   publicationCount: number;
   clients?: Client[];
   className?: string;
+  /** Fila compacta del acordeón de Clientes: "Ver" + un único menú "⋯" con Editar/Archivar/Eliminar. */
+  compact?: boolean;
 }
 
-export function CalendarRowActions({ client, calendar, publicationCount, clients, className }: CalendarRowActionsProps) {
+export function CalendarRowActions({ client, calendar, publicationCount, clients, className, compact }: CalendarRowActionsProps) {
   const router = useRouter();
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [isDeleting, startDeleteTransition] = useTransition();
   const [isArchiving, startArchiveTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -64,6 +73,67 @@ export function CalendarRowActions({ client, calendar, publicationCount, clients
       router.refresh();
       toast.success("Calendario eliminado");
     });
+  }
+
+  const editDialog = clients ? (
+    <CalendarFormDialog clients={clients} calendar={calendar} trigger={null} open={editOpen} onOpenChange={setEditOpen} />
+  ) : (
+    <CalendarFormDialog lockedClient={client} calendar={calendar} trigger={null} open={editOpen} onOpenChange={setEditOpen} />
+  );
+
+  if (compact) {
+    return (
+      <div className={cn("flex items-center justify-end gap-1", className)}>
+        <Button size="sm" nativeButton={false} render={<Link href={`/admin/clients/${client.id}/planner?calendars=${calendar.id}`} />}>
+          Ver
+        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={<Button variant="ghost" size="sm" className="px-2" aria-label="Acciones de calendario" />}
+          >
+            <MoreHorizontal className="size-3.5" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => setEditOpen(true)}>
+              <Pencil />
+              Editar
+            </DropdownMenuItem>
+            <DropdownMenuItem disabled={isArchiving} onClick={handleToggleArchived}>
+              {isArchived ? <ArchiveRestore /> : <Archive />}
+              {isArchived ? "Restaurar" : "Archivar"}
+            </DropdownMenuItem>
+            {isArchived && (
+              <DropdownMenuItem variant="destructive" onClick={() => setDeleteOpen(true)}>
+                <Trash2 />
+                Eliminar definitivamente
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+        {editDialog}
+        <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>¿Eliminar el calendario &quot;{calendar.name}&quot;?</AlertDialogTitle>
+              <AlertDialogDescription>
+                {canDelete
+                  ? "Esta acción es irreversible. El calendario no tiene publicaciones asociadas."
+                  : `Este calendario contiene ${publicationCount} publicaci${publicationCount === 1 ? "ón" : "ones"} y no puede eliminarse definitivamente. Podés mantenerlo archivado para conservar el historial.`}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            {error && <p className="text-sm text-destructive">{error}</p>}
+            <AlertDialogFooter>
+              <AlertDialogCancel>{canDelete ? "Cancelar" : "Entendido"}</AlertDialogCancel>
+              {canDelete && (
+                <AlertDialogAction variant="destructive" disabled={isDeleting} onClick={handleConfirmDelete}>
+                  Eliminar definitivamente
+                </AlertDialogAction>
+              )}
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
+    );
   }
 
   return (

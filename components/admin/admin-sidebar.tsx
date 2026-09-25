@@ -94,26 +94,6 @@ export function AdminSidebar({ role, email, fullName, avatarUrl, defaultCollapse
         )}
       </div>
 
-      {collapsed && (
-        <div className="flex justify-center pb-4">
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <button
-                  type="button"
-                  onClick={togglePinned}
-                  aria-label="Expandir navegación"
-                  className="flex size-8 items-center justify-center rounded-md text-white/50 transition-colors hover:bg-white/10 hover:text-white"
-                />
-              }
-            >
-              <PanelLeftOpen className="size-4" />
-            </TooltipTrigger>
-            <TooltipContent side="right">Expandir</TooltipContent>
-          </Tooltip>
-        </div>
-      )}
-
       <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-2.5">
         {items.map((item) => {
           const active = pathname?.startsWith(item.href);

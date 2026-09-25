@@ -55,3 +55,27 @@ export async function updateOwnProfile(
   revalidatePath("/client", "layout");
   return { error: null, savedAt: Date.now() };
 }
+
+/**
+ * Toggle de "Agenda diaria por email" (Mi perfil, solo staff — la UI ya no la muestra a Client User,
+ * pero igual queda restringida acá server-side). Cliente normal (RLS), no service_role: la policy
+ * profiles_update_own es la barrera real, igual que en updateOwnProfile(). Falla en silencio hasta
+ * aplicar supabase/migrations/20260924000001_daily_agenda_preference.sql (la columna no existe
+ * todavía) — el error queda expuesto al caller, que lo muestra como toast.
+ */
+export async function updateDailyAgendaPreference(enabled: boolean): Promise<{ error: string | null }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "No autenticado." };
+
+  const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
+  if (profile?.role === "client") return { error: "No autorizado." };
+
+  const { error } = await supabase.from("profiles").update({ daily_agenda_enabled: enabled }).eq("id", user.id);
+  if (error) return { error: error.message };
+
+  revalidatePath("/admin/profile");
+  return { error: null };
+}

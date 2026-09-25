@@ -1,4 +1,4 @@
-import { Building2, CalendarDays, Newspaper, Users, type LucideIcon } from "lucide-react";
+import { Building2, Newspaper, Users, type LucideIcon } from "lucide-react";
 
 export interface AdminNavItem {
   href: string;
@@ -8,7 +8,6 @@ export interface AdminNavItem {
 
 const BASE_ITEMS: AdminNavItem[] = [
   { href: "/admin/clients", label: "Clientes", icon: Building2 },
-  { href: "/admin/calendars", label: "Calendarios", icon: CalendarDays },
   { href: "/admin/publications", label: "Publicaciones", icon: Newspaper },
 ];
 
