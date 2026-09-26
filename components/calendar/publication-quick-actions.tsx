@@ -31,6 +31,7 @@ import { Input } from "@/components/ui/input";
 import { useLookups } from "@/components/providers/lookups-provider";
 import { StatusPill } from "@/components/shared/status-pill";
 import { deletePublication, movePublicationToDate, setPublicationStatus } from "@/lib/actions/publications";
+import { hasNotifiableClientUsers, notifyClientPublicationApproved } from "@/lib/actions/publication-notifications";
 import { formatFullDateFromDate } from "@/lib/date-utils";
 import { toast } from "@/lib/toast";
 import { useCopyToClipboard } from "@/lib/use-copy-to-clipboard";
@@ -60,6 +61,11 @@ export function PublicationQuickActions({ publication, clientId, onEdit, onDupli
   const { copy } = useCopyToClipboard();
   const canManage = Boolean(onEdit && onDuplicate && clientId);
   const [statusPending, setStatusPending] = useState(false);
+  // "¡Lista para publicar!" — se muestra al pasar a Aprobado solo si el cliente tiene Client Users
+  // confirmados a quién avisar (ver handleStatusChange). pendingApprovedStatusId guarda cuál de los
+  // status ids es "approved" mientras el modal está abierto, para poder confirmarlo desde los botones.
+  const [approveNotifyOpen, setApproveNotifyOpen] = useState(false);
+  const [pendingApprovedStatusId, setPendingApprovedStatusId] = useState<string | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [isDeleting, startDeleteTransition] = useTransition();
@@ -113,8 +119,9 @@ export function PublicationQuickActions({ publication, clientId, onEdit, onDupli
     toast.success(`Publicación movida al ${formatFullDateFromDate(new Date(`${dateValue}T00:00:00`)).toLowerCase()}`);
   }
 
-  async function handleStatusChange(statusId: string) {
-    if (statusId === publication.statusId || busy) return;
+  /** Aplica el cambio de estado y, si corresponde, dispara el aviso al cliente después de guardar
+   * (nunca antes, y su falla nunca revierte ni oculta que la aprobación sí funcionó). */
+  async function applyStatusChange(statusId: string, notify: boolean) {
     setStatusPending(true);
     const result = await setPublicationStatus(publication.id, statusId);
     setStatusPending(false);
@@ -127,6 +134,36 @@ export function PublicationQuickActions({ publication, clientId, onEdit, onDupli
     });
     const label = statuses.find((s) => s.id === statusId)?.label ?? "";
     toast.success(`Estado actualizado a ${label}`);
+
+    if (notify) {
+      const notifyResult = await notifyClientPublicationApproved(publication.id);
+      if (notifyResult.error) {
+        toast.error("No se pudo avisar al cliente", notifyResult.error);
+      } else if (notifyResult.failedCount > 0) {
+        toast.error(
+          "Aviso enviado parcialmente",
+          `${notifyResult.sentCount} enviado(s), ${notifyResult.failedCount} fallaron.`
+        );
+      } else {
+        toast.success("Aviso enviado al cliente");
+      }
+    }
+  }
+
+  async function handleStatusChange(statusId: string) {
+    if (statusId === publication.statusId || busy) return;
+    const targetStatus = statuses.find((s) => s.id === statusId);
+    if (targetStatus?.key === "approved" && clientId) {
+      setStatusPending(true);
+      const hasRecipients = await hasNotifiableClientUsers(clientId);
+      setStatusPending(false);
+      if (hasRecipients) {
+        setPendingApprovedStatusId(statusId);
+        setApproveNotifyOpen(true);
+        return;
+      }
+    }
+    await applyStatusChange(statusId, false);
   }
 
   function handleConfirmDelete() {
@@ -249,6 +286,34 @@ export function PublicationQuickActions({ publication, clientId, onEdit, onDupli
               </form>
             </DialogContent>
           </Dialog>
+
+          <AlertDialog open={approveNotifyOpen} onOpenChange={setApproveNotifyOpen}>
+            <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+              <AlertDialogHeader>
+                <AlertDialogTitle>¡Lista para publicar!</AlertDialogTitle>
+                <AlertDialogDescription>
+                  ¿Querés avisarle al cliente que esta publicación está aprobada y lista?
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel
+                  onClick={() => {
+                    if (pendingApprovedStatusId) applyStatusChange(pendingApprovedStatusId, false);
+                  }}
+                >
+                  No, solo aprobar
+                </AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => {
+                    setApproveNotifyOpen(false);
+                    if (pendingApprovedStatusId) applyStatusChange(pendingApprovedStatusId, true);
+                  }}
+                >
+                  Sí, aprobar y avisar
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
 
           <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
             <AlertDialogContent onClick={(e) => e.stopPropagation()}>

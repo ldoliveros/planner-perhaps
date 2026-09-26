@@ -30,6 +30,7 @@ import { CopyEditor } from "@/components/publication/copy-editor";
 import { PlatformIcon } from "@/components/icons/brand-icons";
 import { useLookups } from "@/components/providers/lookups-provider";
 import { deletePublication, savePublication, type PublicationFormState } from "@/lib/actions/publications";
+import { hasNotifiableClientUsers, notifyClientPublicationApproved } from "@/lib/actions/publication-notifications";
 import { formatTime } from "@/lib/date-utils";
 import { toast } from "@/lib/toast";
 import type { Calendar, Campaign, ClientAccount, Publication, PublicationDestination } from "@/types";
@@ -90,6 +91,15 @@ export function PublicationForm({
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
+
+  // "¡Lista para publicar!" — misma interceptación que en el menú rápido (Cambiar estado), pero acá el
+  // Select de Estado es un campo de formulario no controlado: se lee el valor elegido desde FormData en
+  // vez de duplicar estado en React. Solo aplica al EDITAR (publication existe): una publicación nueva
+  // creada directamente en Aprobado no tiene un "estado anterior" del cual transicionar.
+  const approvedStatus = statuses.find((s) => s.key === "approved");
+  const [approveNotifyOpen, setApproveNotifyOpen] = useState(false);
+  const notifyAfterSaveRef = useRef(false);
+  const bypassApproveCheckRef = useRef(false);
   // Autofocus del título solo con puntero fino: en touch abriría el teclado virtual apenas se entra al formulario.
   const [autoFocusTitle] = useState(() => typeof window !== "undefined" && window.matchMedia("(pointer: fine)").matches);
 
@@ -114,8 +124,41 @@ export function PublicationForm({
       onOpenChange(false);
       router.refresh();
       toast.success(publication ? "Publicación guardada" : duplicateFrom ? "Publicación duplicada" : "Publicación creada");
+      if (notifyAfterSaveRef.current && publication) {
+        notifyAfterSaveRef.current = false;
+        notifyClientPublicationApproved(publication.id).then((result) => {
+          if (result.error) {
+            toast.error("No se pudo avisar al cliente", result.error);
+          } else if (result.failedCount > 0) {
+            toast.error("Aviso enviado parcialmente", `${result.sentCount} enviado(s), ${result.failedCount} fallaron.`);
+          } else {
+            toast.success("Aviso enviado al cliente");
+          }
+        });
+      }
     }
   }, [state.savedAt, onOpenChange, router, publication, duplicateFrom]);
+
+  /** Intercepta el submit SOLO si esto es una transición real a Aprobado (editando, no al crear). */
+  async function handleSubmitClick(e: React.MouseEvent) {
+    if (bypassApproveCheckRef.current) {
+      bypassApproveCheckRef.current = false;
+      return;
+    }
+    if (!publication || !approvedStatus) return;
+    const selectedStatusId = formRef.current ? new FormData(formRef.current).get("statusId") : null;
+    const isNewlyApproved = selectedStatusId === approvedStatus.id && publication.statusId !== approvedStatus.id;
+    if (!isNewlyApproved) return;
+
+    e.preventDefault();
+    const hasRecipients = await hasNotifiableClientUsers(clientId);
+    if (!hasRecipients) {
+      bypassApproveCheckRef.current = true;
+      formRef.current?.requestSubmit();
+      return;
+    }
+    setApproveNotifyOpen(true);
+  }
 
   const selectedAccountIds = new Set(destinations.map((d) => d.clientAccountId));
 
@@ -459,12 +502,44 @@ export function PublicationForm({
               <Button type="button" variant="outline" className="md:hidden" onClick={() => onOpenChange(false)}>
                 Cancelar
               </Button>
-              <Button type="submit" disabled={isPending}>
+              <Button type="submit" disabled={isPending} onClick={handleSubmitClick}>
                 {isPending ? "Guardando..." : "Guardar"}
               </Button>
             </div>
           </div>
         </form>
+
+        <AlertDialog open={approveNotifyOpen} onOpenChange={setApproveNotifyOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>¡Lista para publicar!</AlertDialogTitle>
+              <AlertDialogDescription>
+                ¿Querés avisarle al cliente que esta publicación está aprobada y lista?
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel
+                onClick={() => {
+                  notifyAfterSaveRef.current = false;
+                  bypassApproveCheckRef.current = true;
+                  formRef.current?.requestSubmit();
+                }}
+              >
+                No, solo aprobar
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => {
+                  setApproveNotifyOpen(false);
+                  notifyAfterSaveRef.current = true;
+                  bypassApproveCheckRef.current = true;
+                  formRef.current?.requestSubmit();
+                }}
+              >
+                Sí, aprobar y avisar
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </SheetContent>
     </Sheet>
   );
