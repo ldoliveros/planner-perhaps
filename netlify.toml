@@ -2,5 +2,12 @@
   command = "npm run build"
   publish = ".next"
 
+[build.environment]
+  # Falso positivo de secret scanning: Turbopack persiste RESEND_API_KEY (ya inyectada como env var de
+  # build) dentro de su propio cache intermedio, no en código fuente. Se excluye SOLO esa carpeta de
+  # cache — no se desactiva el scanning ni se omite la key por nombre (SECRETS_SCAN_OMIT_KEYS), así que
+  # sigue escaneando el resto del build normalmente.
+  SECRETS_SCAN_OMIT_PATHS = ".netlify/.next/cache/turbopack/**"
+
 [[plugins]]
   package = "@netlify/plugin-nextjs"
