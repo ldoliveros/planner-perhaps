@@ -3,7 +3,7 @@
 import { useActionState, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { ArrowUpRight, Check, FolderOpen, ImageIcon, Plus, Share2, X } from "lucide-react";
+import { ArrowUpRight, Check, FolderOpen, ImageIcon, Plus, Share2, Trash2, X } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -27,7 +27,7 @@ import { StatusPill } from "@/components/shared/status-pill";
 import { PlatformIcon } from "@/components/icons/brand-icons";
 import { useLookups } from "@/components/providers/lookups-provider";
 import { hasNotifiableClientUsers, notifyClientPublicationApproved } from "@/lib/actions/publication-notifications";
-import { savePublication, type PublicationFormState } from "@/lib/actions/publications";
+import { deletePublication, savePublication, type PublicationFormState } from "@/lib/actions/publications";
 import { formatTime } from "@/lib/date-utils";
 import { toast } from "@/lib/toast";
 import { useCopyToClipboard } from "@/lib/use-copy-to-clipboard";
@@ -92,6 +92,7 @@ export function PublicationView({ publication, onOpenChange, calendars, clientAc
   const thumbnailInputRef = useRef<HTMLInputElement>(null);
   const carouselAddInputRef = useRef<HTMLInputElement>(null);
   const carouselFilesInputRef = useRef<HTMLInputElement>(null);
+  const submitButtonRef = useRef<HTMLButtonElement>(null);
 
   const primaryAsset = publication.assets.find((a) => a.isPrimary) ?? publication.assets[0] ?? null;
 
@@ -120,6 +121,12 @@ export function PublicationView({ publication, onOpenChange, calendars, clientAc
   const [hasNotifiable, setHasNotifiable] = useState(false);
   const notifyAfterSaveRef = useRef(false);
   const skipApproveCheckRef = useRef(false);
+
+  // Eliminar — misma action/confirmación que ya usan PublicationForm y el menú "..." de la card (ver
+  // deletePublication), sin lógica de borrado nueva.
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   function snapshotOf(p: Publication): FieldSnapshot {
     return {
@@ -268,6 +275,41 @@ export function PublicationView({ publication, onOpenChange, calendars, clientAc
       return;
     }
     onOpenChange(false);
+  }
+
+  // Ctrl/Cmd+S — mismo atajo que PublicationForm, pero disparando un click real sobre el botón de submit
+  // (en vez de formRef.current?.requestSubmit(), que en Form salta directo al submit nativo) para que pase
+  // por el mismo handleSaveClick de abajo y respete la interceptación "¡Lista para publicar!" también acá.
+  // Bloqueado mientras haya cualquier AlertDialog abierto, para no competir con esos flujos.
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== "s") return;
+      e.preventDefault();
+      if (isPending || !isDirty) return;
+      if (confirmCloseOpen || approveNotifyOpen || deleteOpen) return;
+      submitButtonRef.current?.click();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isPending, isDirty, confirmCloseOpen, approveNotifyOpen, deleteOpen]);
+
+  /** Reutiliza deletePublication tal cual (misma action que PublicationForm y el menú de la card). Cierra
+   * PublicationView llamando a onOpenChange (la prop) directamente, NO a requestClose(): así el dirty
+   * state de los campos nunca dispara una segunda confirmación después de ya haber confirmado el borrado. */
+  async function handleConfirmDelete() {
+    setDeleteError(null);
+    setIsDeleting(true);
+    const result = await deletePublication(publication.id, publication.clientId);
+    setIsDeleting(false);
+    if (result.error) {
+      setDeleteError(result.error);
+      toast.error("No se pudo eliminar", result.error);
+      return;
+    }
+    setDeleteOpen(false);
+    onOpenChange(false);
+    router.refresh();
+    toast.success("Publicación eliminada");
   }
 
   function handleThumbnailChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -777,10 +819,22 @@ export function PublicationView({ publication, onOpenChange, calendars, clientAc
               {isCurrentlyApproved && hasNotifiable && (
                 <ClientNotificationSection publicationId={publication.id} clientId={publication.clientId} />
               )}
+
+              {/* Acción destructiva discreta, separada a propósito del botón principal de guardar. */}
+              <div className="flex justify-start border-t border-border pt-4">
+                <button
+                  type="button"
+                  onClick={() => setDeleteOpen(true)}
+                  className="flex items-center gap-1.5 text-xs font-medium text-destructive/70 transition-colors hover:text-destructive"
+                >
+                  <Trash2 className="size-3.5" />
+                  Eliminar publicación
+                </button>
+              </div>
             </div>
 
             <div className="flex shrink-0 justify-end border-t border-border bg-white px-5 py-3">
-              <Button type="submit" form="pv-form" disabled={isPending || !isDirty} onClick={handleSaveClick}>
+              <Button ref={submitButtonRef} type="submit" form="pv-form" disabled={isPending || !isDirty} onClick={handleSaveClick}>
                 {isPending ? "Guardando..." : "Guardar cambios"}
               </Button>
             </div>
@@ -830,6 +884,24 @@ export function PublicationView({ publication, onOpenChange, calendars, clientAc
               }}
             >
               Sí, aprobar y avisar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar esta publicación?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción no se puede deshacer. No se eliminan archivos originales de Google Drive.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {deleteError && <p className="text-sm text-destructive">{deleteError}</p>}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" disabled={isDeleting} onClick={handleConfirmDelete}>
+              {isDeleting ? "Eliminando..." : "Eliminar"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
