@@ -3,7 +3,7 @@
 import { useActionState, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { Check, FolderOpen, ImageIcon, Share2 } from "lucide-react";
+import { Check, FolderOpen, ImageIcon, Plus, Share2, X } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -35,6 +35,7 @@ import { cn } from "cn";
 import type { Calendar, Campaign, ClientAccount, Publication, PublicationDestination } from "@/types";
 
 const INITIAL_STATE: PublicationFormState = { error: null, savedAt: null };
+const MAX_CAROUSEL_IMAGES = 10;
 
 interface PublicationViewProps {
   publication: Publication;
@@ -60,6 +61,19 @@ interface FieldSnapshot {
   destinationIds: string;
 }
 
+/** Un slot de imagen del carrusel: o una imagen existente (assetId, ya subida) o una recién elegida en
+ * este pase (file, con preview local vía blob URL) — nunca ambas a la vez. */
+interface CarouselImage {
+  key: string;
+  url: string;
+  assetId: string | null;
+  file: File | null;
+}
+
+function carouselSignatureOf(images: CarouselImage[]): string {
+  return JSON.stringify(images.map((img) => img.assetId ?? img.key));
+}
+
 /**
  * Vista de Publicación integrada (piloto): preview + datos + edición en un solo lugar, sin un segundo
  * "modo editar" — toda esta vista ES el formulario. Reutiliza savePublication tal cual (mismo contrato
@@ -76,6 +90,8 @@ export function PublicationView({ publication, onOpenChange, calendars, clientAc
   const lastSavedAt = useRef<number | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const thumbnailInputRef = useRef<HTMLInputElement>(null);
+  const carouselAddInputRef = useRef<HTMLInputElement>(null);
+  const carouselFilesInputRef = useRef<HTMLInputElement>(null);
 
   const primaryAsset = publication.assets.find((a) => a.isPrimary) ?? publication.assets[0] ?? null;
 
@@ -94,6 +110,10 @@ export function PublicationView({ publication, onOpenChange, calendars, clientAc
   const [localCampaigns, setLocalCampaigns] = useState<Campaign[]>(campaigns);
   const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
   const [thumbnailPreview, setThumbnailPreview] = useState<string | null>(primaryAsset?.thumbnailUrl ?? null);
+  const [carouselImages, setCarouselImages] = useState<CarouselImage[]>(() =>
+    publication.assets.map((a) => ({ key: a.id, url: a.thumbnailUrl ?? "", assetId: a.id, file: null }))
+  );
+  const [originalCarouselSignature, setOriginalCarouselSignature] = useState(() => carouselSignatureOf(carouselImages));
 
   const [confirmCloseOpen, setConfirmCloseOpen] = useState(false);
   const [approveNotifyOpen, setApproveNotifyOpen] = useState(false);
@@ -132,6 +152,9 @@ export function PublicationView({ publication, onOpenChange, calendars, clientAc
     );
   }
 
+  const selectedContentType = contentTypes.find((c) => c.id === contentTypeId);
+  const isCarouselMode = selectedContentType?.key === "carousel";
+
   const current: FieldSnapshot = {
     calendarId,
     campaignId,
@@ -146,7 +169,8 @@ export function PublicationView({ publication, onOpenChange, calendars, clientAc
     driveFolderUrl,
     destinationIds: JSON.stringify([...selectedAccountIds].sort()),
   };
-  const isDirty = thumbnailFile !== null || JSON.stringify(current) !== JSON.stringify(original);
+  const carouselDirty = isCarouselMode && carouselSignatureOf(carouselImages) !== originalCarouselSignature;
+  const isDirty = thumbnailFile !== null || carouselDirty || JSON.stringify(current) !== JSON.stringify(original);
 
   const approvedStatus = statuses.find((s) => s.key === "approved");
   const isCurrentlyApproved = Boolean(approvedStatus && statusId === approvedStatus.id);
@@ -166,6 +190,24 @@ export function PublicationView({ publication, onOpenChange, calendars, clientAc
       cancelled = true;
     };
   }, [isCurrentlyApproved, publication.clientId]);
+
+  // Reconciliación de imágenes del carrusel: el server devuelve los assetId/URLs reales recién
+  // asignados a las imágenes nuevas — sin esto, un segundo guardado volvería a subirlas como "nuevas"
+  // en vez de reconocerlas como ya existentes, duplicándolas. Efecto separado (misma forma que el de
+  // arriba: guardado contra un ref) en vez de anidarlo ahí, para que quede al tope del cuerpo del efecto.
+  const lastReconciledAssets = useRef<PublicationFormState["assets"]>(undefined);
+  useEffect(() => {
+    if (state.assets && state.assets !== lastReconciledAssets.current) {
+      lastReconciledAssets.current = state.assets;
+      for (const img of carouselImages) {
+        if (img.file) URL.revokeObjectURL(img.url);
+      }
+      const reconciled = state.assets.map((a) => ({ key: a.id, url: a.thumbnailUrl ?? "", assetId: a.id, file: null }));
+      setCarouselImages(reconciled);
+      setOriginalCarouselSignature(carouselSignatureOf(reconciled));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.assets]);
 
   useEffect(() => {
     if (state.savedAt && state.savedAt !== lastSavedAt.current) {
@@ -204,6 +246,64 @@ export function PublicationView({ publication, onOpenChange, calendars, clientAc
       setThumbnailFile(file);
       setThumbnailPreview(URL.createObjectURL(file));
     }
+  }
+
+  // El input real que viaja en el <form> (name="carouselImages") se sincroniza acá vía DataTransfer con
+  // los File de las imágenes nuevas, en el orden actual — los inputs nativos no aceptan asignar un
+  // FileList arbitrario directamente, pero sí `.files` construido con DataTransfer.
+  useEffect(() => {
+    const input = carouselFilesInputRef.current;
+    if (!input) return;
+    const dataTransfer = new DataTransfer();
+    for (const img of carouselImages) {
+      if (img.file) dataTransfer.items.add(img.file);
+    }
+    input.files = dataTransfer.files;
+  }, [carouselImages]);
+
+  function handleCarouselFilesPicked(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    const room = MAX_CAROUSEL_IMAGES - carouselImages.length;
+    const toAdd = Array.from(files).slice(0, room);
+    setCarouselImages((prev) => [
+      ...prev,
+      ...toAdd.map((file) => ({
+        key: `new-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        url: URL.createObjectURL(file),
+        assetId: null,
+        file,
+      })),
+    ]);
+    e.target.value = "";
+  }
+
+  function removeCarouselImage(key: string) {
+    setCarouselImages((prev) => {
+      const removedImg = prev.find((img) => img.key === key);
+      if (removedImg?.file) URL.revokeObjectURL(removedImg.url);
+      return prev.filter((img) => img.key !== key);
+    });
+  }
+
+  function moveCarouselImage(from: number, to: number) {
+    setCarouselImages((prev) => {
+      const next = [...prev];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return next;
+    });
+  }
+
+  function handleCarouselDragStart(e: React.DragEvent, index: number) {
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", String(index));
+  }
+
+  function handleCarouselDrop(e: React.DragEvent, index: number) {
+    e.preventDefault();
+    const source = Number(e.dataTransfer.getData("text/plain"));
+    if (!Number.isNaN(source) && source !== index) moveCarouselImage(source, index);
   }
 
   /** Misma interceptación "¡Lista para publicar!" que en el menú rápido y en PublicationForm — acá los
@@ -249,12 +349,20 @@ export function PublicationView({ publication, onOpenChange, calendars, clientAc
     accountsByPlatform.set(account.platformId, list);
   }
 
-  const selectedContentType = contentTypes.find((c) => c.id === contentTypeId);
   const instagramAccount = clientAccounts.find(
     (a) => selectedAccountIds.has(a.id) && getPlatform(a.platformId)?.key === "instagram"
   );
+  const carouselImageUrls = carouselImages.map((img) => img.url).filter(Boolean);
+  // Manifest ordenado que lee savePublication: cada slot referencia una imagen existente (assetId, se
+  // conserva/reordena) o el índice del File nuevo dentro de `carouselImages` (name="carouselImages",
+  // sincronizado por el efecto de arriba) — ambos recorridos van en el mismo orden, así los índices calzan.
+  let carouselNewFileIndex = 0;
+  const carouselManifest = carouselImages.map((img) =>
+    img.assetId ? { assetId: img.assetId } : { fileIndex: carouselNewFileIndex++ }
+  );
   const previewNode = renderPublicationPreview(instagramAccount ? "instagram" : undefined, selectedContentType?.key, {
-    coverUrl: thumbnailPreview,
+    coverUrl: isCarouselMode ? (carouselImageUrls[0] ?? null) : thumbnailPreview,
+    images: isCarouselMode ? carouselImageUrls : undefined,
     handle: instagramAccount?.handle ?? null,
     accountName: instagramAccount?.name ?? null,
     copy: copyText,
@@ -450,32 +558,86 @@ export function PublicationView({ publication, onOpenChange, calendars, clientAc
                 </Select>
               </div>
 
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="pv-thumbnail">Portada</Label>
-                <div className="flex items-center gap-3">
-                  <div className="relative size-16 shrink-0 overflow-hidden rounded-lg border border-border bg-muted">
-                    {thumbnailPreview ? (
-                      <Image src={thumbnailPreview} alt="" fill sizes="64px" className="object-cover" />
-                    ) : (
-                      <div className="flex h-full items-center justify-center text-muted-foreground/40">
-                        <ImageIcon className="size-5" />
+              {isCarouselMode ? (
+                <div className="flex flex-col gap-1.5">
+                  <Label>Imágenes</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {carouselImages.map((img, index) => (
+                      <div
+                        key={img.key}
+                        draggable
+                        onDragStart={(e) => handleCarouselDragStart(e, index)}
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={(e) => handleCarouselDrop(e, index)}
+                        className="group relative size-20 shrink-0 cursor-grab overflow-hidden rounded-lg border border-border bg-muted active:cursor-grabbing"
+                      >
+                        {img.url && <Image src={img.url} alt="" fill sizes="80px" className="object-cover" />}
+                        <span className="absolute top-1 left-1 flex size-5 items-center justify-center rounded-full bg-black/60 text-[10px] font-semibold text-white">
+                          {index + 1}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => removeCarouselImage(img.key)}
+                          aria-label="Quitar imagen"
+                          className="absolute top-1 right-1 flex size-5 items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity group-hover:opacity-100"
+                        >
+                          <X className="size-3" />
+                        </button>
                       </div>
+                    ))}
+                    {carouselImages.length < MAX_CAROUSEL_IMAGES && (
+                      <button
+                        type="button"
+                        onClick={() => carouselAddInputRef.current?.click()}
+                        className="flex size-20 shrink-0 flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-border text-muted-foreground hover:bg-muted"
+                      >
+                        <Plus className="size-5" />
+                        <span className="text-xs">Agregar</span>
+                      </button>
                     )}
                   </div>
-                  <Button type="button" variant="outline" size="sm" onClick={() => thumbnailInputRef.current?.click()}>
-                    Cambiar portada
-                  </Button>
+                  <p className="text-xs text-muted-foreground">
+                    La primera imagen es la portada. Arrastrá para reordenar. Máximo {MAX_CAROUSEL_IMAGES}.
+                  </p>
                   <input
-                    ref={thumbnailInputRef}
-                    id="pv-thumbnail"
+                    ref={carouselAddInputRef}
                     type="file"
-                    name="thumbnail"
                     accept="image/jpeg,image/png,image/webp"
-                    onChange={handleThumbnailChange}
+                    multiple
                     hidden
+                    onChange={handleCarouselFilesPicked}
                   />
+                  <input ref={carouselFilesInputRef} type="file" name="carouselImages" multiple hidden />
+                  <input type="hidden" name="carouselManifest" value={JSON.stringify(carouselManifest)} readOnly />
                 </div>
-              </div>
+              ) : (
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="pv-thumbnail">Portada</Label>
+                  <div className="flex items-center gap-3">
+                    <div className="relative size-16 shrink-0 overflow-hidden rounded-lg border border-border bg-muted">
+                      {thumbnailPreview ? (
+                        <Image src={thumbnailPreview} alt="" fill sizes="64px" className="object-cover" />
+                      ) : (
+                        <div className="flex h-full items-center justify-center text-muted-foreground/40">
+                          <ImageIcon className="size-5" />
+                        </div>
+                      )}
+                    </div>
+                    <Button type="button" variant="outline" size="sm" onClick={() => thumbnailInputRef.current?.click()}>
+                      Cambiar portada
+                    </Button>
+                    <input
+                      ref={thumbnailInputRef}
+                      id="pv-thumbnail"
+                      type="file"
+                      name="thumbnail"
+                      accept="image/jpeg,image/png,image/webp"
+                      onChange={handleThumbnailChange}
+                      hidden
+                    />
+                  </div>
+                </div>
+              )}
 
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="pv-copy">Copy</Label>

@@ -4,15 +4,30 @@ import { revalidatePath } from "next/cache";
 import sharp from "sharp";
 import { createClient } from "@/lib/supabase/server";
 import { listPublicationsInRange } from "@/lib/supabase/queries";
-import type { Publication } from "@/types";
+import { mapPublicationAsset } from "@/lib/supabase/mappers";
+import type { Publication, PublicationAsset } from "@/types";
+
+const THUMBNAILS_BUCKET = "thumbnails";
+const SIGNED_URL_TTL_SECONDS = 60 * 60;
+const MAX_CAROUSEL_IMAGES = 10;
 
 export interface PublicationFormState {
   error: string | null;
   savedAt: number | null;
+  /** Solo poblado cuando se guardó un carrusel — permite al cliente reconciliar assetIds/URLs reales
+   * (asignados por el server) sin volver a subir archivos ya guardados en el próximo save. */
+  assets?: PublicationAsset[];
 }
 
 interface DestinationInput {
   clientAccountId: string;
+}
+
+/** Un slot del carrusel, en el orden final deseado: o una imagen existente que se conserva/reordena,
+ * o el índice del File nuevo (dentro de `carouselImages`) que hay que subir en esa posición. */
+interface CarouselSlotInput {
+  assetId?: string;
+  fileIndex?: number;
 }
 
 function parseJsonArray<T>(raw: FormDataEntryValue | null): T[] {
@@ -113,8 +128,119 @@ export async function savePublication(
   );
   if (insertDestError) return { error: insertDestError.message, savedAt: null };
 
-  // Portada / thumbnail: se optimiza y sube al bucket privado de Supabase.
-  if (thumbnail instanceof File && thumbnail.size > 0) {
+  const carouselManifestRaw = formData.get("carouselManifest");
+  let responseAssets: PublicationAsset[] | undefined;
+
+  if (carouselManifestRaw !== null) {
+    // Carrusel: el manifest describe el set final de imágenes, en orden. Cada slot es una imagen
+    // existente que se conserva/reordena (assetId) o un File nuevo a subir en esa posición (fileIndex).
+    // Cambio mínimo sobre el esquema actual: sigue siendo N filas en publication_assets, solo que ahora
+    // puede haber más de una por publicación (la tabla ya lo soportaba, sort_order/is_primary incluidos).
+    const manifest = parseJsonArray<CarouselSlotInput>(carouselManifestRaw);
+    if (manifest.length > MAX_CAROUSEL_IMAGES) {
+      return { error: `Un carrusel admite hasta ${MAX_CAROUSEL_IMAGES} imágenes.`, savedAt: null };
+    }
+    const newFiles = formData.getAll("carouselImages").filter((f): f is File => f instanceof File);
+
+    const { data: existingAssets, error: existingAssetsError } = await supabase
+      .from("publication_assets")
+      .select("id, thumbnail_url")
+      .eq("publication_id", publicationId);
+    if (existingAssetsError) return { error: existingAssetsError.message, savedAt: null };
+
+    const existingIds = new Set((existingAssets ?? []).map((a) => a.id));
+    const keptIds = new Set<string>();
+
+    for (let index = 0; index < manifest.length; index++) {
+      const slot = manifest[index];
+      const isPrimary = index === 0;
+
+      if (slot.assetId && existingIds.has(slot.assetId)) {
+        keptIds.add(slot.assetId);
+        const { error } = await supabase
+          .from("publication_assets")
+          .update({ sort_order: index, is_primary: isPrimary })
+          .eq("id", slot.assetId);
+        if (error) return { error: error.message, savedAt: null };
+        continue;
+      }
+
+      const file = typeof slot.fileIndex === "number" ? newFiles[slot.fileIndex] : undefined;
+      if (!file) continue;
+
+      const buffer = Buffer.from(await file.arrayBuffer());
+      const optimized = await sharp(buffer)
+        .resize({ width: 1200, withoutEnlargement: true })
+        .webp({ quality: 82 })
+        .toBuffer();
+      const assetId = crypto.randomUUID();
+      const path = `${clientId}/${publicationId}/${assetId}-${Date.now()}.webp`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("thumbnails")
+        .upload(path, optimized, { contentType: "image/webp", upsert: true });
+      if (uploadError) return { error: uploadError.message, savedAt: null };
+
+      const { error: insertError } = await supabase.from("publication_assets").insert({
+        id: assetId,
+        publication_id: publicationId,
+        type: "image",
+        filename: file.name || "imagen.webp",
+        thumbnail_url: path,
+        sort_order: index,
+        is_primary: isPrimary,
+      });
+      if (insertError) return { error: insertError.message, savedAt: null };
+      keptIds.add(assetId);
+    }
+
+    // Imágenes que el usuario sacó del carrusel: se borran la fila y el archivo en Storage, para no
+    // dejar ni referencias DB rotas ni objetos huérfanos en el bucket. Si falla el borrado en Storage,
+    // se aborta ACÁ (antes de tocar la fila) para no dejar un archivo huérfano de forma silenciosa —
+    // la fila sigue apuntando a un asset que sigue existiendo, así que no hay inconsistencia: el usuario
+    // ve el error y puede reintentar el guardado.
+    const removed = (existingAssets ?? []).filter((a) => !keptIds.has(a.id));
+    if (removed.length > 0) {
+      const removedPaths = removed.map((a) => a.thumbnail_url).filter((p): p is string => Boolean(p));
+      if (removedPaths.length > 0) {
+        const { error: removeStorageError } = await supabase.storage.from(THUMBNAILS_BUCKET).remove(removedPaths);
+        if (removeStorageError) {
+          return { error: `No se pudieron eliminar imágenes del almacenamiento: ${removeStorageError.message}`, savedAt: null };
+        }
+      }
+      const { error: deleteAssetsError } = await supabase
+        .from("publication_assets")
+        .delete()
+        .in("id", removed.map((a) => a.id));
+      if (deleteAssetsError) return { error: deleteAssetsError.message, savedAt: null };
+    }
+
+    // El cliente necesita los assetId/URLs reales asignados acá para no volver a subir estas mismas
+    // imágenes como "nuevas" en el próximo save (ver PublicationView).
+    const { data: freshAssets, error: freshAssetsError } = await supabase
+      .from("publication_assets")
+      .select("*")
+      .eq("publication_id", publicationId)
+      .order("sort_order", { ascending: true });
+    if (freshAssetsError) return { error: freshAssetsError.message, savedAt: null };
+
+    const freshPaths = (freshAssets ?? []).map((a) => a.thumbnail_url).filter((p): p is string => Boolean(p));
+    const urlByPath = new Map<string, string>();
+    if (freshPaths.length > 0) {
+      const { data: signed } = await supabase.storage
+        .from(THUMBNAILS_BUCKET)
+        .createSignedUrls(freshPaths, SIGNED_URL_TTL_SECONDS);
+      for (const item of signed ?? []) {
+        if (item.path && item.signedUrl) urlByPath.set(item.path, item.signedUrl);
+      }
+    }
+    responseAssets = (freshAssets ?? []).map((row) => {
+      const mapped = mapPublicationAsset(row);
+      return { ...mapped, thumbnailUrl: mapped.thumbnailUrl ? (urlByPath.get(mapped.thumbnailUrl) ?? null) : null };
+    });
+  } else if (thumbnail instanceof File && thumbnail.size > 0) {
+    // Portada única (Post/Reel/Story/etc.): se optimiza y sube al bucket privado de Supabase. Sin
+    // cambios respecto al comportamiento actual.
     const buffer = Buffer.from(await thumbnail.arrayBuffer());
     const optimized = await sharp(buffer)
       .resize({ width: 1200, withoutEnlargement: true })
@@ -151,7 +277,7 @@ export async function savePublication(
   revalidatePath(`/admin/clients/${clientId}`);
   revalidatePath("/admin/calendars");
   revalidatePath("/admin/publications");
-  return { error: null, savedAt: Date.now() };
+  return { error: null, savedAt: Date.now(), assets: responseAssets };
 }
 
 /**
