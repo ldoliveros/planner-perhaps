@@ -7,14 +7,19 @@ import { FacebookPostPreview } from "./facebook-post-preview";
 import { FacebookCarouselPreview } from "./facebook-carousel-preview";
 import { FacebookReelPreview } from "./facebook-reel-preview";
 import { FacebookStoryPreview } from "./facebook-story-preview";
+import { LinkedinPostPreview } from "./linkedin-post-preview";
+import { LinkedinCarouselPreview } from "./linkedin-carousel-preview";
 import type { PublicationPreviewProps } from "./types";
 
 /** Misma matriz de combinaciones soportadas que abajo, en forma de datos (sin JSX) — la usa
  * PublicationView para saber qué plataformas ofrecer como tab/pill para el tipo de contenido actual,
- * sin tener que renderizar nada solo para averiguarlo. */
+ * sin tener que renderizar nada solo para averiguarlo. LinkedIn solo tiene Post/Carrusel a propósito
+ * (sin Reel/Story todavía) — el selector de plataformas ya resuelve esto solo, sin excepciones en
+ * PublicationView. */
 const SUPPORTED_COMBOS: Record<string, string[]> = {
   instagram: ["reel", "carousel", "post", "story"],
   facebook: ["post", "carousel", "reel", "story"],
+  linkedin: ["post", "carousel"],
 };
 
 export function isPreviewSupported(platformKey: string, contentTypeKey: string | undefined): boolean {
@@ -60,6 +65,12 @@ export function renderPublicationPreview(
   }
   if (platformKey === "facebook" && contentTypeKey === "story") {
     return <FacebookStoryPreview {...props} />;
+  }
+  if (platformKey === "linkedin" && contentTypeKey === "post") {
+    return <LinkedinPostPreview {...props} />;
+  }
+  if (platformKey === "linkedin" && contentTypeKey === "carousel") {
+    return <LinkedinCarouselPreview {...props} />;
   }
   return null;
 }
