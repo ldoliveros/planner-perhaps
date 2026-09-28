@@ -15,7 +15,7 @@ import type { PublicationPreviewProps } from "./types";
  * conteos inventados. El acceso a Drive vive fuera del preview (PublicationView, debajo) — esto es solo
  * la simulación visual.
  */
-export function InstagramCarouselPreview({ coverUrl, images, handle, accountName, copy }: PublicationPreviewProps) {
+export function InstagramCarouselPreview({ coverUrl, images, handle, accountName, copy, avatarUrl }: PublicationPreviewProps) {
   const slides = images && images.length > 0 ? images : coverUrl ? [coverUrl] : [];
   const [index, setIndex] = useState(0);
   const current = Math.min(index, Math.max(slides.length - 1, 0));
@@ -32,9 +32,15 @@ export function InstagramCarouselPreview({ coverUrl, images, handle, accountName
   return (
     <div className="mx-auto w-full max-w-[320px] overflow-hidden rounded-2xl border border-border bg-white shadow-lg">
       <div className="flex items-center gap-2 p-2.5">
-        <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-foreground">
-          {(accountName ?? handle ?? "?").charAt(0).toUpperCase()}
-        </span>
+        {avatarUrl ? (
+          <span className="relative size-7 shrink-0 overflow-hidden rounded-full bg-white">
+            <Image src={avatarUrl} alt="" fill sizes="28px" className="object-cover" />
+          </span>
+        ) : (
+          <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-foreground">
+            {(accountName ?? handle ?? "?").charAt(0).toUpperCase()}
+          </span>
+        )}
         <span className="truncate text-sm font-semibold text-foreground">{handle ? `@${handle}` : "Sin cuenta"}</span>
         <PlatformIcon platformKey="instagram" className="ml-auto size-4" style={{ color: "#E4405F" }} />
       </div>

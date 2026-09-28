@@ -13,16 +13,22 @@ import type { PublicationPreviewProps } from "./types";
  * acciones tienen ícono + etiqueta fija ("Me gusta"/"Comentar"/"Compartir" — texto estático, nunca
  * conteos inventados). El acceso a Drive vive fuera del preview (PublicationView, debajo).
  */
-export function FacebookPostPreview({ coverUrl, handle, accountName, copy }: PublicationPreviewProps) {
+export function FacebookPostPreview({ coverUrl, handle, accountName, copy, avatarUrl }: PublicationPreviewProps) {
   const frameRatio = useImageAspectRatio(coverUrl);
   const displayName = accountName ?? handle ?? "Sin cuenta";
 
   return (
     <div className="mx-auto w-full max-w-[320px] overflow-hidden rounded-2xl border border-border bg-white shadow-lg">
       <div className="flex items-center gap-2 p-2.5">
-        <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-foreground">
-          {displayName.charAt(0).toUpperCase()}
-        </span>
+        {avatarUrl ? (
+          <span className="relative size-8 shrink-0 overflow-hidden rounded-full bg-white">
+            <Image src={avatarUrl} alt="" fill sizes="32px" className="object-cover" />
+          </span>
+        ) : (
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-foreground">
+            {displayName.charAt(0).toUpperCase()}
+          </span>
+        )}
         <span className="truncate text-sm font-semibold text-foreground">{displayName}</span>
         <PlatformIcon platformKey="facebook" className="ml-auto size-4" style={{ color: "#1877F2" }} />
       </div>

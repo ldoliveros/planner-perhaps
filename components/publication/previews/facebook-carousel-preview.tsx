@@ -14,7 +14,7 @@ import type { PublicationPreviewProps } from "./types";
  * reconocibles de Facebook Post: nombre sin "@", copy arriba de la imagen, acciones con ícono + etiqueta
  * fija. El acceso a Drive vive fuera del preview (PublicationView, debajo).
  */
-export function FacebookCarouselPreview({ coverUrl, images, handle, accountName, copy }: PublicationPreviewProps) {
+export function FacebookCarouselPreview({ coverUrl, images, handle, accountName, copy, avatarUrl }: PublicationPreviewProps) {
   const slides = images && images.length > 0 ? images : coverUrl ? [coverUrl] : [];
   const [index, setIndex] = useState(0);
   const current = Math.min(index, Math.max(slides.length - 1, 0));
@@ -30,9 +30,15 @@ export function FacebookCarouselPreview({ coverUrl, images, handle, accountName,
   return (
     <div className="mx-auto w-full max-w-[320px] overflow-hidden rounded-2xl border border-border bg-white shadow-lg">
       <div className="flex items-center gap-2 p-2.5">
-        <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-foreground">
-          {displayName.charAt(0).toUpperCase()}
-        </span>
+        {avatarUrl ? (
+          <span className="relative size-8 shrink-0 overflow-hidden rounded-full bg-white">
+            <Image src={avatarUrl} alt="" fill sizes="32px" className="object-cover" />
+          </span>
+        ) : (
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-foreground">
+            {displayName.charAt(0).toUpperCase()}
+          </span>
+        )}
         <span className="truncate text-sm font-semibold text-foreground">{displayName}</span>
         <PlatformIcon platformKey="facebook" className="ml-auto size-4" style={{ color: "#1877F2" }} />
       </div>

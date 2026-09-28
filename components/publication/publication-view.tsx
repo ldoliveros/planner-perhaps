@@ -83,7 +83,7 @@ function carouselSignatureOf(images: CarouselImage[]): string {
  * sin necesitar sincronizarlo en un efecto.
  */
 export function PublicationView({ publication, onOpenChange, calendars, clientAccounts, campaigns }: PublicationViewProps) {
-  const { statuses, contentTypes, platforms, getPlatform } = useLookups();
+  const { statuses, contentTypes, platforms, getPlatform, getClient } = useLookups();
   const router = useRouter();
   const { copy: copyToClipboard } = useCopyToClipboard();
   const [state, formAction, isPending] = useActionState(savePublication, INITIAL_STATE);
@@ -390,6 +390,8 @@ export function PublicationView({ publication, onOpenChange, calendars, clientAc
   const carouselManifest = carouselImages.map((img) =>
     img.assetId ? { assetId: img.assetId } : { fileIndex: carouselNewFileIndex++ }
   );
+  // Avatar de los previews: el logo del cliente (ya firmado por withSignedClientLogos, vía
+  // useLookups/getClient), el mismo para cualquier plataforma — no depende de la cuenta/destino activo.
   const previewNode = renderPublicationPreview(activePreviewPlatform, selectedContentType?.key, {
     coverUrl: isCarouselMode ? (carouselImageUrls[0] ?? null) : thumbnailPreview,
     images: isCarouselMode ? carouselImageUrls : undefined,
@@ -397,6 +399,7 @@ export function PublicationView({ publication, onOpenChange, calendars, clientAc
     accountName: previewAccount?.name ?? null,
     copy: copyText,
     driveFolderUrl: driveFolderUrl || null,
+    avatarUrl: getClient(publication.clientId)?.logoUrl ?? null,
   });
 
   return (

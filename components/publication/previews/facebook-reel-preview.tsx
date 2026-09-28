@@ -12,7 +12,7 @@ import type { PublicationPreviewProps } from "./types";
  * sin "@". Sin conteos inventados. No reproduce video. El acceso a Drive vive fuera del preview
  * (PublicationView, debajo).
  */
-export function FacebookReelPreview({ coverUrl, handle, accountName, copy }: PublicationPreviewProps) {
+export function FacebookReelPreview({ coverUrl, handle, accountName, copy, avatarUrl }: PublicationPreviewProps) {
   const displayName = accountName ?? handle ?? "Sin cuenta";
 
   return (
@@ -42,9 +42,15 @@ export function FacebookReelPreview({ coverUrl, handle, accountName, copy }: Pub
 
       <div className="absolute inset-x-0 bottom-0 p-3 pr-14">
         <div className="mb-1.5 flex items-center gap-2">
-          <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-white/20 text-xs font-semibold text-white ring-1 ring-white/40">
-            {displayName.charAt(0).toUpperCase()}
-          </span>
+          {avatarUrl ? (
+            <span className="relative size-7 shrink-0 overflow-hidden rounded-full bg-white ring-1 ring-white/40">
+              <Image src={avatarUrl} alt="" fill sizes="28px" className="object-cover" />
+            </span>
+          ) : (
+            <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-white/20 text-xs font-semibold text-white ring-1 ring-white/40">
+              {displayName.charAt(0).toUpperCase()}
+            </span>
+          )}
           <span className="truncate text-sm font-semibold text-white drop-shadow">{displayName}</span>
         </div>
         <p className="line-clamp-2 text-sm text-white drop-shadow">

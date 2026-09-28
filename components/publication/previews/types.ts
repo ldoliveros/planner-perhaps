@@ -6,4 +6,8 @@ export interface PublicationPreviewProps {
   accountName: string | null;
   copy: string;
   driveFolderUrl: string | null;
+  /** Logo del cliente (clients.logo_url, ya firmado) usado como avatar en todos los previews — no depende
+   * de la cuenta/destino activo, es el mismo para Instagram/Facebook/futuras redes. null si el cliente no
+   * tiene logo cargado, en cuyo caso cada preview mantiene su fallback de iniciales actual. */
+  avatarUrl: string | null;
 }

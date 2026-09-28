@@ -12,7 +12,7 @@ import type { PublicationPreviewProps } from "./types";
  * Post/Carrusel — Story siempre es vertical). Sin reproducción/subida de video. El acceso a Drive vive
  * fuera del preview (PublicationView, debajo) — esto es solo la simulación visual.
  */
-export function InstagramStoryPreview({ coverUrl, handle, accountName }: PublicationPreviewProps) {
+export function InstagramStoryPreview({ coverUrl, handle, accountName, avatarUrl }: PublicationPreviewProps) {
   return (
     <div className="relative mx-auto aspect-9/16 w-full max-w-[300px] overflow-hidden rounded-2xl bg-black shadow-lg">
       {coverUrl ? (
@@ -29,9 +29,15 @@ export function InstagramStoryPreview({ coverUrl, handle, accountName }: Publica
       </div>
 
       <div className="absolute inset-x-0 top-4 flex items-center gap-2 px-3">
-        <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-white/20 text-xs font-semibold text-white ring-1 ring-white/40">
-          {(accountName ?? handle ?? "?").charAt(0).toUpperCase()}
-        </span>
+        {avatarUrl ? (
+          <span className="relative size-7 shrink-0 overflow-hidden rounded-full bg-white ring-1 ring-white/40">
+            <Image src={avatarUrl} alt="" fill sizes="28px" className="object-cover" />
+          </span>
+        ) : (
+          <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-white/20 text-xs font-semibold text-white ring-1 ring-white/40">
+            {(accountName ?? handle ?? "?").charAt(0).toUpperCase()}
+          </span>
+        )}
         <span className="truncate text-sm font-semibold text-white drop-shadow">
           {handle ? `@${handle}` : "Sin cuenta"}
         </span>
