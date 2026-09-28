@@ -3,7 +3,23 @@ import { InstagramReelPreview } from "./instagram-reel-preview";
 import { InstagramCarouselPreview } from "./instagram-carousel-preview";
 import { InstagramPostPreview } from "./instagram-post-preview";
 import { InstagramStoryPreview } from "./instagram-story-preview";
+import { FacebookPostPreview } from "./facebook-post-preview";
+import { FacebookCarouselPreview } from "./facebook-carousel-preview";
+import { FacebookReelPreview } from "./facebook-reel-preview";
+import { FacebookStoryPreview } from "./facebook-story-preview";
 import type { PublicationPreviewProps } from "./types";
+
+/** Misma matriz de combinaciones soportadas que abajo, en forma de datos (sin JSX) — la usa
+ * PublicationView para saber qué plataformas ofrecer como tab/pill para el tipo de contenido actual,
+ * sin tener que renderizar nada solo para averiguarlo. */
+const SUPPORTED_COMBOS: Record<string, string[]> = {
+  instagram: ["reel", "carousel", "post", "story"],
+  facebook: ["post", "carousel", "reel", "story"],
+};
+
+export function isPreviewSupported(platformKey: string, contentTypeKey: string | undefined): boolean {
+  return Boolean(contentTypeKey && SUPPORTED_COMBOS[platformKey]?.includes(contentTypeKey));
+}
 
 /**
  * Un adaptador por combinación plataforma+tipo. Agregar uno nuevo = un componente nuevo + una entrada
@@ -32,6 +48,18 @@ export function renderPublicationPreview(
   }
   if (platformKey === "instagram" && contentTypeKey === "story") {
     return <InstagramStoryPreview {...props} />;
+  }
+  if (platformKey === "facebook" && contentTypeKey === "post") {
+    return <FacebookPostPreview {...props} />;
+  }
+  if (platformKey === "facebook" && contentTypeKey === "carousel") {
+    return <FacebookCarouselPreview {...props} />;
+  }
+  if (platformKey === "facebook" && contentTypeKey === "reel") {
+    return <FacebookReelPreview {...props} />;
+  }
+  if (platformKey === "facebook" && contentTypeKey === "story") {
+    return <FacebookStoryPreview {...props} />;
   }
   return null;
 }

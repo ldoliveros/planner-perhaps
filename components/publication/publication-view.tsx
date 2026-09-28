@@ -3,7 +3,7 @@
 import { useActionState, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { Check, FolderOpen, ImageIcon, Plus, Share2, X } from "lucide-react";
+import { ArrowUpRight, Check, FolderOpen, ImageIcon, Plus, Share2, X } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -22,7 +22,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { CampaignSelect } from "@/components/publication/campaign-select";
 import { CopyEditor } from "@/components/publication/copy-editor";
 import { ClientNotificationSection } from "@/components/publication/publication-drawer";
-import { renderPublicationPreview } from "@/components/publication/previews/registry";
+import { renderPublicationPreview, isPreviewSupported } from "@/components/publication/previews/registry";
 import { StatusPill } from "@/components/shared/status-pill";
 import { PlatformIcon } from "@/components/icons/brand-icons";
 import { useLookups } from "@/components/providers/lookups-provider";
@@ -154,6 +154,36 @@ export function PublicationView({ publication, onOpenChange, calendars, clientAc
 
   const selectedContentType = contentTypes.find((c) => c.id === contentTypeId);
   const isCarouselMode = selectedContentType?.key === "carousel";
+
+  // Plataformas con preview disponible entre los destinos elegidos, para el tipo de contenido actual —
+  // en el orden de `destinations` (refleja el orden en que se fueron eligiendo, sin prioridad fija de
+  // ninguna red). La primera de esta lista es la que se muestra si el usuario no eligió otra a mano.
+  const compatiblePlatformKeys: string[] = [];
+  for (const destination of destinations) {
+    const account = clientAccounts.find((a) => a.id === destination.clientAccountId);
+    const key = account ? getPlatform(account.platformId)?.key : undefined;
+    if (key && isPreviewSupported(key, selectedContentType?.key) && !compatiblePlatformKeys.includes(key)) {
+      compatiblePlatformKeys.push(key);
+    }
+  }
+  const compatiblePlatformKeysSignature = compatiblePlatformKeys.join(",");
+
+  const [activePreviewPlatform, setActivePreviewPlatform] = useState<string | undefined>(
+    () => compatiblePlatformKeys[0]
+  );
+
+  // Si la plataforma activa deja de ser compatible (se sacó ese destino, o cambió el tipo de contenido y
+  // ya no tiene preview para esa combinación), se recalcula sola a la primera compatible restante — el
+  // usuario nunca queda mirando una pill que ya no existe. Elegir plataforma acá es puramente local al
+  // preview: no toca `destinations` ni ningún campo del form, así que nunca ensucia el dirty state.
+  const lastCompatibleSignature = useRef<string | null>(null);
+  useEffect(() => {
+    if (compatiblePlatformKeysSignature !== lastCompatibleSignature.current) {
+      lastCompatibleSignature.current = compatiblePlatformKeysSignature;
+      setActivePreviewPlatform((prev) => (prev && compatiblePlatformKeys.includes(prev) ? prev : compatiblePlatformKeys[0]));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [compatiblePlatformKeysSignature]);
 
   const current: FieldSnapshot = {
     calendarId,
@@ -349,9 +379,9 @@ export function PublicationView({ publication, onOpenChange, calendars, clientAc
     accountsByPlatform.set(account.platformId, list);
   }
 
-  const instagramAccount = clientAccounts.find(
-    (a) => selectedAccountIds.has(a.id) && getPlatform(a.platformId)?.key === "instagram"
-  );
+  const previewAccount = activePreviewPlatform
+    ? clientAccounts.find((a) => selectedAccountIds.has(a.id) && getPlatform(a.platformId)?.key === activePreviewPlatform)
+    : undefined;
   const carouselImageUrls = carouselImages.map((img) => img.url).filter(Boolean);
   // Manifest ordenado que lee savePublication: cada slot referencia una imagen existente (assetId, se
   // conserva/reordena) o el índice del File nuevo dentro de `carouselImages` (name="carouselImages",
@@ -360,16 +390,14 @@ export function PublicationView({ publication, onOpenChange, calendars, clientAc
   const carouselManifest = carouselImages.map((img) =>
     img.assetId ? { assetId: img.assetId } : { fileIndex: carouselNewFileIndex++ }
   );
-  const previewNode = renderPublicationPreview(instagramAccount ? "instagram" : undefined, selectedContentType?.key, {
+  const previewNode = renderPublicationPreview(activePreviewPlatform, selectedContentType?.key, {
     coverUrl: isCarouselMode ? (carouselImageUrls[0] ?? null) : thumbnailPreview,
     images: isCarouselMode ? carouselImageUrls : undefined,
-    handle: instagramAccount?.handle ?? null,
-    accountName: instagramAccount?.name ?? null,
+    handle: previewAccount?.handle ?? null,
+    accountName: previewAccount?.name ?? null,
     copy: copyText,
     driveFolderUrl: driveFolderUrl || null,
   });
-  const previewPlatform = instagramAccount ? getPlatform(instagramAccount.platformId) : undefined;
-  const previewLabel = previewNode && previewPlatform && selectedContentType ? `${previewPlatform.name} · ${selectedContentType.label}` : null;
 
   return (
     <Dialog open onOpenChange={(next) => !next && requestClose()}>
@@ -391,8 +419,53 @@ export function PublicationView({ publication, onOpenChange, calendars, clientAc
           <div className="flex flex-col items-center justify-center gap-3 border-b border-border bg-muted/30 p-6 md:h-full md:overflow-hidden md:border-b-0 md:border-r">
             {previewNode ? (
               <>
-                {previewLabel && <span className="text-xs font-medium text-muted-foreground">{previewLabel}</span>}
+                <div className="flex flex-col items-center gap-1.5">
+                  {selectedContentType && (
+                    <span className="text-xs font-medium text-muted-foreground">
+                      Vista previa · {selectedContentType.label}
+                    </span>
+                  )}
+                  <div className="flex items-center gap-1.5">
+                    {compatiblePlatformKeys.map((key) => {
+                      const platform = platforms.find((p) => p.key === key);
+                      if (!platform) return null;
+                      const active = key === activePreviewPlatform;
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => setActivePreviewPlatform(key)}
+                          aria-pressed={active}
+                          className={cn(
+                            "flex items-center gap-1 rounded-full border bg-white px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/40",
+                            active ? "border-foreground/60 text-foreground" : "border-border text-muted-foreground"
+                          )}
+                        >
+                          <PlatformIcon
+                            platformKey={key}
+                            className="size-3.5"
+                            style={{ color: platform.color, opacity: active ? 1 : 0.5 }}
+                          />
+                          {platform.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
                 {previewNode}
+                {/* Acción de Drive — fuera de la simulación de la red social a propósito: no es parte del
+                    preview, es una acción de Planner. No afecta dirty state (solo lee driveFolderUrl). */}
+                {driveFolderUrl && (
+                  <a
+                    href={driveFolderUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground hover:underline"
+                  >
+                    <ArrowUpRight className="size-3.5" />
+                    Ver material en Drive
+                  </a>
+                )}
               </>
             ) : (
               <div className="flex aspect-9/16 w-full max-w-[300px] flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-border bg-muted p-6 text-center">

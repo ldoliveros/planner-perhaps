@@ -6,13 +6,14 @@ import { PlatformIcon } from "@/components/icons/brand-icons";
 import type { PublicationPreviewProps } from "./types";
 
 /**
- * Preview piloto — Instagram Story. A diferencia del Reel (que sí recorta a pantalla completa, imitando
- * video), acá la portada NUNCA se recorta de forma destructiva: siempre object-contain sobre fondo
- * negro neutro, aunque su proporción no sea 9:16 exacta. Formato fijo 9:16 (no detecta aspect-ratio como
- * Post/Carrusel — Story siempre es vertical). Sin reproducción/subida de video. El acceso a Drive vive
- * fuera del preview (PublicationView, debajo) — esto es solo la simulación visual.
+ * Preview piloto — Facebook Story. Misma estructura que Instagram Story (formato fijo 9:16, portada
+ * NUNCA recortada de forma destructiva — object-contain sobre fondo negro neutro si la proporción no es
+ * exactamente 9:16), con la variación reconocible de Facebook: nombre de cuenta sin "@". Sin
+ * reproducción/subida de video. El acceso a Drive vive fuera del preview (PublicationView, debajo).
  */
-export function InstagramStoryPreview({ coverUrl, handle, accountName }: PublicationPreviewProps) {
+export function FacebookStoryPreview({ coverUrl, handle, accountName }: PublicationPreviewProps) {
+  const displayName = accountName ?? handle ?? "Sin cuenta";
+
   return (
     <div className="relative mx-auto aspect-9/16 w-full max-w-[300px] overflow-hidden rounded-2xl bg-black shadow-lg">
       {coverUrl ? (
@@ -30,12 +31,10 @@ export function InstagramStoryPreview({ coverUrl, handle, accountName }: Publica
 
       <div className="absolute inset-x-0 top-4 flex items-center gap-2 px-3">
         <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-white/20 text-xs font-semibold text-white ring-1 ring-white/40">
-          {(accountName ?? handle ?? "?").charAt(0).toUpperCase()}
+          {displayName.charAt(0).toUpperCase()}
         </span>
-        <span className="truncate text-sm font-semibold text-white drop-shadow">
-          {handle ? `@${handle}` : "Sin cuenta"}
-        </span>
-        <PlatformIcon platformKey="instagram" className="ml-auto size-4 drop-shadow" style={{ color: "#ffffff" }} />
+        <span className="truncate text-sm font-semibold text-white drop-shadow">{displayName}</span>
+        <PlatformIcon platformKey="facebook" className="ml-auto size-4 drop-shadow" style={{ color: "#ffffff" }} />
       </div>
     </div>
   );
