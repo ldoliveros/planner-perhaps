@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 import { InstagramReelPreview } from "./instagram-reel-preview";
 import { InstagramCarouselPreview } from "./instagram-carousel-preview";
+import { InstagramPostPreview } from "./instagram-post-preview";
+import { InstagramStoryPreview } from "./instagram-story-preview";
 import type { PublicationPreviewProps } from "./types";
 
 /**
@@ -24,6 +26,12 @@ export function renderPublicationPreview(
   }
   if (platformKey === "instagram" && contentTypeKey === "carousel") {
     return <InstagramCarouselPreview {...props} />;
+  }
+  if (platformKey === "instagram" && contentTypeKey === "post") {
+    return <InstagramPostPreview {...props} />;
+  }
+  if (platformKey === "instagram" && contentTypeKey === "story") {
+    return <InstagramStoryPreview {...props} />;
   }
   return null;
 }

@@ -1,24 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Image from "next/image";
 import { ChevronLeft, ChevronRight, Heart, ImageIcon, MessageCircle, MoreHorizontal, Play, Send } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { PlatformIcon } from "@/components/icons/brand-icons";
 import { cn } from "cn";
+import { useImageAspectRatio } from "./use-image-aspect-ratio";
 import type { PublicationPreviewProps } from "./types";
-
-/** Los 3 ratios que Instagram soporta realmente para feed/carrusel — se clasifica al más cercano, no se
- * usa el ratio exacto de la imagen (evita proporciones raras si alguien sube algo atípico). */
-const SUPPORTED_RATIOS = [4 / 5, 1, 1.91] as const;
-
-function closestSupportedRatio(width: number, height: number): number {
-  if (!width || !height) return 1;
-  const actual = width / height;
-  return SUPPORTED_RATIOS.reduce((closest, candidate) =>
-    Math.abs(actual - candidate) < Math.abs(actual - closest) ? candidate : closest
-  );
-}
 
 /**
  * Preview piloto — Instagram Carrusel. Formato feed (no 9:16, a diferencia del Reel). La navegación
@@ -35,20 +24,7 @@ export function InstagramCarouselPreview({ coverUrl, images, handle, accountName
   // El formato del carrusel lo define SOLO la primera placa (funciona igual con una URL firmada ya
   // guardada o con un blob: de una imagen recién elegida, todavía sin guardar). Placas siguientes con
   // otra proporción no se recortan: se usa object-contain más abajo, así se ven completas igual.
-  const firstSlide = slides[0];
-  const [frameRatio, setFrameRatio] = useState(1);
-  useEffect(() => {
-    if (!firstSlide) return;
-    let cancelled = false;
-    const probe = new window.Image();
-    probe.onload = () => {
-      if (!cancelled) setFrameRatio(closestSupportedRatio(probe.naturalWidth, probe.naturalHeight));
-    };
-    probe.src = firstSlide;
-    return () => {
-      cancelled = true;
-    };
-  }, [firstSlide]);
+  const frameRatio = useImageAspectRatio(slides[0]);
 
   function handlePlayClick() {
     if (!driveFolderUrl) return;

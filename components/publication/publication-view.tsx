@@ -404,11 +404,15 @@ export function PublicationView({ publication, onOpenChange, calendars, clientAc
             )}
           </div>
 
-          {/* Derecha: datos / edición (toda esta vista ES el formulario, sin modo editar aparte) */}
-          <div className="flex flex-col gap-5 overflow-y-auto p-5">
-            <form ref={formRef} action={formAction} className="flex flex-col gap-5">
-              <input type="hidden" name="id" value={publication.id} />
-              <input type="hidden" name="campaignId" value={campaignId} readOnly />
+          {/* Derecha: datos / edición (toda esta vista ES el formulario, sin modo editar aparte). Grid de
+              2 filas: arriba el único sector con scroll (form + aviso al cliente), abajo el footer fijo
+              real (fuera del scroll, no sticky-dentro-del-scroll) — así nunca queda contenido del form
+              pasando por debajo del botón de guardar. */}
+          <div className="grid grid-rows-[1fr_auto] overflow-hidden">
+            <div className="flex flex-col gap-5 overflow-y-auto p-5">
+              <form ref={formRef} id="pv-form" action={formAction} className="flex flex-col gap-5">
+                <input type="hidden" name="id" value={publication.id} />
+                <input type="hidden" name="campaignId" value={campaignId} readOnly />
               <input type="hidden" name="destinations" value={JSON.stringify(destinations)} readOnly />
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -692,17 +696,18 @@ export function PublicationView({ publication, onOpenChange, calendars, clientAc
               )}
 
               {state.error && <p className="text-sm text-destructive">{state.error}</p>}
+              </form>
 
-              <div className="sticky bottom-0 -mx-5 -mb-5 flex justify-end gap-2 border-t border-border bg-popover px-5 py-3">
-                <Button type="submit" disabled={isPending || !isDirty} onClick={handleSaveClick}>
-                  {isPending ? "Guardando..." : "Guardar cambios"}
-                </Button>
-              </div>
-            </form>
+              {isCurrentlyApproved && hasNotifiable && (
+                <ClientNotificationSection publicationId={publication.id} clientId={publication.clientId} />
+              )}
+            </div>
 
-            {isCurrentlyApproved && hasNotifiable && (
-              <ClientNotificationSection publicationId={publication.id} clientId={publication.clientId} />
-            )}
+            <div className="flex shrink-0 justify-end border-t border-border bg-white px-5 py-3">
+              <Button type="submit" form="pv-form" disabled={isPending || !isDirty} onClick={handleSaveClick}>
+                {isPending ? "Guardando..." : "Guardar cambios"}
+              </Button>
+            </div>
           </div>
         </div>
       </DialogContent>
