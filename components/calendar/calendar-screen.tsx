@@ -23,6 +23,7 @@ import { MobileAgendaView } from "@/components/calendar/mobile-agenda-view";
 import { MobileMonthView } from "@/components/calendar/mobile-month-view";
 import { PublicationDrawer } from "@/components/publication/publication-drawer";
 import { PublicationForm } from "@/components/publication/publication-form";
+import { PublicationView } from "@/components/publication/publication-view";
 import { LookupsProvider } from "@/components/providers/lookups-provider";
 import { formatMonthYear, formatWeekRange, getMonthGridDays, getWeekDays, isSameMonthAs } from "@/lib/date-utils";
 import { usePlannerShortcuts } from "@/lib/use-planner-shortcuts";
@@ -214,6 +215,17 @@ export function CalendarScreen({
   const [filters, setFilters] = useState<CalendarFiltersState>(EMPTY_FILTERS);
   const [selectedPublication, setSelectedPublication] = useState<Publication | null>(shared.publication);
   const missingSharedPublication = useRef(Boolean(shared.id) && !shared.publication);
+  // Vista de Publicación integrada (piloto): SOLO Publicaciones global + staff. El resto sigue abriendo
+  // PublicationDrawer sin cambios, para poder comparar ambos comportamientos (ver entry point abajo).
+  const useIntegratedView = isGlobal && canManage;
+  const [viewPublication, setViewPublication] = useState<Publication | null>(null);
+  function handleOpenPublication(publication: Publication) {
+    if (useIntegratedView) {
+      setViewPublication(publication);
+    } else {
+      setSelectedPublication(publication);
+    }
+  }
   // Deep-link desde /admin/publications: ?duplicate=<id> abre el form ya precargado como duplicado (misma
   // lectura única que ?publication=, al montar). `clientId` fija a qué cliente pertenece el formulario (en
   // Publicaciones global cada publicación puede ser de un cliente distinto; ver openEditForm/openDuplicateForm).
@@ -449,6 +461,11 @@ export function CalendarScreen({
   const formClientAccounts = isGlobal ? clientAccounts.filter((a) => a.clientId === formState.clientId) : clientAccounts;
   const formCampaigns = isGlobal ? campaigns.filter((c) => c.clientId === formState.clientId) : campaigns;
 
+  // Misma lógica de arriba, para la Vista de Publicación integrada (siempre en contexto global por ahora).
+  const viewCalendars = calendars.filter((c) => c.clientId === viewPublication?.clientId);
+  const viewClientAccounts = clientAccounts.filter((a) => a.clientId === viewPublication?.clientId);
+  const viewCampaigns = campaigns.filter((c) => c.clientId === viewPublication?.clientId);
+
   // El parámetro solo vive mientras el drawer abierto por el link esté abierto: al cerrarlo (o al pasar a
   // editar/duplicar) se limpia de la URL para que recargar o copiar la barra no vuelva a abrirlo. Si el id no
   // existe o no es accesible, se avisa una sola vez y también se limpia. History API nativa (no router.replace):
@@ -468,7 +485,7 @@ export function CalendarScreen({
   }, [selectedPublication, searchParams, pathname]);
 
   usePlannerShortcuts({
-    overlayOpen: formState.open || selectedPublication !== null,
+    overlayOpen: formState.open || selectedPublication !== null || viewPublication !== null,
     onNewPublication: canCreateOrExport ? () => openCreateForm() : undefined,
     onPrevWeek: () => setAnchorDate((d) => (view === "month" ? addMonths(d, -1) : addWeeks(d, -1))),
     onNextWeek: () => setAnchorDate((d) => (view === "month" ? addMonths(d, 1) : addWeeks(d, 1))),
@@ -592,7 +609,7 @@ export function CalendarScreen({
               <WeekView
                 weekDays={weekDays}
                 publications={filteredPublications}
-                onOpenPublication={setSelectedPublication}
+                onOpenPublication={handleOpenPublication}
                 onEditPublication={canManage ? openEditForm : undefined}
                 onDuplicatePublication={canManage ? openDuplicateForm : undefined}
                 getClientId={getClientId}
@@ -605,7 +622,7 @@ export function CalendarScreen({
               <MonthView
                 anchorDate={anchorDate}
                 publications={filteredPublications}
-                onOpenPublication={setSelectedPublication}
+                onOpenPublication={handleOpenPublication}
                 onEditPublication={canManage ? openEditForm : undefined}
                 onDuplicatePublication={canManage ? openDuplicateForm : undefined}
                 getClientId={getClientId}
@@ -617,7 +634,7 @@ export function CalendarScreen({
             ) : (
               <AgendaListView
                 publications={listPublications}
-                onOpenPublication={setSelectedPublication}
+                onOpenPublication={handleOpenPublication}
                 onEditPublication={canManage ? openEditForm : undefined}
                 onDuplicatePublication={canManage ? openDuplicateForm : undefined}
                 getClientId={getClientId}
@@ -633,7 +650,7 @@ export function CalendarScreen({
               <MobileMonthView
                 anchorDate={anchorDate}
                 publications={filteredPublications}
-                onOpenPublication={setSelectedPublication}
+                onOpenPublication={handleOpenPublication}
                 onEditPublication={canManage ? openEditForm : undefined}
                 onDuplicatePublication={canManage ? openDuplicateForm : undefined}
                 getClientId={getClientId}
@@ -646,7 +663,7 @@ export function CalendarScreen({
                 mode={view === "list" ? "list" : "week"}
                 days={view === "list" ? listDays : agendaDays}
                 publications={view === "list" ? listPublications : filteredPublications}
-                onOpenPublication={setSelectedPublication}
+                onOpenPublication={handleOpenPublication}
                 onEditPublication={canManage ? openEditForm : undefined}
                 onDuplicatePublication={canManage ? openDuplicateForm : undefined}
                 getClientId={getClientId}
@@ -663,6 +680,16 @@ export function CalendarScreen({
           onEdit={canManage ? openEditForm : undefined}
           onDuplicate={canManage ? openDuplicateForm : undefined}
         />
+        {viewPublication && (
+          <PublicationView
+            key={viewPublication.id}
+            publication={viewPublication}
+            onOpenChange={(open) => !open && setViewPublication(null)}
+            calendars={viewCalendars}
+            clientAccounts={viewClientAccounts}
+            campaigns={viewCampaigns}
+          />
+        )}
         {canManage && (
           <PublicationForm
             key={formKey}

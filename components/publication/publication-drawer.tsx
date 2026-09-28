@@ -250,7 +250,7 @@ export function PublicationDrawer({ publication, onOpenChange, onEdit, onDuplica
  * componente entero, así el estado vuelve solo a "cargando" sin necesidad de resetearlo a mano dentro
  * del efecto (evita el warning de setState síncrono en el cuerpo de un effect).
  */
-function ClientNotificationSection({ publicationId, clientId }: { publicationId: string; clientId: string }) {
+export function ClientNotificationSection({ publicationId, clientId }: { publicationId: string; clientId: string }) {
   // undefined = cargando, null = nunca se envió, string = fecha ISO del último envío exitoso.
   const [lastNotifiedAt, setLastNotifiedAt] = useState<string | null | undefined>(undefined);
   const [notifying, setNotifying] = useState(false);

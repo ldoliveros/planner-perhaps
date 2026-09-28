@@ -14,6 +14,11 @@ interface CopyEditorProps {
   id: string;
   name: string;
   defaultValue: string;
+  /** Opcional: notifica cada cambio de valor (además del propio input nativo del form) — lo usa
+   * PublicationView para su comparación de "cambios sin guardar". PublicationForm no lo pasa y sigue
+   * funcionando exactamente igual (el Textarea nativo con `name` sigue siendo la fuente de verdad al
+   * enviar el form). */
+  onChange?: (value: string) => void;
 }
 
 function lineBoundsAround(value: string, start: number, end: number) {
@@ -35,13 +40,17 @@ function stripListPrefix(line: string): string {
  * La toolbar solo ayuda a construir el string: nunca guarda HTML/Markdown,
  * nunca convierte a rich text. Todas las inserciones son cursor-aware.
  */
-export function CopyEditor({ id, name, defaultValue }: CopyEditorProps) {
+export function CopyEditor({ id, name, defaultValue, onChange }: CopyEditorProps) {
   // El <textarea> del DOM normaliza \r\n/\r a \n en su .value (selectionStart/End
   // se calculan sobre esa versión normalizada). Si el estado de React conservara los
   // \r originales (p. ej. un Copy guardado antes con saltos de línea estilo Windows),
   // los índices de cursor quedarían desalineados y las inserciones/listas cortarían
   // el texto en la posición equivocada. Se normaliza una sola vez, al cargar.
-  const [value, setValue] = useState(() => defaultValue.replace(/\r\n?/g, "\n"));
+  const [value, setValueRaw] = useState(() => defaultValue.replace(/\r\n?/g, "\n"));
+  function setValue(next: string) {
+    setValueRaw(next);
+    onChange?.(next);
+  }
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { copied, copy: copyText } = useCopyToClipboard();
 
