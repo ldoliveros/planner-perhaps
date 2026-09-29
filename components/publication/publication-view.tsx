@@ -39,6 +39,21 @@ import type { Calendar, Campaign, ClientAccount, Publication, PublicationDestina
 
 const INITIAL_STATE: PublicationFormState = { error: null, savedAt: null };
 const MAX_CAROUSEL_IMAGES = 10;
+/** Límite por request de archivos NUEVOS (Netlify corta con 413 apenas arriba de ~4.5 MB por request;
+ * 4 MiB deja margen para el resto del FormData). Las imágenes ya guardadas (assetId) no viajan, no cuentan. */
+const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
+
+function formatMegabytes(bytes: number): string {
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function fileTooLargeMessage(file: File): string {
+  return `"${file.name}" pesa ${formatMegabytes(file.size)} y el máximo por archivo es 4 MB.`;
+}
+
+function totalTooLargeMessage(totalBytes: number): string {
+  return `Las imágenes nuevas suman ${formatMegabytes(totalBytes)} y el máximo por guardado es 4 MB. Quitá imágenes o guardá en tandas — las imágenes ya guardadas no cuentan.`;
+}
 
 interface PublicationViewProps {
   clientId: string;
@@ -174,6 +189,7 @@ export function PublicationView({
   // Eliminar — misma action/confirmación que el menú "..." de la card (ver
   // deletePublication), sin lógica de borrado nueva. Solo aplica a edit (publication existente).
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -384,9 +400,44 @@ export function PublicationView({
     onDeleted?.(publication.id);
   }
 
+  /** Archivos nuevos que viajarían en este guardado (solo el input montado para el modo actual se envía). */
+  function pendingUploadFiles(): File[] {
+    if (isCarouselMode) return carouselImages.flatMap((img) => (img.file ? [img.file] : []));
+    return thumbnailFile ? [thumbnailFile] : [];
+  }
+
+  /** Revalida el límite justo antes de enviar — si falla, no se abre la aprobación ni sale el request. */
+  function uploadLimitError(): string | null {
+    const files = pendingUploadFiles();
+    const tooLarge = files.find((f) => f.size > MAX_UPLOAD_BYTES);
+    if (tooLarge) return fileTooLargeMessage(tooLarge);
+    const total = files.reduce((sum, f) => sum + f.size, 0);
+    return total > MAX_UPLOAD_BYTES ? totalTooLargeMessage(total) : null;
+  }
+
+  function blockIfOverUploadLimit(e: React.SyntheticEvent): boolean {
+    const error = uploadLimitError();
+    if (!error) return false;
+    e.preventDefault();
+    setUploadError(error);
+    toast.error("Las imágenes superan el límite", error);
+    return true;
+  }
+
   function handleThumbnailChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
+    if (file && file.size > MAX_UPLOAD_BYTES) {
+      // Restaura en el input la portada elegida antes (si había), así no se pierde ni viaja la rechazada.
+      const dataTransfer = new DataTransfer();
+      if (thumbnailFile) dataTransfer.items.add(thumbnailFile);
+      e.target.files = dataTransfer.files;
+      const error = fileTooLargeMessage(file);
+      setUploadError(error);
+      toast.error("Imagen demasiado pesada", error);
+      return;
+    }
     if (file) {
+      setUploadError(null);
       setThumbnailFile(file);
       setThumbnailPreview(URL.createObjectURL(file));
     }
@@ -409,7 +460,22 @@ export function PublicationView({
     const files = e.target.files;
     if (!files || files.length === 0) return;
     const room = MAX_CAROUSEL_IMAGES - carouselImages.length;
-    const toAdd = Array.from(files).slice(0, room);
+    // Se agregan solo las que entran en el límite (por archivo y total de nuevas); las ya cargadas se conservan.
+    let total = pendingUploadFiles().reduce((sum, f) => sum + f.size, 0);
+    const toAdd: File[] = [];
+    let error: string | null = null;
+    for (const file of Array.from(files).slice(0, room)) {
+      if (file.size > MAX_UPLOAD_BYTES) {
+        error ??= fileTooLargeMessage(file);
+      } else if (total + file.size > MAX_UPLOAD_BYTES) {
+        error ??= totalTooLargeMessage(total + file.size);
+      } else {
+        total += file.size;
+        toAdd.push(file);
+      }
+    }
+    setUploadError(error);
+    if (error) toast.error("Algunas imágenes no se agregaron", error);
     setCarouselImages((prev) => [
       ...prev,
       ...toAdd.map((file) => ({
@@ -423,6 +489,7 @@ export function PublicationView({
   }
 
   function removeCarouselImage(key: string) {
+    setUploadError(null);
     setCarouselImages((prev) => {
       const removedImg = prev.find((img) => img.key === key);
       if (removedImg?.file) URL.revokeObjectURL(removedImg.url);
@@ -454,6 +521,7 @@ export function PublicationView({
    * campos ya son controlados, así que no hace falta leer FormData para saber el estado elegido. Solo
    * aplica a Editar (publication existente): crear directo en Aprobado no es una "transición". */
   async function handleSaveClick(e: React.MouseEvent) {
+    if (blockIfOverUploadLimit(e)) return;
     if (skipApproveCheckRef.current) {
       skipApproveCheckRef.current = false;
       return;
@@ -619,7 +687,12 @@ export function PublicationView({
           ) : (
           <div className="grid grid-rows-[1fr_auto] overflow-hidden">
             <div className="flex flex-col gap-5 overflow-y-auto p-5">
-              <form ref={formRef} id="pv-form" action={formAction} className="flex flex-col gap-5">
+              <form
+                ref={formRef}
+                id="pv-form"
+                action={formAction}
+                onSubmit={(e) => blockIfOverUploadLimit(e)}
+                className="flex flex-col gap-5">
                 {publication && <input type="hidden" name="id" value={publication.id} />}
                 <input type="hidden" name="campaignId" value={campaignId} readOnly />
               <input type="hidden" name="destinations" value={JSON.stringify(destinations)} readOnly />
@@ -904,6 +977,7 @@ export function PublicationView({
                 </div>
               )}
 
+              {uploadError && <p className="text-sm text-destructive">{uploadError}</p>}
               {state.error && <p className="text-sm text-destructive">{state.error}</p>}
               </form>
 
