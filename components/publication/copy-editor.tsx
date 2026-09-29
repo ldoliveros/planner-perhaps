@@ -15,9 +15,8 @@ interface CopyEditorProps {
   name: string;
   defaultValue: string;
   /** Opcional: notifica cada cambio de valor (además del propio input nativo del form) — lo usa
-   * PublicationView para su comparación de "cambios sin guardar". PublicationForm no lo pasa y sigue
-   * funcionando exactamente igual (el Textarea nativo con `name` sigue siendo la fuente de verdad al
-   * enviar el form). */
+   * PublicationView para su comparación de "cambios sin guardar" (el Textarea nativo con `name` sigue
+   * siendo la fuente de verdad al enviar el form). */
   onChange?: (value: string) => void;
 }
 

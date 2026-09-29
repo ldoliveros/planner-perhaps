@@ -54,9 +54,9 @@ interface PublicationQuickActionsProps {
 /**
  * Menú `•••` reutilizado por Semana/Mes/Lista (Bloque C). Centraliza Editar,
  * Duplicar, Compartir, Cambiar fecha, Cambiar estado y Eliminar en un solo componente — Editar/Duplicar
- * delegan al PublicationForm existente vía callbacks (vive un nivel arriba,
+ * delegan a PublicationView vía callbacks (vive un nivel arriba,
  * en CalendarScreen); Cambiar estado y Eliminar son autosuficientes acá,
- * mismo patrón que ya usaban el drawer y el propio formulario. Compartir no modifica contenido, así que
+ * mismo patrón que usa PublicationView. Compartir no modifica contenido, así que
  * está disponible también en solo lectura (Client User): ahí es la única acción del menú.
  */
 export function PublicationQuickActions({ publication, clientId, onEdit, onDuplicate, onDeleted, className }: PublicationQuickActionsProps) {

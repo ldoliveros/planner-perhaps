@@ -21,7 +21,6 @@ import { MonthView } from "@/components/calendar/month-view";
 import { AgendaListView } from "@/components/calendar/agenda-list-view";
 import { MobileAgendaView } from "@/components/calendar/mobile-agenda-view";
 import { MobileMonthView } from "@/components/calendar/mobile-month-view";
-import { PublicationForm } from "@/components/publication/publication-form";
 import { PublicationView } from "@/components/publication/publication-view";
 import { PublicationClientPicker } from "@/components/calendar/publication-client-picker";
 import { LookupsProvider } from "@/components/providers/lookups-provider";
@@ -98,7 +97,7 @@ export function CalendarScreen({
   // bifurcar, tanto para el header como para el acento de fin de semana en Semana/Mes.
   const client = global ? GLOBAL_BRAND : clientProp!;
   const canManage = !readOnly;
-  // Crear ahora también está disponible en Publicaciones global para staff (ver useIntegratedView / modo
+  // Crear ahora también está disponible en Publicaciones global para staff (ver el modo
   // create de PublicationView, con un selector de cliente previo — Publicaciones no tiene uno fijo).
   // Exportar CSV sigue siendo exclusivo del Planner de un cliente.
   const canCreatePublication = canManage;
@@ -224,27 +223,41 @@ export function CalendarScreen({
   // Deep-link (Compartir, vía /p/<id>): ?publication=<id> abre la Vista de Publicación directo al montar (lectura
   // única — no reacciona a cambios posteriores del param). `publications` ya viene filtrada por RLS, así que un id
   // ajeno o inexistente simplemente no aparece: no se muestra nada y se avisa (ver el efecto de abajo).
+  // ?duplicate=<id> (link legacy): misma lectura única, abre la Vista en modo duplicar. Solo staff — para
+  // Client User se ignora (el efecto de abajo lo limpia sin avisar) — y si llega junto a ?publication=, gana
+  // ?publication=.
   const [shared] = useState(() => {
     const id = searchParams.get("publication");
-    return { id, publication: id ? (effectivePublications.find((p) => p.id === id) ?? null) : null };
+    const duplicateId = !id && canManage ? searchParams.get("duplicate") : null;
+    return {
+      id,
+      publication: id ? (effectivePublications.find((p) => p.id === id) ?? null) : null,
+      duplicateId,
+      duplicateFrom: duplicateId ? (effectivePublications.find((p) => p.id === duplicateId) ?? null) : null,
+    };
   });
   const [anchorDate, setAnchorDate] = useState(() =>
     shared.publication ? new Date(`${shared.publication.publicationDate}T00:00:00`) : new Date()
   );
   const [filters, setFilters] = useState<CalendarFiltersState>(EMPTY_FILTERS);
-  const missingSharedPublication = useRef(Boolean(shared.id) && !shared.publication);
+  const missingSharedPublication = useRef(
+    (Boolean(shared.id) && !shared.publication) || (Boolean(shared.duplicateId) && !shared.duplicateFrom)
+  );
   // Vista de Publicación integrada: staff (Editar/Duplicar/Crear), tanto en Publicaciones global como en el
   // Planner de un cliente. Client User (readOnly) también la abre al hacer click, pero en modo solo lectura
   // (ver handleOpenPublication), igual que el deep-link ?publication= (staff editable, Client User read-only).
-  const useIntegratedView = canManage;
   // Editar: { publication }. Duplicar: { duplicateFrom }. Crear: ninguno de los dos — PublicationView
-  // deriva su modo de cuál de las dos props llega, igual que ya hacía PublicationForm.
+  // deriva su modo de cuál de las dos props llega.
   const [viewState, setViewState] = useState<{
     publication?: Publication;
     duplicateFrom?: Publication;
     clientId: string;
     defaultDate?: string;
-  } | null>(() => (shared.publication ? { publication: shared.publication, clientId: shared.publication.clientId } : null));
+  } | null>(() => {
+    if (shared.publication) return { publication: shared.publication, clientId: shared.publication.clientId };
+    if (shared.duplicateFrom) return { duplicateFrom: shared.duplicateFrom, clientId: shared.duplicateFrom.clientId };
+    return null;
+  });
   // Se incrementa en cada apertura (mismo rol que key={publication.id} antes): fuerza remontar
   // PublicationView para que su estado "original" de dirty-check arranque limpio en cada target nuevo,
   // incluida Crear, que no tiene un id propio del cual derivar una key.
@@ -264,21 +277,6 @@ export function CalendarScreen({
     setViewState({ clientId: pickedClientId, defaultDate: pendingCreateDate });
     setPendingCreateDate(undefined);
   }
-  // Deep-link desde /admin/publications: ?duplicate=<id> abre el form ya precargado como duplicado (misma
-  // lectura única que ?publication=, al montar). `clientId` fija a qué cliente pertenece el formulario (en
-  // Publicaciones global cada publicación puede ser de un cliente distinto; ver openEditForm/openDuplicateForm).
-  const [formState, setFormState] = useState<{
-    open: boolean;
-    publication?: Publication;
-    duplicateFrom?: Publication;
-    defaultDate?: string;
-    clientId: string;
-  }>(() => {
-    const targetId = searchParams.get("duplicate");
-    const duplicateFrom = targetId ? (effectivePublications.find((p) => p.id === targetId) ?? undefined) : undefined;
-    return { open: Boolean(duplicateFrom), duplicateFrom, clientId: duplicateFrom?.clientId ?? client.id };
-  });
-  const [formKey, setFormKey] = useState(0);
 
   // "Hoy": en Semana/Mes lleva el período visible a hoy (como siempre); en Lista, además, restablece Desde/Hasta
   // al rango por defecto alrededor de la fecha actual (el mes calendario que contiene hoy — mismo criterio que
@@ -468,78 +466,56 @@ export function CalendarScreen({
     }
   }
 
-  // CASO 1: un solo calendario activo -> se precarga. CASO 2: varios o ninguno -> el form pide elegir.
-  const defaultCalendarId = visibleCalendars.length === 1 ? visibleCalendars[0].id : undefined;
-
   function openCreateForm(day?: Date) {
     const defaultDateStr = day ? format(day, "yyyy-MM-dd") : undefined;
-    if (useIntegratedView) {
-      // Planner de un cliente: el cliente ya está fijo, sin selector previo.
-      if (!isGlobal) {
-        setViewKey((k) => k + 1);
-        setViewState({ clientId: client.id, defaultDate: defaultDateStr });
-        return;
-      }
-      // Publicaciones (global): sin cliente fijo — con exactamente 1 cliente accesible no hace falta
-      // preguntar; si hay más, se resuelve con el selector (ver handleClientPicked).
-      const accessibleClients = global?.clients ?? [];
-      if (accessibleClients.length === 1) {
-        setViewKey((k) => k + 1);
-        setViewState({ clientId: accessibleClients[0].id, defaultDate: defaultDateStr });
-        return;
-      }
-      setPendingCreateDate(defaultDateStr);
-      setClientPickerOpen(true);
+    // Planner de un cliente: el cliente ya está fijo, sin selector previo.
+    if (!isGlobal) {
+      setViewKey((k) => k + 1);
+      setViewState({ clientId: client.id, defaultDate: defaultDateStr });
       return;
     }
-    setFormKey((k) => k + 1);
-    setFormState({ open: true, publication: undefined, defaultDate: defaultDateStr, clientId: client.id });
+    // Publicaciones (global): sin cliente fijo — con exactamente 1 cliente accesible no hace falta
+    // preguntar; si hay más, se resuelve con el selector (ver handleClientPicked).
+    const accessibleClients = global?.clients ?? [];
+    if (accessibleClients.length === 1) {
+      setViewKey((k) => k + 1);
+      setViewState({ clientId: accessibleClients[0].id, defaultDate: defaultDateStr });
+      return;
+    }
+    setPendingCreateDate(defaultDateStr);
+    setClientPickerOpen(true);
   }
 
   function openEditForm(publication: Publication) {
-    if (useIntegratedView) {
-      setViewKey((k) => k + 1);
-      setViewState({ publication, clientId: publication.clientId });
-      return;
-    }
-    setFormKey((k) => k + 1);
-    setFormState({ open: true, publication, clientId: publication.clientId });
+    setViewKey((k) => k + 1);
+    setViewState({ publication, clientId: publication.clientId });
   }
 
   function openDuplicateForm(publication: Publication) {
-    if (useIntegratedView) {
-      setViewKey((k) => k + 1);
-      setViewState({ duplicateFrom: publication, clientId: publication.clientId });
-      return;
-    }
-    setFormKey((k) => k + 1);
-    setFormState({ open: true, duplicateFrom: publication, clientId: publication.clientId });
+    setViewKey((k) => k + 1);
+    setViewState({ duplicateFrom: publication, clientId: publication.clientId });
   }
 
-  // Publicaciones (global): el formulario de editar/duplicar necesita los calendarios/cuentas/campañas del
-  // cliente DUEÑO de esa publicación puntual, no de todos los clientes — se filtran del catálogo global acá.
-  const formCalendars = isGlobal ? calendars.filter((c) => c.clientId === formState.clientId) : calendars;
-  const formClientAccounts = isGlobal ? clientAccounts.filter((a) => a.clientId === formState.clientId) : clientAccounts;
-  const formCampaigns = isGlobal ? campaigns.filter((c) => c.clientId === formState.clientId) : campaigns;
-
-  // Misma lógica de arriba, para la Vista de Publicación integrada (en el Planner de un cliente todo ya es de
-  // ese cliente, así que el filtro es inocuo):
+  // Publicaciones (global): la Vista de Publicación necesita los calendarios/cuentas/campañas del cliente
+  // DUEÑO de esa publicación puntual, no de todos los clientes — se filtran del catálogo global acá (en el
+  // Planner de un cliente todo ya es de ese cliente, así que el filtro es inocuo):
   // el cliente sale de `publication`/`duplicateFrom` en Editar/Duplicar, o del clientId ya resuelto por el
   // selector previo en Crear — en los 3 casos `viewState.clientId` ya llega determinado.
   const viewCalendars = calendars.filter((c) => c.clientId === viewState?.clientId);
   const viewClientAccounts = clientAccounts.filter((a) => a.clientId === viewState?.clientId);
   const viewCampaigns = campaigns.filter((c) => c.clientId === viewState?.clientId);
-  // CASO 1: un solo calendario activo del cliente elegido -> se precarga (mismo criterio que
-  // `defaultCalendarId` arriba, pero acotado al cliente de la vista en vez de al filtro de calendarios).
+  // CASO 1: un solo calendario activo del cliente elegido -> se precarga. CASO 2: varios o ninguno -> la
+  // vista pide elegir.
   const viewActiveCalendars = viewCalendars.filter((c) => c.status !== "archived");
   const viewDefaultCalendarId = viewActiveCalendars.length === 1 ? viewActiveCalendars[0].id : undefined;
 
   // El parámetro se consume al montar: si abrió la Vista de Publicación, se limpia de la URL enseguida para que
   // recargar o copiar la barra no vuelva a abrirla. Si el id no existe o no es accesible, se avisa una sola vez y
   // también se limpia. History API nativa (no router.replace): no debe volver a pedir el planner entero, igual
-  // que el cambio de vista de arriba.
+  // que el cambio de vista de arriba. ?duplicate= sigue el mismo camino; para Client User se limpia sin avisar
+  // (nunca se intentó abrir, ver `shared`).
   useEffect(() => {
-    if (!searchParams.has("publication")) return;
+    if (!searchParams.has("publication") && !searchParams.has("duplicate")) return;
     if (missingSharedPublication.current) {
       missingSharedPublication.current = false;
       // Un tick después: el Toaster (padre) se suscribe al manager en un efecto que corre después de los de sus
@@ -549,11 +525,11 @@ export function CalendarScreen({
         0
       );
     }
-    replaceSearchParams(pathname, searchParams, { publication: null });
+    replaceSearchParams(pathname, searchParams, { publication: null, duplicate: null });
   }, [searchParams, pathname]);
 
   usePlannerShortcuts({
-    overlayOpen: formState.open || viewState !== null || clientPickerOpen,
+    overlayOpen: viewState !== null || clientPickerOpen,
     onNewPublication: canCreatePublication ? () => openCreateForm() : undefined,
     onPrevWeek: () => setAnchorDate((d) => (view === "month" ? addMonths(d, -1) : addWeeks(d, -1))),
     onNextWeek: () => setAnchorDate((d) => (view === "month" ? addMonths(d, 1) : addWeeks(d, 1))),
@@ -749,8 +725,7 @@ export function CalendarScreen({
         )}
         {viewState && (
           <PublicationView
-            // Prefijo: es hermano de PublicationForm (key={formKey}); con el deep-link ambos arrancan en 0.
-            key={`view-${viewKey}`}
+            key={viewKey}
             clientId={viewState.clientId}
             publication={viewState.publication}
             duplicateFrom={viewState.duplicateFrom}
@@ -771,21 +746,6 @@ export function CalendarScreen({
             onOpenChange={setClientPickerOpen}
             clients={global.clients}
             onSelect={handleClientPicked}
-          />
-        )}
-        {canManage && (
-          <PublicationForm
-            key={formKey}
-            open={formState.open}
-            onOpenChange={(open) => setFormState((prev) => ({ ...prev, open }))}
-            clientId={formState.clientId}
-            calendars={formCalendars}
-            clientAccounts={formClientAccounts}
-            campaigns={formCampaigns}
-            defaultCalendarId={defaultCalendarId}
-            publication={formState.publication}
-            duplicateFrom={formState.duplicateFrom}
-            defaultDate={formState.defaultDate}
           />
         )}
       </div>

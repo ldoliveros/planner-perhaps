@@ -24,7 +24,7 @@ interface CampaignSelectProps {
  * Selector de Campaña: "Sin campaña" + campañas activas del cliente (más la
  * actual aunque esté archivada, para no perder la asociación al editar una
  * publicación histórica) + "+ Nueva campaña". El valor real para el form se
- * envía vía el hidden input que arma PublicationForm — este componente solo
+ * envía vía el hidden input que arma PublicationView — este componente solo
  * expone ids reales a onChange (nunca los sentinels internos del Select).
  */
 export function CampaignSelect({ clientId, campaigns, value, onChange, onCreated }: CampaignSelectProps) {

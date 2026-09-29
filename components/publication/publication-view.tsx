@@ -23,7 +23,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { CampaignSelect } from "@/components/publication/campaign-select";
 import { CopyBlock } from "@/components/publication/copy-block";
 import { CopyEditor } from "@/components/publication/copy-editor";
-import { ClientNotificationSection } from "@/components/publication/publication-drawer";
+import { ClientNotificationSection } from "@/components/publication/client-notification-section";
 import { renderPublicationPreview, isPreviewSupported } from "@/components/publication/previews/registry";
 import { StatusPill } from "@/components/shared/status-pill";
 import { PlatformIcon } from "@/components/icons/brand-icons";
@@ -93,10 +93,10 @@ function carouselSignatureOf(images: CarouselImage[]): string {
 /**
  * Vista de Publicación integrada: preview + datos + edición en un solo lugar, sin un segundo "modo
  * editar" — toda esta vista ES el formulario, en sus 3 modos (edit/duplicate/create, derivados de qué
- * props llegan: `publication` = edit, `duplicateFrom` = duplicate, ninguno = create — mismo criterio que
- * ya usaba PublicationForm). Reutiliza savePublication tal cual (mismo contrato de campos, y la misma
- * bifurcación INSERT/UPDATE por presencia del input oculto "id"). Se monta con key desde el caller (mismo
- * patrón que ClientNotificationSection en el drawer): abrir para un target nuevo remonta el componente
+ * props llegan: `publication` = edit, `duplicateFrom` = duplicate, ninguno = create).
+ * Reutiliza savePublication tal cual (mismo contrato de campos, y la misma
+ * bifurcación INSERT/UPDATE por presencia del input oculto "id"). Se monta con key desde el caller (ver
+ * viewKey en CalendarScreen): abrir para un target nuevo remonta el componente
  * entero, así el estado "original" para dirty-check arranca limpio sin necesitar sincronizarlo en un efecto.
  */
 export function PublicationView({
@@ -124,12 +124,12 @@ export function PublicationView({
   const carouselFilesInputRef = useRef<HTMLInputElement>(null);
   const submitButtonRef = useRef<HTMLButtonElement>(null);
 
-  // Duplicar deliberadamente NO copia media (mismo comportamiento que ya tenía PublicationForm): el
+  // Duplicar deliberadamente NO copia media a propósito: el
   // primaryAsset sale SOLO de `publication` (edit), nunca de `duplicateFrom`.
   const primaryAsset = publication?.assets.find((a) => a.isPrimary) ?? publication?.assets[0] ?? null;
   const firstStatusId = statuses.find((s) => s.order === 1)?.id ?? "";
 
-  // Valores iniciales — mismos defaults que PublicationForm para los 3 modos (ver ese componente):
+  // Valores iniciales — para los 3 modos:
   // edit lee de `publication`, duplicate precarga desde `duplicateFrom` (salvo fecha/hora/Drive/media,
   // que arrancan vacíos a propósito), create usa defaultCalendarId/defaultDate o vacío.
   const initialCalendarId = publication?.calendarId ?? duplicateFrom?.calendarId ?? defaultCalendarId ?? "";
@@ -171,7 +171,7 @@ export function PublicationView({
   const notifyAfterSaveRef = useRef(false);
   const skipApproveCheckRef = useRef(false);
 
-  // Eliminar — misma action/confirmación que ya usan PublicationForm y el menú "..." de la card (ver
+  // Eliminar — misma action/confirmación que el menú "..." de la card (ver
   // deletePublication), sin lógica de borrado nueva. Solo aplica a edit (publication existente).
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -255,7 +255,7 @@ export function PublicationView({
   const carouselDirty = isCarouselMode && carouselSignatureOf(carouselImages) !== originalCarouselSignature;
   const isDirty = thumbnailFile !== null || carouselDirty || JSON.stringify(current) !== JSON.stringify(original);
   // Crear/Duplicar siempre pueden intentar guardar (la validación de campos obligatorios la hace el
-  // required nativo + savePublication, igual que ya hacía PublicationForm) — el gate por "sin cambios" es
+  // required nativo + savePublication) — el gate por "sin cambios" es
   // exclusivo de Editar, donde no tiene sentido reenviar una publicación intacta.
   const canSubmit = publication ? isDirty : true;
 
@@ -322,8 +322,7 @@ export function PublicationView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.savedAt]);
 
-  // Crear/Duplicar: la fila nueva se cierra apenas se guarda (mismo comportamiento que ya tenía
-  // PublicationForm en este caso) — el Publication recién creado que ahora devuelve savePublication es lo
+  // Crear/Duplicar: la fila nueva se cierra apenas se guarda — el Publication recién creado que ahora devuelve savePublication es lo
   // que permite a calendar-screen agregarlo a su lista local sin depender de router.refresh().
   useEffect(() => {
     if (publication) return;
@@ -344,7 +343,7 @@ export function PublicationView({
     onOpenChange(false);
   }
 
-  // Ctrl/Cmd+S — mismo atajo que PublicationForm, pero disparando un click real sobre el botón de submit
+  // Ctrl/Cmd+S — disparando un click real sobre el botón de submit
   // (en vez de formRef.current?.requestSubmit(), que en Form salta directo al submit nativo) para que pase
   // por el mismo handleSaveClick de abajo y respete la interceptación "¡Lista para publicar!" también acá.
   // Bloqueado mientras haya cualquier AlertDialog abierto, para no competir con esos flujos.
@@ -363,7 +362,7 @@ export function PublicationView({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [readOnly, isPending, canSubmit, confirmCloseOpen, approveNotifyOpen, deleteOpen]);
 
-  /** Reutiliza deletePublication tal cual (misma action que PublicationForm y el menú de la card). Cierra
+  /** Reutiliza deletePublication tal cual (misma action que el menú de la card). Cierra
    * PublicationView llamando a onOpenChange (la prop) directamente, NO a requestClose(): así el dirty
    * state de los campos nunca dispara una segunda confirmación después de ya haber confirmado el borrado.
    * Solo alcanzable en Editar — el botón que abre este diálogo está oculto en Crear/Duplicar. */
@@ -451,7 +450,7 @@ export function PublicationView({
     if (!Number.isNaN(source) && source !== index) moveCarouselImage(source, index);
   }
 
-  /** Misma interceptación "¡Lista para publicar!" que en el menú rápido y en PublicationForm — acá los
+  /** Misma interceptación "¡Lista para publicar!" que en el menú rápido — acá los
    * campos ya son controlados, así que no hace falta leer FormData para saber el estado elegido. Solo
    * aplica a Editar (publication existente): crear directo en Aprobado no es una "transición". */
   async function handleSaveClick(e: React.MouseEvent) {
@@ -1011,8 +1010,8 @@ export function PublicationView({
   );
 }
 
-/** Columna derecha de PublicationView en readOnly (Client User): mismos datos y componentes que el cuerpo
- * de PublicationDrawer (badges de destinos, StatusPill, CopyBlock, CTA/URL, Drive), sin notas internas. */
+/** Columna derecha de PublicationView en readOnly (Client User): mismos datos y componentes que la vista
+ * de staff (badges de destinos, StatusPill, CopyBlock, CTA/URL, Drive), sin notas internas. */
 function PublicationReadOnlyDetails({
   publication,
   calendars,
