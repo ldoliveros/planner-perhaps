@@ -75,6 +75,22 @@ export async function savePublication(
     return { error: "Elegí al menos un canal de destino.", savedAt: null };
   }
 
+  // Carrusel: se valida ANTES de escribir nada. Un input file vacío igual viaja como un File de size 0
+  // (p. ej. si el <form> se reseteó tras un guardado fallido), así que se descartan; y si el manifest
+  // referencia un archivo que no llegó, se corta acá en vez de dejar la publicación guardada a medias.
+  const carouselManifestRaw = formData.get("carouselManifest");
+  const manifest = parseJsonArray<CarouselSlotInput>(carouselManifestRaw);
+  const newFiles = formData.getAll("carouselImages").filter((f): f is File => f instanceof File && f.size > 0);
+  if (carouselManifestRaw !== null) {
+    if (manifest.length > MAX_CAROUSEL_IMAGES) {
+      return { error: `Un carrusel admite hasta ${MAX_CAROUSEL_IMAGES} imágenes.`, savedAt: null };
+    }
+    const missingFile = manifest.some((slot) => !slot.assetId && typeof slot.fileIndex === "number" && !newFiles[slot.fileIndex]);
+    if (missingFile) {
+      return { error: "No llegaron algunas imágenes nuevas del carrusel. Volvé a intentar el guardado.", savedAt: null };
+    }
+  }
+
   const supabase = await createClient();
   const publicationPayload = {
     calendar_id: calendarId,
@@ -131,7 +147,6 @@ export async function savePublication(
   );
   if (insertDestError) return { error: insertDestError.message, savedAt: null };
 
-  const carouselManifestRaw = formData.get("carouselManifest");
   let responseAssets: PublicationAsset[] | undefined;
 
   if (carouselManifestRaw !== null) {
@@ -139,12 +154,6 @@ export async function savePublication(
     // existente que se conserva/reordena (assetId) o un File nuevo a subir en esa posición (fileIndex).
     // Cambio mínimo sobre el esquema actual: sigue siendo N filas en publication_assets, solo que ahora
     // puede haber más de una por publicación (la tabla ya lo soportaba, sort_order/is_primary incluidos).
-    const manifest = parseJsonArray<CarouselSlotInput>(carouselManifestRaw);
-    if (manifest.length > MAX_CAROUSEL_IMAGES) {
-      return { error: `Un carrusel admite hasta ${MAX_CAROUSEL_IMAGES} imágenes.`, savedAt: null };
-    }
-    const newFiles = formData.getAll("carouselImages").filter((f): f is File => f instanceof File);
-
     const { data: existingAssets, error: existingAssetsError } = await supabase
       .from("publication_assets")
       .select("id, thumbnail_url")

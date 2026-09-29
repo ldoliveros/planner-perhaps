@@ -443,17 +443,32 @@ export function PublicationView({
     }
   }
 
-  // El input real que viaja en el <form> (name="carouselImages") se sincroniza acá vía DataTransfer con
-  // los File de las imágenes nuevas, en el orden actual — los inputs nativos no aceptan asignar un
-  // FileList arbitrario directamente, pero sí `.files` construido con DataTransfer.
-  useEffect(() => {
-    const input = carouselFilesInputRef.current;
-    if (!input) return;
-    const dataTransfer = new DataTransfer();
-    for (const img of carouselImages) {
-      if (img.file) dataTransfer.items.add(img.file);
+  // Los inputs file reales que viajan en el <form> (name="carouselImages" / name="thumbnail") se
+  // sincronizan desde el state vía DataTransfer — los inputs nativos no aceptan asignar un FileList
+  // arbitrario directamente, pero sí `.files` construido con DataTransfer. Se llama al cambiar el
+  // carrusel y también justo antes de cada submit: React 19 resetea el <form action> al terminar la
+  // action (incluso si devolvió error), lo que vacía estos inputs sin que el state cambie, y el
+  // reintento viajaría sin las imágenes.
+  function syncFileInputs() {
+    const carouselInput = carouselFilesInputRef.current;
+    if (carouselInput) {
+      const dataTransfer = new DataTransfer();
+      for (const img of carouselImages) {
+        if (img.file) dataTransfer.items.add(img.file);
+      }
+      carouselInput.files = dataTransfer.files;
     }
-    input.files = dataTransfer.files;
+    const thumbnailInput = thumbnailInputRef.current;
+    if (thumbnailInput) {
+      const dataTransfer = new DataTransfer();
+      if (thumbnailFile) dataTransfer.items.add(thumbnailFile);
+      thumbnailInput.files = dataTransfer.files;
+    }
+  }
+
+  useEffect(() => {
+    syncFileInputs();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [carouselImages]);
 
   function handleCarouselFilesPicked(e: React.ChangeEvent<HTMLInputElement>) {
@@ -691,7 +706,10 @@ export function PublicationView({
                 ref={formRef}
                 id="pv-form"
                 action={formAction}
-                onSubmit={(e) => blockIfOverUploadLimit(e)}
+                onSubmit={(e) => {
+                  if (blockIfOverUploadLimit(e)) return;
+                  syncFileInputs();
+                }}
                 className="flex flex-col gap-5">
                 {publication && <input type="hidden" name="id" value={publication.id} />}
                 <input type="hidden" name="campaignId" value={campaignId} readOnly />
