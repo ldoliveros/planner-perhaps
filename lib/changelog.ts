@@ -20,6 +20,70 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG: ChangelogRelease[] = [
   {
+    version: "1.5.0",
+    date: "2026-09-29",
+    entries: [
+      {
+        text: "Nueva vista de publicación: preview, datos y edición en un solo lugar, con vista previa de cómo se ve en Instagram, Facebook y LinkedIn.",
+        roles: ["super_admin", "account_manager", "client"],
+      },
+      {
+        text: "Carruseles de hasta 10 imágenes: agregalas, reordenalas arrastrando y la primera queda como portada.",
+        roles: ["super_admin", "account_manager"],
+      },
+      {
+        text: "Creá, editá, duplicá y aprobá publicaciones desde la misma vista, tanto en el Planner como en Publicaciones.",
+        roles: ["super_admin", "account_manager"],
+      },
+      {
+        text: "Clientes: las publicaciones se abren en la nueva vista en modo lectura, y los links compartidos llevan directo a ella.",
+        roles: ["super_admin", "account_manager", "client"],
+      },
+      {
+        text: "Publicaciones ahora es un calendario global con las publicaciones de todos tus clientes.",
+        roles: ["super_admin", "account_manager"],
+      },
+      {
+        text: "Aviso al cliente: al aprobar una publicación podés avisarle por email con un link directo a ella.",
+        roles: ["super_admin", "account_manager"],
+      },
+      {
+        text: "Agenda diaria opcional: recibí por email las publicaciones del día. Activala desde Mi perfil.",
+        roles: ["super_admin", "account_manager", "client"],
+      },
+      {
+        text: "Participantes y calendarios por cliente: mirá quién participa en cada cliente desde el Planner y gestioná sus calendarios desde Clientes. Las invitaciones ahora se personalizan con el cliente.",
+        roles: ["super_admin", "account_manager"],
+      },
+      {
+        text: "Navegación más rápida y sesiones más estables: ya no hace falta recargar la página después de un rato de inactividad.",
+        roles: ["super_admin", "account_manager", "client"],
+      },
+      {
+        text: "Imágenes más seguras al guardar: hasta 4 MB por guardado (las ya guardadas no cuentan), con aviso claro si te pasás, y reintentar después de un error ya no pierde las imágenes nuevas.",
+        roles: ["super_admin", "account_manager"],
+      },
+    ],
+  },
+  {
+    version: "1.4.0",
+    date: "2026-09-21",
+    entries: [
+      {
+        text: "Compartir publicaciones: copiá un link directo a cualquier publicación. Al abrirlo, cada persona llega a su Planner con la publicación abierta, incluso si antes tiene que ingresar.",
+        roles: ["super_admin", "account_manager", "client"],
+      },
+      {
+        text: "Vista Mes adaptable: cada semana aprovecha el alto disponible y, si un día tiene muchas publicaciones, podés scrollear dentro de ese día.",
+        roles: ["super_admin", "account_manager", "client"],
+      },
+      {
+        text: "Vuelve el estado Descartado, en rojo, para las publicaciones que no van a salir.",
+        roles: ["super_admin", "account_manager", "client"],
+      },
+    ],
+  },
+  {
     version: "1.3.3",
     date: "2026-09-21",
     entries: [
