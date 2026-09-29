@@ -24,6 +24,7 @@ import { MobileMonthView } from "@/components/calendar/mobile-month-view";
 import { PublicationDrawer } from "@/components/publication/publication-drawer";
 import { PublicationForm } from "@/components/publication/publication-form";
 import { PublicationView } from "@/components/publication/publication-view";
+import { PublicationClientPicker } from "@/components/calendar/publication-client-picker";
 import { LookupsProvider } from "@/components/providers/lookups-provider";
 import { formatMonthYear, formatWeekRange, getMonthGridDays, getWeekDays, isSameMonthAs } from "@/lib/date-utils";
 import { usePlannerShortcuts } from "@/lib/use-planner-shortcuts";
@@ -97,10 +98,12 @@ export function CalendarScreen({
   // GLOBAL_BRAND es un Client válido (nombre/logo/color) — el resto del archivo sigue usando `client.X` sin
   // bifurcar, tanto para el header como para el acento de fin de semana en Semana/Mes.
   const client = global ? GLOBAL_BRAND : clientProp!;
-  // Solo Publicaciones puede crear/exportar sin cliente fijo — esas acciones necesitan uno. Editar/duplicar/
-  // arrastrar sí están disponibles ahí (cada publicación ya tiene su propio cliente, resuelto más abajo).
-  const canCreateOrExport = !readOnly && !isGlobal;
   const canManage = !readOnly;
+  // Crear ahora también está disponible en Publicaciones global para staff (ver useIntegratedView / modo
+  // create de PublicationView, con un selector de cliente previo — Publicaciones no tiene uno fijo).
+  // Exportar CSV sigue siendo exclusivo del Planner de un cliente.
+  const canCreatePublication = canManage;
+  const canExport = canManage && !isGlobal;
 
   const clientAccountMap = useMemo(() => new Map(clientAccounts.map((a) => [a.id, a])), [clientAccounts]);
   const router = useRouter();
@@ -187,6 +190,23 @@ export function CalendarScreen({
   const [isLoadingRange, startRangeTransition] = useTransition();
   const effectivePublications = global ? globalPublications : publications;
 
+  // Publicaciones (global): PublicationView informa Crear/Duplicar/Editar/Eliminar apenas savePublication
+  // resuelve — parchea globalPublications directo (upsert/remove por id), sin esperar a que
+  // router.refresh() vuelva a renderizar el Server Component (ese refresh solo trae `publications` para el
+  // rango fijo "mes actual" de la página, nunca el rango que el usuario haya navegado/expandido acá).
+  const upsertGlobalPublication = useCallback((publication: Publication) => {
+    setGlobalPublications((prev) => {
+      const index = prev.findIndex((p) => p.id === publication.id);
+      if (index === -1) return [...prev, publication];
+      const next = [...prev];
+      next[index] = publication;
+      return next;
+    });
+  }, []);
+  const removeGlobalPublication = useCallback((publicationId: string) => {
+    setGlobalPublications((prev) => prev.filter((p) => p.id !== publicationId));
+  }, []);
+
   const ensureRange = useCallback(
     (from: string, to: string) => {
       if (!global || !loadedRange) return;
@@ -215,16 +235,39 @@ export function CalendarScreen({
   const [filters, setFilters] = useState<CalendarFiltersState>(EMPTY_FILTERS);
   const [selectedPublication, setSelectedPublication] = useState<Publication | null>(shared.publication);
   const missingSharedPublication = useRef(Boolean(shared.id) && !shared.publication);
-  // Vista de Publicación integrada (piloto): SOLO Publicaciones global + staff. El resto sigue abriendo
-  // PublicationDrawer sin cambios, para poder comparar ambos comportamientos (ver entry point abajo).
+  // Vista de Publicación integrada: SOLO Publicaciones global + staff (Editar/Duplicar/Crear) — el resto
+  // sigue abriendo PublicationDrawer/PublicationForm sin cambios (Planner de un cliente, fuera de scope).
   const useIntegratedView = isGlobal && canManage;
-  const [viewPublication, setViewPublication] = useState<Publication | null>(null);
+  // Editar: { publication }. Duplicar: { duplicateFrom }. Crear: ninguno de los dos — PublicationView
+  // deriva su modo de cuál de las dos props llega, igual que ya hacía PublicationForm.
+  const [viewState, setViewState] = useState<{
+    publication?: Publication;
+    duplicateFrom?: Publication;
+    clientId: string;
+    defaultDate?: string;
+  } | null>(null);
+  // Se incrementa en cada apertura (mismo rol que key={publication.id} antes): fuerza remontar
+  // PublicationView para que su estado "original" de dirty-check arranque limpio en cada target nuevo,
+  // incluida Crear, que no tiene un id propio del cual derivar una key.
+  const [viewKey, setViewKey] = useState(0);
   function handleOpenPublication(publication: Publication) {
     if (useIntegratedView) {
-      setViewPublication(publication);
+      setViewKey((k) => k + 1);
+      setViewState({ publication, clientId: publication.clientId });
     } else {
       setSelectedPublication(publication);
     }
+  }
+  // Publicaciones (global): "Nueva publicación" no tiene un cliente fijo de antemano (a diferencia de
+  // Editar/Duplicar, que lo resuelven de la publicación de origen) — este selector previo lo resuelve
+  // antes de abrir PublicationView en modo create (ver openCreateForm/handleClientPicked abajo).
+  const [clientPickerOpen, setClientPickerOpen] = useState(false);
+  const [pendingCreateDate, setPendingCreateDate] = useState<string | undefined>(undefined);
+  function handleClientPicked(pickedClientId: string) {
+    setClientPickerOpen(false);
+    setViewKey((k) => k + 1);
+    setViewState({ clientId: pickedClientId, defaultDate: pendingCreateDate });
+    setPendingCreateDate(undefined);
   }
   // Deep-link desde /admin/publications: ?duplicate=<id> abre el form ya precargado como duplicado (misma
   // lectura única que ?publication=, al montar). `clientId` fija a qué cliente pertenece el formulario (en
@@ -404,7 +447,7 @@ export function CalendarScreen({
 
   // Exporta lo que el usuario está viendo: mismas publicaciones (calendarios + filtros) y mismo período
   // (agendaDays: semana en Semana/Lista, mes en Mes). No hay query ni lógica de filtros aparte. Solo el Planner
-  // de un cliente lo ofrece (ver canCreateOrExport) — Publicaciones no lo tenía antes tampoco.
+  // de un cliente lo ofrece (ver canExport) — Publicaciones no lo tenía antes tampoco.
   function handleExportCsv() {
     try {
       const toExport = filteredPublications.filter((p) => periodDateKeys.has(p.publicationDate));
@@ -434,23 +477,42 @@ export function CalendarScreen({
   const defaultCalendarId = visibleCalendars.length === 1 ? visibleCalendars[0].id : undefined;
 
   function openCreateForm(day?: Date) {
+    const defaultDateStr = day ? format(day, "yyyy-MM-dd") : undefined;
+    if (useIntegratedView) {
+      // Publicaciones (global): sin cliente fijo — con exactamente 1 cliente accesible no hace falta
+      // preguntar; si hay más, se resuelve con el selector (ver handleClientPicked).
+      const accessibleClients = global?.clients ?? [];
+      if (accessibleClients.length === 1) {
+        setViewKey((k) => k + 1);
+        setViewState({ clientId: accessibleClients[0].id, defaultDate: defaultDateStr });
+        return;
+      }
+      setPendingCreateDate(defaultDateStr);
+      setClientPickerOpen(true);
+      return;
+    }
     setFormKey((k) => k + 1);
-    setFormState({
-      open: true,
-      publication: undefined,
-      defaultDate: day ? format(day, "yyyy-MM-dd") : undefined,
-      clientId: client.id,
-    });
+    setFormState({ open: true, publication: undefined, defaultDate: defaultDateStr, clientId: client.id });
   }
 
   function openEditForm(publication: Publication) {
     setSelectedPublication(null);
+    if (useIntegratedView) {
+      setViewKey((k) => k + 1);
+      setViewState({ publication, clientId: publication.clientId });
+      return;
+    }
     setFormKey((k) => k + 1);
     setFormState({ open: true, publication, clientId: publication.clientId });
   }
 
   function openDuplicateForm(publication: Publication) {
     setSelectedPublication(null);
+    if (useIntegratedView) {
+      setViewKey((k) => k + 1);
+      setViewState({ duplicateFrom: publication, clientId: publication.clientId });
+      return;
+    }
     setFormKey((k) => k + 1);
     setFormState({ open: true, duplicateFrom: publication, clientId: publication.clientId });
   }
@@ -461,10 +523,16 @@ export function CalendarScreen({
   const formClientAccounts = isGlobal ? clientAccounts.filter((a) => a.clientId === formState.clientId) : clientAccounts;
   const formCampaigns = isGlobal ? campaigns.filter((c) => c.clientId === formState.clientId) : campaigns;
 
-  // Misma lógica de arriba, para la Vista de Publicación integrada (siempre en contexto global por ahora).
-  const viewCalendars = calendars.filter((c) => c.clientId === viewPublication?.clientId);
-  const viewClientAccounts = clientAccounts.filter((a) => a.clientId === viewPublication?.clientId);
-  const viewCampaigns = campaigns.filter((c) => c.clientId === viewPublication?.clientId);
+  // Misma lógica de arriba, para la Vista de Publicación integrada (siempre en contexto global por ahora):
+  // el cliente sale de `publication`/`duplicateFrom` en Editar/Duplicar, o del clientId ya resuelto por el
+  // selector previo en Crear — en los 3 casos `viewState.clientId` ya llega determinado.
+  const viewCalendars = calendars.filter((c) => c.clientId === viewState?.clientId);
+  const viewClientAccounts = clientAccounts.filter((a) => a.clientId === viewState?.clientId);
+  const viewCampaigns = campaigns.filter((c) => c.clientId === viewState?.clientId);
+  // CASO 1: un solo calendario activo del cliente elegido -> se precarga (mismo criterio que
+  // `defaultCalendarId` arriba, pero acotado al cliente de la vista en vez de al filtro de calendarios).
+  const viewActiveCalendars = viewCalendars.filter((c) => c.status !== "archived");
+  const viewDefaultCalendarId = viewActiveCalendars.length === 1 ? viewActiveCalendars[0].id : undefined;
 
   // El parámetro solo vive mientras el drawer abierto por el link esté abierto: al cerrarlo (o al pasar a
   // editar/duplicar) se limpia de la URL para que recargar o copiar la barra no vuelva a abrirlo. Si el id no
@@ -485,8 +553,8 @@ export function CalendarScreen({
   }, [selectedPublication, searchParams, pathname]);
 
   usePlannerShortcuts({
-    overlayOpen: formState.open || selectedPublication !== null || viewPublication !== null,
-    onNewPublication: canCreateOrExport ? () => openCreateForm() : undefined,
+    overlayOpen: formState.open || selectedPublication !== null || viewState !== null || clientPickerOpen,
+    onNewPublication: canCreatePublication ? () => openCreateForm() : undefined,
     onPrevWeek: () => setAnchorDate((d) => (view === "month" ? addMonths(d, -1) : addWeeks(d, -1))),
     onNextWeek: () => setAnchorDate((d) => (view === "month" ? addMonths(d, 1) : addWeeks(d, 1))),
   });
@@ -547,8 +615,8 @@ export function CalendarScreen({
           onPrev={() => setAnchorDate((d) => (view === "month" ? addMonths(d, -1) : addWeeks(d, -1)))}
           onNext={() => setAnchorDate((d) => (view === "month" ? addMonths(d, 1) : addWeeks(d, 1)))}
           onToday={handleToday}
-          onCreate={canCreateOrExport ? () => openCreateForm() : undefined}
-          onExport={canCreateOrExport ? handleExportCsv : undefined}
+          onCreate={canCreatePublication ? () => openCreateForm() : undefined}
+          onExport={canExport ? handleExportCsv : undefined}
           allClients={allClients}
           onSwitchClient={allClients ? handleSwitchClient : undefined}
           members={!isGlobal ? members : undefined}
@@ -612,9 +680,10 @@ export function CalendarScreen({
                 onOpenPublication={handleOpenPublication}
                 onEditPublication={canManage ? openEditForm : undefined}
                 onDuplicatePublication={canManage ? openDuplicateForm : undefined}
+                onDeletePublication={isGlobal ? removeGlobalPublication : undefined}
                 getClientId={getClientId}
                 showClient={isGlobal}
-                onCreateForDay={canCreateOrExport ? openCreateForm : undefined}
+                onCreateForDay={canCreatePublication ? openCreateForm : undefined}
                 clientColor={client.color}
                 showCalendarLabel={showCalendarLabel}
               />
@@ -625,9 +694,10 @@ export function CalendarScreen({
                 onOpenPublication={handleOpenPublication}
                 onEditPublication={canManage ? openEditForm : undefined}
                 onDuplicatePublication={canManage ? openDuplicateForm : undefined}
+                onDeletePublication={isGlobal ? removeGlobalPublication : undefined}
                 getClientId={getClientId}
                 showClient={isGlobal}
-                onCreateForDay={canCreateOrExport ? openCreateForm : undefined}
+                onCreateForDay={canCreatePublication ? openCreateForm : undefined}
                 clientColor={client.color}
                 showCalendarLabel={showCalendarLabel}
               />
@@ -637,6 +707,7 @@ export function CalendarScreen({
                 onOpenPublication={handleOpenPublication}
                 onEditPublication={canManage ? openEditForm : undefined}
                 onDuplicatePublication={canManage ? openDuplicateForm : undefined}
+                onDeletePublication={isGlobal ? removeGlobalPublication : undefined}
                 getClientId={getClientId}
                 showClient={isGlobal}
                 showCalendarLabel={showCalendarLabel}
@@ -653,9 +724,10 @@ export function CalendarScreen({
                 onOpenPublication={handleOpenPublication}
                 onEditPublication={canManage ? openEditForm : undefined}
                 onDuplicatePublication={canManage ? openDuplicateForm : undefined}
+                onDeletePublication={isGlobal ? removeGlobalPublication : undefined}
                 getClientId={getClientId}
                 showClient={isGlobal}
-                onCreateForDay={canCreateOrExport ? openCreateForm : undefined}
+                onCreateForDay={canCreatePublication ? openCreateForm : undefined}
                 showCalendarLabel={showCalendarLabel}
               />
             ) : (
@@ -666,9 +738,10 @@ export function CalendarScreen({
                 onOpenPublication={handleOpenPublication}
                 onEditPublication={canManage ? openEditForm : undefined}
                 onDuplicatePublication={canManage ? openDuplicateForm : undefined}
+                onDeletePublication={isGlobal ? removeGlobalPublication : undefined}
                 getClientId={getClientId}
                 showClient={isGlobal}
-                onCreateForDay={view === "list" || !canCreateOrExport ? undefined : openCreateForm}
+                onCreateForDay={view === "list" || !canCreatePublication ? undefined : openCreateForm}
                 showCalendarLabel={showCalendarLabel}
               />
             )}
@@ -680,14 +753,28 @@ export function CalendarScreen({
           onEdit={canManage ? openEditForm : undefined}
           onDuplicate={canManage ? openDuplicateForm : undefined}
         />
-        {viewPublication && (
+        {viewState && (
           <PublicationView
-            key={viewPublication.id}
-            publication={viewPublication}
-            onOpenChange={(open) => !open && setViewPublication(null)}
+            key={viewKey}
+            clientId={viewState.clientId}
+            publication={viewState.publication}
+            duplicateFrom={viewState.duplicateFrom}
+            defaultCalendarId={viewDefaultCalendarId}
+            defaultDate={viewState.defaultDate}
+            onOpenChange={(open) => !open && setViewState(null)}
             calendars={viewCalendars}
             clientAccounts={viewClientAccounts}
             campaigns={viewCampaigns}
+            onSaved={upsertGlobalPublication}
+            onDeleted={removeGlobalPublication}
+          />
+        )}
+        {global && (
+          <PublicationClientPicker
+            open={clientPickerOpen}
+            onOpenChange={setClientPickerOpen}
+            clients={global.clients}
+            onSelect={handleClientPicked}
           />
         )}
         {canManage && (

@@ -36,6 +36,8 @@ interface MonthChipProps {
   onOpen: () => void;
   onEdit?: (publication: Publication) => void;
   onDuplicate?: (publication: Publication) => void;
+  /** Ver PublicationQuickActionsProps.onDeleted — pass-through sin transformar. */
+  onDeletePublication?: (publicationId: string) => void;
   clientId?: string;
   /** Solo Publicaciones (contexto "global"): logo muy pequeño + nombre del cliente, de forma adaptativa. */
   showClient?: boolean;
@@ -51,6 +53,7 @@ function MonthChip({
   onOpen,
   onEdit,
   onDuplicate,
+  onDeletePublication,
   clientId,
   showClient,
   showCalendarLabel,
@@ -105,6 +108,7 @@ function MonthChip({
           clientId={clientId}
           onEdit={canManage ? () => onEdit!(publication) : undefined}
           onDuplicate={canManage ? () => onDuplicate!(publication) : undefined}
+          onDeleted={onDeletePublication}
           className="size-5 bg-background/90 shadow-xs"
         />
       </div>
@@ -172,6 +176,7 @@ interface MonthDayCellProps {
   onOpenPublication: (publication: Publication) => void;
   onEditPublication?: (publication: Publication) => void;
   onDuplicatePublication?: (publication: Publication) => void;
+  onDeletePublication?: (publicationId: string) => void;
   getClientId?: (publication: Publication) => string | undefined;
   showClient?: boolean;
   onCreateForDay?: (day: Date) => void;
@@ -189,6 +194,7 @@ function MonthDayCell({
   onOpenPublication,
   onEditPublication,
   onDuplicatePublication,
+  onDeletePublication,
   getClientId,
   showClient,
   onCreateForDay,
@@ -252,6 +258,7 @@ function MonthDayCell({
             onOpen={() => onOpenPublication(publication)}
             onEdit={onEditPublication}
             onDuplicate={onDuplicatePublication}
+            onDeletePublication={onDeletePublication}
             clientId={getClientId?.(publication)}
             showClient={showClient}
             showCalendarLabel={showCalendarLabel}
@@ -268,6 +275,7 @@ interface MonthViewProps {
   onOpenPublication: (publication: Publication) => void;
   onEditPublication?: (publication: Publication) => void;
   onDuplicatePublication?: (publication: Publication) => void;
+  onDeletePublication?: (publicationId: string) => void;
   /** Ver WeekViewProps.getClientId — misma generalización, mismo criterio en las dos vistas. */
   getClientId?: (publication: Publication) => string | undefined;
   showClient?: boolean;
@@ -282,6 +290,7 @@ export function MonthView({
   onOpenPublication,
   onEditPublication,
   onDuplicatePublication,
+  onDeletePublication,
   getClientId,
   showClient,
   onCreateForDay,
@@ -335,6 +344,7 @@ export function MonthView({
                 onOpenPublication={onOpenPublication}
                 onEditPublication={onEditPublication}
                 onDuplicatePublication={onDuplicatePublication}
+                onDeletePublication={onDeletePublication}
                 getClientId={getClientId}
                 showClient={showClient}
                 onCreateForDay={onCreateForDay}

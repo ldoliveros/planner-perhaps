@@ -16,6 +16,8 @@ interface PublicationCompactCardProps {
   /** Los tres juntos habilitan las Quick Actions completas (Super Admin / Account Manager). El Client User no los pasa y ve solo "Compartir". */
   onEdit?: (publication: Publication) => void;
   onDuplicate?: (publication: Publication) => void;
+  /** Ver PublicationQuickActionsProps.onDeleted — pass-through sin transformar. */
+  onDeletePublication?: (publicationId: string) => void;
   clientId?: string;
   /** Solo Publicaciones (contexto "global"): logo + nombre del cliente, arriba del título. */
   showClient?: boolean;
@@ -31,6 +33,7 @@ export function PublicationCompactCard({
   onOpen,
   onEdit,
   onDuplicate,
+  onDeletePublication,
   clientId,
   showClient,
   showCalendarLabel,
@@ -99,6 +102,7 @@ export function PublicationCompactCard({
           clientId={clientId}
           onEdit={canManage ? () => onEdit!(publication) : undefined}
           onDuplicate={canManage ? () => onDuplicate!(publication) : undefined}
+          onDeleted={onDeletePublication}
           className="size-11"
         />
       </div>

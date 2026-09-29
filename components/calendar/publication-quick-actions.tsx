@@ -44,6 +44,10 @@ interface PublicationQuickActionsProps {
   /** Sin `onEdit`/`onDuplicate`/`clientId` (Client User, solo lectura) el menú ofrece únicamente "Compartir". */
   onEdit?: () => void;
   onDuplicate?: () => void;
+  /** Publicaciones (global): permite al caller (CalendarScreen) reflejar el borrado de inmediato en su
+   * lista local, sin esperar a que router.refresh() la resincronice — ver removeGlobalPublication. Ausente
+   * en el Planner de un cliente (comportamiento sin cambios: solo router.refresh()). */
+  onDeleted?: (publicationId: string) => void;
   className?: string;
 }
 
@@ -55,7 +59,7 @@ interface PublicationQuickActionsProps {
  * mismo patrón que ya usaban el drawer y el propio formulario. Compartir no modifica contenido, así que
  * está disponible también en solo lectura (Client User): ahí es la única acción del menú.
  */
-export function PublicationQuickActions({ publication, clientId, onEdit, onDuplicate, className }: PublicationQuickActionsProps) {
+export function PublicationQuickActions({ publication, clientId, onEdit, onDuplicate, onDeleted, className }: PublicationQuickActionsProps) {
   const { statuses } = useLookups();
   const router = useRouter();
   const { copy } = useCopyToClipboard();
@@ -178,6 +182,7 @@ export function PublicationQuickActions({ publication, clientId, onEdit, onDupli
       setDeleteOpen(false);
       router.refresh();
       toast.success("Publicación eliminada");
+      onDeleted?.(publication.id);
     });
   }
 

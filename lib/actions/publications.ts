@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import sharp from "sharp";
 import { createClient } from "@/lib/supabase/server";
-import { listPublicationsInRange } from "@/lib/supabase/queries";
+import { getPublicationById, listPublicationsInRange } from "@/lib/supabase/queries";
 import { mapPublicationAsset } from "@/lib/supabase/mappers";
 import type { Publication, PublicationAsset } from "@/types";
 
@@ -17,6 +17,9 @@ export interface PublicationFormState {
   /** Solo poblado cuando se guardó un carrusel — permite al cliente reconciliar assetIds/URLs reales
    * (asignados por el server) sin volver a subir archivos ya guardados en el próximo save. */
   assets?: PublicationAsset[];
+  /** Publicación completa recién guardada (INSERT o UPDATE), lista para usar sin depender de que
+   * router.refresh() re-sincronice el estado local de PublicationScreen (ver CalendarScreen, modo global). */
+  publication?: Publication;
 }
 
 interface DestinationInput {
@@ -277,7 +280,10 @@ export async function savePublication(
   revalidatePath(`/admin/clients/${clientId}`);
   revalidatePath("/admin/calendars");
   revalidatePath("/admin/publications");
-  return { error: null, savedAt: Date.now(), assets: responseAssets };
+  // Reutiliza getPublicationById tal cual (misma query que ya usa /p/[id], ya scopeada por RLS y con
+  // thumbnails firmados) — evita reconstruir a mano el Publication completo (destinos + assets) acá.
+  const publication = await getPublicationById(publicationId);
+  return { error: null, savedAt: Date.now(), assets: responseAssets, publication: publication ?? undefined };
 }
 
 /**

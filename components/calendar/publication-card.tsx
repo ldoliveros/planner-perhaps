@@ -18,6 +18,8 @@ interface PublicationCardProps {
   onOpen: () => void;
   onEdit?: (publication: Publication) => void;
   onDuplicate?: (publication: Publication) => void;
+  /** Ver PublicationQuickActionsProps.onDeleted — pass-through sin transformar. */
+  onDeletePublication?: (publicationId: string) => void;
   clientId?: string;
   /** Solo Publicaciones (contexto "global"): logo + nombre del cliente, arriba del título. */
   showClient?: boolean;
@@ -37,6 +39,7 @@ export function PublicationCard({
   onOpen,
   onEdit,
   onDuplicate,
+  onDeletePublication,
   clientId,
   showClient,
   showCalendarLabel,
@@ -132,6 +135,7 @@ export function PublicationCard({
               clientId={clientId}
               onEdit={canManage ? () => onEdit!(publication) : undefined}
               onDuplicate={canManage ? () => onDuplicate!(publication) : undefined}
+              onDeleted={onDeletePublication}
               className="size-6"
             />
           </div>

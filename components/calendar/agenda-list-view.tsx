@@ -20,6 +20,7 @@ interface AgendaListViewProps {
   onOpenPublication: (publication: Publication) => void;
   onEditPublication?: (publication: Publication) => void;
   onDuplicatePublication?: (publication: Publication) => void;
+  onDeletePublication?: (publicationId: string) => void;
   /** Ver WeekView.getClientId — misma generalización cliente/global. */
   getClientId?: (publication: Publication) => string | undefined;
   /** Solo Publicaciones (contexto "global"): columna Cliente (logo + nombre). */
@@ -47,6 +48,7 @@ export function AgendaListView({
   onOpenPublication,
   onEditPublication,
   onDuplicatePublication,
+  onDeletePublication,
   getClientId,
   showClient,
 }: AgendaListViewProps) {
@@ -177,6 +179,7 @@ export function AgendaListView({
                         clientId={getClientId?.(publication)}
                         onEdit={onEditPublication && getClientId ? () => onEditPublication(publication) : undefined}
                         onDuplicate={onDuplicatePublication && getClientId ? () => onDuplicatePublication(publication) : undefined}
+                        onDeleted={onDeletePublication}
                         className="size-7"
                       />
                     </div>

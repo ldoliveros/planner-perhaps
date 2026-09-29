@@ -16,6 +16,7 @@ interface MobileAgendaViewProps {
   onOpenPublication: (publication: Publication) => void;
   onEditPublication?: (publication: Publication) => void;
   onDuplicatePublication?: (publication: Publication) => void;
+  onDeletePublication?: (publicationId: string) => void;
   /** Ver WeekView.getClientId — misma generalización cliente/global. */
   getClientId?: (publication: Publication) => string | undefined;
   /** Solo Publicaciones (contexto "global"): logo + nombre del cliente en cada card. */
@@ -35,6 +36,7 @@ export function MobileAgendaView({
   onOpenPublication,
   onEditPublication,
   onDuplicatePublication,
+  onDeletePublication,
   getClientId,
   showClient,
   onCreateForDay,
@@ -105,6 +107,7 @@ export function MobileAgendaView({
                     onOpen={() => onOpenPublication(publication)}
                     onEdit={onEditPublication}
                     onDuplicate={onDuplicatePublication}
+                    onDeletePublication={onDeletePublication}
                     clientId={getClientId?.(publication)}
                     showClient={showClient}
                     showCalendarLabel={showCalendarLabel}

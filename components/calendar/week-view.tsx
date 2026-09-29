@@ -18,6 +18,7 @@ interface DraggableCardProps {
   onOpen: () => void;
   onEdit?: (publication: Publication) => void;
   onDuplicate?: (publication: Publication) => void;
+  onDeletePublication?: (publicationId: string) => void;
   clientId?: string;
   showClient?: boolean;
   showCalendarLabel: boolean;
@@ -43,6 +44,7 @@ interface WeekViewProps {
   onOpenPublication: (publication: Publication) => void;
   onEditPublication?: (publication: Publication) => void;
   onDuplicatePublication?: (publication: Publication) => void;
+  onDeletePublication?: (publicationId: string) => void;
   /**
    * Cliente dueño de cada card. En el Planner de un cliente es siempre el mismo (`() => client.id`); en
    * Publicaciones (calendario global) cada publicación resuelve al suyo (`(p) => p.clientId`) — así se
@@ -62,6 +64,7 @@ export function WeekView({
   onOpenPublication,
   onEditPublication,
   onDuplicatePublication,
+  onDeletePublication,
   getClientId,
   showClient,
   onCreateForDay,
@@ -129,6 +132,7 @@ export function WeekView({
                     onOpen={() => onOpenPublication(publication)}
                     onEdit={onEditPublication}
                     onDuplicate={onDuplicatePublication}
+                    onDeletePublication={onDeletePublication}
                     clientId={getClientId?.(publication)}
                     showClient={showClient}
                     showCalendarLabel={showCalendarLabel}
