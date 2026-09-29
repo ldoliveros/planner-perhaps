@@ -6,8 +6,8 @@ import { getCurrentProfile, getPublicationById } from "@/lib/supabase/queries";
 /**
  * Link universal de "Compartir" (mismo formato para todos los roles: /p/<publicationId>). No renderiza ni expone
  * contenido de la publicación — solo resuelve a dónde corresponde abrirla según quién esté logueado y redirige
- * ahí con `?publication=<id>`, que CalendarScreen ya sabe abrir en el drawer (ver calendar-screen.tsx) y limpiar
- * de la URL al cerrarlo. Reutiliza `getPublicationById` (ya scopeado por RLS: publications_select_own para
+ * ahí con `?publication=<id>`, que CalendarScreen abre en la Vista de Publicación (ver calendar-screen.tsx) y limpia
+ * de la URL apenas la consume. Reutiliza `getPublicationById` (ya scopeado por RLS: publications_select_own para
  * Client, publications_manage/can_manage_client para Super Admin y Account Manager) — no duplica esa lógica.
  *
  * Sin sesión: a /login con `next=/p/<id>` (sanitizeNext lo admite sin gatear por rol, ya que esta misma ruta

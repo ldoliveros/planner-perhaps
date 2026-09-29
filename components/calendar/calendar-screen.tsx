@@ -21,7 +21,6 @@ import { MonthView } from "@/components/calendar/month-view";
 import { AgendaListView } from "@/components/calendar/agenda-list-view";
 import { MobileAgendaView } from "@/components/calendar/mobile-agenda-view";
 import { MobileMonthView } from "@/components/calendar/mobile-month-view";
-import { PublicationDrawer } from "@/components/publication/publication-drawer";
 import { PublicationForm } from "@/components/publication/publication-form";
 import { PublicationView } from "@/components/publication/publication-view";
 import { PublicationClientPicker } from "@/components/calendar/publication-client-picker";
@@ -222,7 +221,7 @@ export function CalendarScreen({
     [global, loadedRange]
   );
 
-  // Deep-link (Compartir y /admin/publications): ?publication=<id> abre el drawer directo al montar (lectura
+  // Deep-link (Compartir, vía /p/<id>): ?publication=<id> abre la Vista de Publicación directo al montar (lectura
   // única — no reacciona a cambios posteriores del param). `publications` ya viene filtrada por RLS, así que un id
   // ajeno o inexistente simplemente no aparece: no se muestra nada y se avisa (ver el efecto de abajo).
   const [shared] = useState(() => {
@@ -233,11 +232,10 @@ export function CalendarScreen({
     shared.publication ? new Date(`${shared.publication.publicationDate}T00:00:00`) : new Date()
   );
   const [filters, setFilters] = useState<CalendarFiltersState>(EMPTY_FILTERS);
-  const [selectedPublication, setSelectedPublication] = useState<Publication | null>(shared.publication);
   const missingSharedPublication = useRef(Boolean(shared.id) && !shared.publication);
   // Vista de Publicación integrada: staff (Editar/Duplicar/Crear), tanto en Publicaciones global como en el
   // Planner de un cliente. Client User (readOnly) también la abre al hacer click, pero en modo solo lectura
-  // (ver handleOpenPublication) — el deep-link ?publication= sigue usando PublicationDrawer para todos.
+  // (ver handleOpenPublication), igual que el deep-link ?publication= (staff editable, Client User read-only).
   const useIntegratedView = canManage;
   // Editar: { publication }. Duplicar: { duplicateFrom }. Crear: ninguno de los dos — PublicationView
   // deriva su modo de cuál de las dos props llega, igual que ya hacía PublicationForm.
@@ -246,7 +244,7 @@ export function CalendarScreen({
     duplicateFrom?: Publication;
     clientId: string;
     defaultDate?: string;
-  } | null>(null);
+  } | null>(() => (shared.publication ? { publication: shared.publication, clientId: shared.publication.clientId } : null));
   // Se incrementa en cada apertura (mismo rol que key={publication.id} antes): fuerza remontar
   // PublicationView para que su estado "original" de dirty-check arranque limpio en cada target nuevo,
   // incluida Crear, que no tiene un id propio del cual derivar una key.
@@ -499,7 +497,6 @@ export function CalendarScreen({
   }
 
   function openEditForm(publication: Publication) {
-    setSelectedPublication(null);
     if (useIntegratedView) {
       setViewKey((k) => k + 1);
       setViewState({ publication, clientId: publication.clientId });
@@ -510,7 +507,6 @@ export function CalendarScreen({
   }
 
   function openDuplicateForm(publication: Publication) {
-    setSelectedPublication(null);
     if (useIntegratedView) {
       setViewKey((k) => k + 1);
       setViewState({ duplicateFrom: publication, clientId: publication.clientId });
@@ -538,12 +534,12 @@ export function CalendarScreen({
   const viewActiveCalendars = viewCalendars.filter((c) => c.status !== "archived");
   const viewDefaultCalendarId = viewActiveCalendars.length === 1 ? viewActiveCalendars[0].id : undefined;
 
-  // El parámetro solo vive mientras el drawer abierto por el link esté abierto: al cerrarlo (o al pasar a
-  // editar/duplicar) se limpia de la URL para que recargar o copiar la barra no vuelva a abrirlo. Si el id no
-  // existe o no es accesible, se avisa una sola vez y también se limpia. History API nativa (no router.replace):
-  // cerrar el drawer no debe volver a pedir el planner entero, igual que el cambio de vista de arriba.
+  // El parámetro se consume al montar: si abrió la Vista de Publicación, se limpia de la URL enseguida para que
+  // recargar o copiar la barra no vuelva a abrirla. Si el id no existe o no es accesible, se avisa una sola vez y
+  // también se limpia. History API nativa (no router.replace): no debe volver a pedir el planner entero, igual
+  // que el cambio de vista de arriba.
   useEffect(() => {
-    if (selectedPublication || !searchParams.has("publication")) return;
+    if (!searchParams.has("publication")) return;
     if (missingSharedPublication.current) {
       missingSharedPublication.current = false;
       // Un tick después: el Toaster (padre) se suscribe al manager en un efecto que corre después de los de sus
@@ -554,10 +550,10 @@ export function CalendarScreen({
       );
     }
     replaceSearchParams(pathname, searchParams, { publication: null });
-  }, [selectedPublication, searchParams, pathname]);
+  }, [searchParams, pathname]);
 
   usePlannerShortcuts({
-    overlayOpen: formState.open || selectedPublication !== null || viewState !== null || clientPickerOpen,
+    overlayOpen: formState.open || viewState !== null || clientPickerOpen,
     onNewPublication: canCreatePublication ? () => openCreateForm() : undefined,
     onPrevWeek: () => setAnchorDate((d) => (view === "month" ? addMonths(d, -1) : addWeeks(d, -1))),
     onNextWeek: () => setAnchorDate((d) => (view === "month" ? addMonths(d, 1) : addWeeks(d, 1))),
@@ -751,15 +747,10 @@ export function CalendarScreen({
             )}
           </div>
         )}
-        <PublicationDrawer
-          publication={selectedPublication}
-          onOpenChange={(open) => !open && setSelectedPublication(null)}
-          onEdit={canManage ? openEditForm : undefined}
-          onDuplicate={canManage ? openDuplicateForm : undefined}
-        />
         {viewState && (
           <PublicationView
-            key={viewKey}
+            // Prefijo: es hermano de PublicationForm (key={formKey}); con el deep-link ambos arrancan en 0.
+            key={`view-${viewKey}`}
             clientId={viewState.clientId}
             publication={viewState.publication}
             duplicateFrom={viewState.duplicateFrom}
