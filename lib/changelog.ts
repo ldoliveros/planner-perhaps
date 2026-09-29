@@ -20,6 +20,36 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG: ChangelogRelease[] = [
   {
+    version: "1.5.1",
+    date: "2026-09-29",
+    entries: [
+      {
+        text: "Vista de publicación en el celular: los datos se recorren con un solo scroll y el botón de guardar queda siempre visible, sin tapar ningún campo.",
+        roles: ["super_admin", "account_manager", "client"],
+      },
+      {
+        text: "Aviso al cliente: después de aprobar y avisar, la vista muestra al instante que el aviso ya se envió.",
+        roles: ["super_admin", "account_manager"],
+      },
+      {
+        text: "Publicaciones: los cambios de estado, de fecha y los movimientos arrastrando se ven al instante, sin recargar.",
+        roles: ["super_admin", "account_manager"],
+      },
+      {
+        text: "Carrusel y Post: al pasar un carrusel a Post se muestra solo la portada, y si volvés a Carrusel recuperás todas sus imágenes.",
+        roles: ["super_admin", "account_manager"],
+      },
+      {
+        text: "Al eliminar una publicación también se eliminan sus imágenes guardadas.",
+        roles: ["super_admin", "account_manager"],
+      },
+      {
+        text: "Nueva cabecera en Publicaciones, más simple y sin el ícono de cliente.",
+        roles: ["super_admin", "account_manager"],
+      },
+    ],
+  },
+  {
     version: "1.5.0",
     date: "2026-09-29",
     entries: [
