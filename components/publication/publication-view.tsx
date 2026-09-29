@@ -184,6 +184,14 @@ export function PublicationView({
   const [approveNotifyOpen, setApproveNotifyOpen] = useState(false);
   const [hasNotifiable, setHasNotifiable] = useState(false);
   const notifyAfterSaveRef = useRef(false);
+  // Aviso disparado desde "¡Lista para publicar!" (post-guardado): se refleja al instante en
+  // ClientNotificationSection — sin esto la sección seguía mostrando "Todavía no se envió el aviso" (y
+  // ofreciendo un segundo envío) hasta reabrir la vista.
+  const [approveNotifySending, setApproveNotifySending] = useState(false);
+  const [approveNotifySentAt, setApproveNotifySentAt] = useState<string | null>(null);
+  // Confirmado "Sí, aprobar y avisar" pero el guardado todavía está en curso: la sección ya se muestra
+  // como "Enviando aviso..." para no ofrecer un envío manual en esa ventana.
+  const [approveNotifyQueued, setApproveNotifyQueued] = useState(false);
   const skipApproveCheckRef = useRef(false);
 
   // Eliminar — misma action/confirmación que el menú "..." de la card (ver
@@ -325,7 +333,11 @@ export function PublicationView({
     if (state.publication) onSaved?.(state.publication);
     if (notifyAfterSaveRef.current) {
       notifyAfterSaveRef.current = false;
+      setApproveNotifyQueued(false);
+      setApproveNotifySending(true);
       notifyClientPublicationApproved(publication.id).then((result) => {
+        setApproveNotifySending(false);
+        if (!result.error) setApproveNotifySentAt(new Date().toISOString());
         if (result.error) {
           toast.error("No se pudo avisar al cliente", result.error);
         } else if (result.failedCount > 0) {
@@ -397,6 +409,7 @@ export function PublicationView({
     onOpenChange(false);
     router.refresh();
     toast.success("Publicación eliminada");
+    if (result.storageError) toast.error("Algunos archivos no se pudieron eliminar", result.storageError);
     onDeleted?.(publication.id);
   }
 
@@ -583,6 +596,13 @@ export function PublicationView({
     ? clientAccounts.find((a) => selectedAccountIds.has(a.id) && getPlatform(a.platformId)?.key === activePreviewPlatform)
     : undefined;
   const carouselImageUrls = carouselImages.map((img) => img.url).filter(Boolean);
+  // Portada de Post/Reel/Story: la imagen primaria del último guardado (state.publication, ya firmada) salvo
+  // que haya una portada nueva elegida sin guardar. Así, si se reordenó y guardó el carrusel y después se
+  // pasa a otro tipo en la misma sesión, se ve la portada real (primera del carrusel), no la inicial.
+  const savedPrimaryAsset = state.publication
+    ? (state.publication.assets.find((a) => a.isPrimary) ?? state.publication.assets[0] ?? null)
+    : undefined;
+  const coverPreview = thumbnailFile || savedPrimaryAsset === undefined ? thumbnailPreview : (savedPrimaryAsset?.thumbnailUrl ?? null);
   // Manifest ordenado que lee savePublication: cada slot referencia una imagen existente (assetId, se
   // conserva/reordena) o el índice del File nuevo dentro de `carouselImages` (name="carouselImages",
   // sincronizado por el efecto de arriba) — ambos recorridos van en el mismo orden, así los índices calzan.
@@ -593,7 +613,7 @@ export function PublicationView({
   // Avatar de los previews: el logo del cliente (ya firmado por withSignedClientLogos, vía
   // useLookups/getClient), el mismo para cualquier plataforma — no depende de la cuenta/destino activo.
   const previewNode = renderPublicationPreview(activePreviewPlatform, selectedContentType?.key, {
-    coverUrl: isCarouselMode ? (carouselImageUrls[0] ?? null) : thumbnailPreview,
+    coverUrl: isCarouselMode ? (carouselImageUrls[0] ?? null) : coverPreview,
     images: isCarouselMode ? carouselImageUrls : undefined,
     handle: previewAccount?.handle ?? null,
     accountName: previewAccount?.name ?? null,
@@ -921,8 +941,8 @@ export function PublicationView({
                   <Label htmlFor="pv-thumbnail">Portada</Label>
                   <div className="flex items-center gap-3">
                     <div className="relative size-16 shrink-0 overflow-hidden rounded-lg border border-border bg-muted">
-                      {thumbnailPreview ? (
-                        <Image src={thumbnailPreview} alt="" fill sizes="64px" className="object-cover" />
+                      {coverPreview ? (
+                        <Image src={coverPreview} alt="" fill sizes="64px" className="object-cover" />
                       ) : (
                         <div className="flex h-full items-center justify-center text-muted-foreground/40">
                           <ImageIcon className="size-5" />
@@ -1002,7 +1022,12 @@ export function PublicationView({
               </form>
 
               {publication && isCurrentlyApproved && hasNotifiable && (
-                <ClientNotificationSection publicationId={publication.id} clientId={clientId} />
+                <ClientNotificationSection
+                  publicationId={publication.id}
+                  clientId={clientId}
+                  externalSending={approveNotifySending || (approveNotifyQueued && isPending)}
+                  externalSentAt={approveNotifySentAt}
+                />
               )}
 
               {/* Acción destructiva discreta, separada a propósito del botón principal de guardar. Solo
@@ -1061,6 +1086,7 @@ export function PublicationView({
             <AlertDialogCancel
               onClick={() => {
                 notifyAfterSaveRef.current = false;
+                setApproveNotifyQueued(false);
                 skipApproveCheckRef.current = true;
                 formRef.current?.requestSubmit();
               }}
@@ -1071,6 +1097,7 @@ export function PublicationView({
               onClick={() => {
                 setApproveNotifyOpen(false);
                 notifyAfterSaveRef.current = true;
+                setApproveNotifyQueued(true);
                 skipApproveCheckRef.current = true;
                 formRef.current?.requestSubmit();
               }}

@@ -7,6 +7,7 @@ import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core";
 import { format } from "date-fns";
 import { cn } from "cn";
 import { movePublicationToDate } from "@/lib/actions/publications";
+import { usePublicationPatch } from "@/components/calendar/publication-patch-context";
 import { toast } from "@/lib/toast";
 import type { Publication } from "@/types";
 
@@ -27,6 +28,7 @@ export const toDateKey = (day: Date) => format(day, "yyyy-MM-dd");
  */
 export function usePublicationDnd(publications: Publication[], movedMessage: (targetKey: string) => string) {
   const router = useRouter();
+  const patchPublication = usePublicationPatch();
 
   const [activeId, setActiveId] = useState<string | null>(null);
   // Publicaciones esperando la confirmación del server action (única fase con "pulso").
@@ -95,6 +97,9 @@ export function usePublicationDnd(publications: Publication[], movedMessage: (ta
       stale.delete(targetKey);
       return { ...prev, [publication.id]: { target: targetKey, stale: [...stale] } };
     });
+    // Publicaciones (global): la lista local no se resincroniza con router.refresh() — se parchea acá, y la
+    // reconciliación de arriba descarta el override apenas esa lista trae la fecha destino.
+    patchPublication?.(publication.id, { publicationDate: targetKey });
     toast.success(movedMessage(targetKey));
     router.refresh();
   }

@@ -367,16 +367,87 @@ export async function movePublicationToDate(
   return { error: null };
 }
 
-export async function deletePublication(publicationId: string, clientId: string): Promise<{ error: string | null }> {
+/**
+ * Elimina la publicación y, después, sus archivos propios en Storage (bucket thumbnails).
+ *
+ * Alcance del borrado de archivos, estrictamente acotado a esta publicación:
+ * - candidatos = paths de sus publication_assets + lo que haya en su carpeta `{client_id}/{publication_id}/`
+ *   (cubre portadas reemplazadas que quedaron huérfanas en guardados anteriores);
+ * - solo se aceptan paths cuya segunda carpeta es EXACTAMENTE este publication_id;
+ * - se excluye cualquier path que otra publicación siga referenciando.
+ *
+ * Orden: primero la fila (publication_assets cae por ON DELETE CASCADE) y recién si se confirmó el borrado
+ * (RLS puede bloquearlo con 0 filas y sin error) se tocan los archivos — nunca se borran archivos de una
+ * publicación que sigue existiendo. Si Storage falla, la publicación ya no existe: se devuelve
+ * `storageError` para que la UI lo muestre (no se oculta), sin revertir ni marcar el borrado como fallido.
+ */
+export async function deletePublication(
+  publicationId: string,
+  clientId: string
+): Promise<{ error: string | null; storageError?: string }> {
   const supabase = await createClient();
-  const { error } = await supabase.from("publications").delete().eq("id", publicationId);
+
+  const { data: pubRow, error: readError } = await supabase
+    .from("publications")
+    .select("client_id")
+    .eq("id", publicationId)
+    .maybeSingle();
+  if (readError) return { error: readError.message };
+  if (!pubRow) return { error: "No se pudo eliminar: publicación no encontrada o sin permisos." };
+
+  const { data: assetRows, error: assetsError } = await supabase
+    .from("publication_assets")
+    .select("thumbnail_url")
+    .eq("publication_id", publicationId);
+  if (assetsError) return { error: assetsError.message };
+
+  const candidatePaths = new Set<string>();
+  for (const asset of assetRows ?? []) {
+    if (asset.thumbnail_url) candidatePaths.add(asset.thumbnail_url);
+  }
+  const folder = `${pubRow.client_id}/${publicationId}`;
+  const { data: folderFiles, error: listError } = await supabase.storage.from(THUMBNAILS_BUCKET).list(folder, { limit: 1000 });
+  for (const file of folderFiles ?? []) {
+    // Las subcarpetas vienen sin id; acá solo interesan objetos.
+    if (file.id) candidatePaths.add(`${folder}/${file.name}`);
+  }
+  const ownPaths = [...candidatePaths].filter((path) => path.split("/")[1] === publicationId);
+
+  let sharedPaths = new Set<string>();
+  let sharedCheckFailed = false;
+  if (ownPaths.length > 0) {
+    const { data: sharedRows, error: sharedError } = await supabase
+      .from("publication_assets")
+      .select("thumbnail_url")
+      .in("thumbnail_url", ownPaths)
+      .neq("publication_id", publicationId);
+    // Sin poder confirmar que no están compartidos, no se borra ningún archivo (se informa abajo).
+    if (sharedError) sharedCheckFailed = true;
+    else sharedPaths = new Set((sharedRows ?? []).map((r) => r.thumbnail_url).filter((p): p is string => Boolean(p)));
+  }
+  const pathsToRemove = sharedCheckFailed ? [] : ownPaths.filter((path) => !sharedPaths.has(path));
+
+  const { data: deleted, error } = await supabase.from("publications").delete().eq("id", publicationId).select("id");
   if (error) return { error: error.message };
+  if (!deleted || deleted.length === 0) {
+    return { error: "No se pudo eliminar: publicación no encontrada o sin permisos." };
+  }
+
+  let storageError: string | undefined;
+  if (listError) storageError = `No se pudieron listar los archivos de la publicación: ${listError.message}`;
+  else if (sharedCheckFailed) {
+    storageError = "No se pudo verificar si los archivos estaban compartidos; se conservaron en el almacenamiento.";
+  }
+  if (pathsToRemove.length > 0) {
+    const { error: removeError } = await supabase.storage.from(THUMBNAILS_BUCKET).remove(pathsToRemove);
+    if (removeError) storageError = `No se pudieron eliminar los archivos del almacenamiento: ${removeError.message}`;
+  }
 
   revalidatePath(`/admin/clients/${clientId}/planner`);
   revalidatePath(`/admin/clients/${clientId}`);
   revalidatePath("/admin/calendars");
   revalidatePath("/admin/publications");
-  return { error: null };
+  return { error: null, storageError };
 }
 
 /**

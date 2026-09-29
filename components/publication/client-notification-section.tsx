@@ -38,10 +38,27 @@ function formatSentAt(iso: string): { date: string; time: string } {
  * de publicación reinicia este componente entero, así el estado vuelve solo a "cargando" sin necesidad de
  * resetearlo a mano dentro del efecto (evita el warning de setState síncrono en el cuerpo de un effect).
  */
-export function ClientNotificationSection({ publicationId, clientId }: { publicationId: string; clientId: string }) {
+export function ClientNotificationSection({
+  publicationId,
+  clientId,
+  externalSending = false,
+  externalSentAt = null,
+}: {
+  publicationId: string;
+  clientId: string;
+  /** Aviso en curso disparado fuera de esta sección (PublicationView, "¡Lista para publicar!"). */
+  externalSending?: boolean;
+  /** Fecha ISO de un aviso exitoso disparado fuera de esta sección, en esta misma sesión. */
+  externalSentAt?: string | null;
+}) {
   // undefined = cargando, null = nunca se envió, string = fecha ISO del último envío exitoso.
-  const [lastNotifiedAt, setLastNotifiedAt] = useState<string | null | undefined>(undefined);
-  const [notifying, setNotifying] = useState(false);
+  const [fetchedOrLocalAt, setLastNotifiedAt] = useState<string | null | undefined>(undefined);
+  const [localNotifying, setNotifying] = useState(false);
+  const notifying = localNotifying || externalSending;
+  // El más reciente entre lo cargado/enviado acá y un envío externo — así la sección nunca queda en
+  // "Todavía no se envió" después de aprobar y avisar, sin importar cuál de los dos resolvió último.
+  const lastNotifiedAt =
+    externalSentAt && (!fetchedOrLocalAt || externalSentAt > fetchedOrLocalAt) ? externalSentAt : fetchedOrLocalAt;
   const [resendConfirmOpen, setResendConfirmOpen] = useState(false);
 
   useEffect(() => {
@@ -78,6 +95,8 @@ export function ClientNotificationSection({ publicationId, clientId }: { publica
       </div>
       {lastNotifiedAt === undefined ? (
         <p className="text-sm text-muted-foreground">Cargando...</p>
+      ) : externalSending && lastNotifiedAt === null ? (
+        <p className="text-sm text-muted-foreground">Enviando aviso...</p>
       ) : lastNotifiedAt === null ? (
         <>
           <p className="text-sm text-muted-foreground">Todavía no se envió el aviso.</p>

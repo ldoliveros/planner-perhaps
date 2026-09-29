@@ -31,6 +31,7 @@ import { Input } from "@/components/ui/input";
 import { useLookups } from "@/components/providers/lookups-provider";
 import { StatusPill } from "@/components/shared/status-pill";
 import { deletePublication, movePublicationToDate, setPublicationStatus } from "@/lib/actions/publications";
+import { usePublicationPatch } from "@/components/calendar/publication-patch-context";
 import { hasNotifiableClientUsers, notifyClientPublicationApproved } from "@/lib/actions/publication-notifications";
 import { formatFullDateFromDate } from "@/lib/date-utils";
 import { toast } from "@/lib/toast";
@@ -63,6 +64,7 @@ export function PublicationQuickActions({ publication, clientId, onEdit, onDupli
   const { statuses } = useLookups();
   const router = useRouter();
   const { copy } = useCopyToClipboard();
+  const patchPublication = usePublicationPatch();
   const canManage = Boolean(onEdit && onDuplicate && clientId);
   const [statusPending, setStatusPending] = useState(false);
   // "¡Lista para publicar!" — se muestra al pasar a Aprobado solo si el cliente tiene Client Users
@@ -117,6 +119,7 @@ export function PublicationQuickActions({ publication, clientId, onEdit, onDupli
       return;
     }
     setDateOpen(false);
+    patchPublication?.(publication.id, { publicationDate: dateValue });
     startRefresh(() => {
       router.refresh();
     });
@@ -133,6 +136,8 @@ export function PublicationQuickActions({ publication, clientId, onEdit, onDupli
       toast.error("No se pudo actualizar el estado", result.error);
       return;
     }
+    // Publicaciones (global): la lista local no se resincroniza con router.refresh() — se parchea acá.
+    patchPublication?.(publication.id, { statusId });
     startRefresh(() => {
       router.refresh();
     });
@@ -182,6 +187,7 @@ export function PublicationQuickActions({ publication, clientId, onEdit, onDupli
       setDeleteOpen(false);
       router.refresh();
       toast.success("Publicación eliminada");
+      if (result.storageError) toast.error("Algunos archivos no se pudieron eliminar", result.storageError);
       onDeleted?.(publication.id);
     });
   }

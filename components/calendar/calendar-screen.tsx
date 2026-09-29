@@ -22,6 +22,7 @@ import { AgendaListView } from "@/components/calendar/agenda-list-view";
 import { MobileAgendaView } from "@/components/calendar/mobile-agenda-view";
 import { MobileMonthView } from "@/components/calendar/mobile-month-view";
 import { PublicationView } from "@/components/publication/publication-view";
+import { PublicationPatchProvider } from "@/components/calendar/publication-patch-context";
 import { PublicationClientPicker } from "@/components/calendar/publication-client-picker";
 import { LookupsProvider } from "@/components/providers/lookups-provider";
 import { formatMonthYear, formatWeekRange, getMonthGridDays, getWeekDays, isSameMonthAs } from "@/lib/date-utils";
@@ -44,7 +45,7 @@ import type { Calendar, Campaign, Client, ClientAccount, ClientMember, Publicati
  */
 const GLOBAL_BRAND: Client = {
   id: "__global__",
-  name: "Todos los clientes",
+  name: "Todos los calendarios / clientes",
   slug: "todos-los-clientes",
   logoUrl: null,
   color: "#64748b",
@@ -203,6 +204,10 @@ export function CalendarScreen({
   }, []);
   const removeGlobalPublication = useCallback((publicationId: string) => {
     setGlobalPublications((prev) => prev.filter((p) => p.id !== publicationId));
+  }, []);
+  // Cambiar estado / Cambiar fecha / drag & drop: parche parcial por id, vía PublicationPatchProvider (ver abajo).
+  const patchGlobalPublication = useCallback((publicationId: string, patch: Partial<Publication>) => {
+    setGlobalPublications((prev) => prev.map((p) => (p.id === publicationId ? { ...p, ...patch } : p)));
   }, []);
 
   const ensureRange = useCallback(
@@ -545,7 +550,7 @@ export function CalendarScreen({
         <div className="flex h-full flex-col">
           <CalendarHeader
             client={client}
-            calendarLabel="Sin calendarios"
+            calendarLabel={isGlobal ? "Publicaciones" : "Sin calendarios"}
             driveFolderUrl={client.driveFolderUrl}
             periodLabel=""
             view={view}
@@ -556,6 +561,7 @@ export function CalendarScreen({
             allClients={allClients}
             onSwitchClient={allClients ? handleSwitchClient : undefined}
             members={!isGlobal ? members : undefined}
+            hideAvatar={isGlobal}
           />
           <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
             <CalendarDays className="size-8 text-muted-foreground/40" />
@@ -578,12 +584,12 @@ export function CalendarScreen({
   }
 
   return (
-    <LookupsProvider {...lookups} calendars={calendars} clientAccounts={clientAccounts} campaigns={campaigns} clients={global?.clients ?? [client]}>
+    <LookupsProvider {...lookups} calendars={calendars} clientAccounts={clientAccounts} campaigns={campaigns} clients={global?.clients ?? [client]}><PublicationPatchProvider value={isGlobal ? patchGlobalPublication : null}>
       <div className="flex h-full flex-col">
         <CalendarHeader
           client={client}
-          calendarLabel={calendarLabel}
-          calendarDescription={calendarDescription}
+          calendarLabel={isGlobal ? "Publicaciones" : calendarLabel}
+          calendarDescription={isGlobal ? null : calendarDescription}
           driveFolderUrl={driveFolderUrl}
           periodLabel={periodLabel}
           view={view}
@@ -596,6 +602,7 @@ export function CalendarScreen({
           allClients={allClients}
           onSwitchClient={allClients ? handleSwitchClient : undefined}
           members={!isGlobal ? members : undefined}
+          hideAvatar={isGlobal}
           dateRange={view === "list" ? { from: dateFrom, to: dateTo } : undefined}
           onDateRangeChange={view === "list" ? setDateRange : undefined}
           mobileFilters={
@@ -749,6 +756,6 @@ export function CalendarScreen({
           />
         )}
       </div>
-    </LookupsProvider>
+    </PublicationPatchProvider></LookupsProvider>
   );
 }

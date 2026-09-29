@@ -54,7 +54,9 @@ export function PublicationCard({
   const client = showClient ? getClient(publication.clientId) : undefined;
   const primaryAsset = publication.assets.find((a) => a.isPrimary) ?? null;
   const heroAsset = primaryAsset ?? publication.assets[0] ?? null;
-  const fileAssetCount = publication.assets.filter((a) => !a.isPrimary).length;
+  // Conteo solo en Carrusel: al pasar a otro tipo las imágenes secundarias se conservan (para volver a
+  // Carrusel sin perderlas), pero la publicación se muestra como lo que es ahora — solo la portada.
+  const fileAssetCount = contentType?.key === "carousel" ? publication.assets.filter((a) => !a.isPrimary).length : 0;
 
   const destinationAccounts = publication.destinations
     .map((d) => getClientAccount(d.clientAccountId))

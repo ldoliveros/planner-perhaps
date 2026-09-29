@@ -54,6 +54,8 @@ interface CalendarHeaderProps {
   onDateRangeChange?: (value: HeaderDateRangeValue) => void;
   /** Solo < md: botón "Filtros" que va en la misma fila que el selector Semana/Mes/Lista. */
   mobileFilters?: ReactNode;
+  /** Publicaciones (global): sin avatar/logo de cliente ni el espacio que ocupa. */
+  hideAvatar?: boolean;
 }
 
 export function CalendarHeader({
@@ -75,6 +77,7 @@ export function CalendarHeader({
   dateRange,
   onDateRangeChange,
   mobileFilters,
+  hideAvatar = false,
 }: CalendarHeaderProps) {
   const initialTextColor = getContrastTextColor(client.color);
   // Vista activa: fondo = color del cliente, texto con el mejor contraste (solo la opción activa).
@@ -87,20 +90,22 @@ export function CalendarHeader({
 
       <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 max-md:gap-y-2 md:px-6 md:py-4">
         <div className="flex items-center gap-3 max-md:min-w-0 max-md:flex-1">
-          <div
-            className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl text-base font-semibold md:h-11 md:w-11"
-            style={
-              client.logoUrl
-                ? undefined
-                : { backgroundColor: client.color, color: initialTextColor }
-            }
-          >
-            {client.logoUrl ? (
-              <Image src={client.logoUrl} alt={client.name} fill sizes="44px" className="object-cover" />
-            ) : (
-              client.name.charAt(0)
-            )}
-          </div>
+          {!hideAvatar && (
+            <div
+              className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl text-base font-semibold md:h-11 md:w-11"
+              style={
+                client.logoUrl
+                  ? undefined
+                  : { backgroundColor: client.color, color: initialTextColor }
+              }
+            >
+              {client.logoUrl ? (
+                <Image src={client.logoUrl} alt={client.name} fill sizes="44px" className="object-cover" />
+              ) : (
+                client.name.charAt(0)
+              )}
+            </div>
+          )}
           <div className="leading-tight max-md:min-w-0">
             {allClients && allClients.length > 1 && onSwitchClient ? (
               <Select
