@@ -3,7 +3,7 @@
 import { useActionState, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { ArrowUpRight, Check, FolderOpen, ImageIcon, Plus, Share2, Trash2, X } from "lucide-react";
+import { ArrowUpRight, Check, ExternalLink, FolderOpen, ImageIcon, Plus, Share2, Trash2, X } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -14,21 +14,24 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CampaignSelect } from "@/components/publication/campaign-select";
+import { CopyBlock } from "@/components/publication/copy-block";
 import { CopyEditor } from "@/components/publication/copy-editor";
 import { ClientNotificationSection } from "@/components/publication/publication-drawer";
 import { renderPublicationPreview, isPreviewSupported } from "@/components/publication/previews/registry";
 import { StatusPill } from "@/components/shared/status-pill";
 import { PlatformIcon } from "@/components/icons/brand-icons";
+import { accountLabel, accountSecondaryName } from "@/lib/account-label";
 import { useLookups } from "@/components/providers/lookups-provider";
 import { hasNotifiableClientUsers, notifyClientPublicationApproved } from "@/lib/actions/publication-notifications";
 import { deletePublication, savePublication, type PublicationFormState } from "@/lib/actions/publications";
-import { formatTime } from "@/lib/date-utils";
+import { formatFullDate, formatTime } from "@/lib/date-utils";
 import { toast } from "@/lib/toast";
 import { useCopyToClipboard } from "@/lib/use-copy-to-clipboard";
 import { cn } from "cn";
@@ -53,6 +56,9 @@ interface PublicationViewProps {
    * (globalPublications), sin esperar a que router.refresh() la re-sincronice — ver CalendarScreen. */
   onSaved?: (publication: Publication) => void;
   onDeleted?: (publicationId: string) => void;
+  /** Client User: misma vista y mismos previews, pero la columna derecha es una presentación de solo
+   * lectura (sin form) y se ocultan todas las acciones de staff. Solo tiene sentido con `publication`. */
+  readOnly?: boolean;
 }
 
 /** Snapshot comparable de los campos editables — usado para el chequeo de "cambios sin guardar". */
@@ -105,6 +111,7 @@ export function PublicationView({
   defaultDate,
   onSaved,
   onDeleted,
+  readOnly = false,
 }: PublicationViewProps) {
   const { statuses, contentTypes, platforms, getPlatform, getClient } = useLookups();
   const router = useRouter();
@@ -262,7 +269,7 @@ export function PublicationView({
   // hasNotifiable sincrónicamente (evita setState fuera de un callback async dentro del efecto). Solo
   // aplica a Editar: en Crear/Duplicar no hay publicación persistida todavía a la cual avisar sobre.
   useEffect(() => {
-    if (!publication || !isCurrentlyApproved) return;
+    if (readOnly || !publication || !isCurrentlyApproved) return;
     let cancelled = false;
     hasNotifiableClientUsers(clientId).then((result) => {
       if (!cancelled) setHasNotifiable(result);
@@ -270,7 +277,7 @@ export function PublicationView({
     return () => {
       cancelled = true;
     };
-  }, [publication, isCurrentlyApproved, clientId]);
+  }, [readOnly, publication, isCurrentlyApproved, clientId]);
 
   // Reconciliación de imágenes del carrusel: el server devuelve los assetId/URLs reales recién
   // asignados a las imágenes nuevas — sin esto, un segundo guardado volvería a subirlas como "nuevas"
@@ -341,7 +348,10 @@ export function PublicationView({
   // (en vez de formRef.current?.requestSubmit(), que en Form salta directo al submit nativo) para que pase
   // por el mismo handleSaveClick de abajo y respete la interceptación "¡Lista para publicar!" también acá.
   // Bloqueado mientras haya cualquier AlertDialog abierto, para no competir con esos flujos.
+  // En readOnly no hay nada que guardar: no se registra el listener, así Ctrl/Cmd+S conserva su
+  // comportamiento nativo del navegador.
   useEffect(() => {
+    if (readOnly) return;
     function handleKeyDown(e: KeyboardEvent) {
       if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== "s") return;
       e.preventDefault();
@@ -351,7 +361,7 @@ export function PublicationView({
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isPending, canSubmit, confirmCloseOpen, approveNotifyOpen, deleteOpen]);
+  }, [readOnly, isPending, canSubmit, confirmCloseOpen, approveNotifyOpen, deleteOpen]);
 
   /** Reutiliza deletePublication tal cual (misma action que PublicationForm y el menú de la card). Cierra
    * PublicationView llamando a onOpenChange (la prop) directamente, NO a requestClose(): así el dirty
@@ -521,7 +531,7 @@ export function PublicationView({
       >
         <div className="flex items-center justify-between gap-2 border-b border-border py-3 pr-14 pl-5">
           <DialogTitle className="text-sm font-medium text-muted-foreground">{headerTitle}</DialogTitle>
-          {publication && (
+          {publication && !readOnly && (
             <Button size="sm" variant="outline" className="gap-1.5" type="button" onClick={handleShare}>
               <Share2 className="size-3.5" />
               Compartir
@@ -596,7 +606,18 @@ export function PublicationView({
           {/* Derecha: datos / edición (toda esta vista ES el formulario, sin modo editar aparte). Grid de
               2 filas: arriba el único sector con scroll (form + aviso al cliente), abajo el footer fijo
               real (fuera del scroll, no sticky-dentro-del-scroll) — así nunca queda contenido del form
-              pasando por debajo del botón de guardar. */}
+              pasando por debajo del botón de guardar. En readOnly: solo la presentación de lectura, sin form
+              ni footer. */}
+          {readOnly && publication ? (
+            <div className="flex flex-col gap-5 overflow-y-auto p-5">
+              <PublicationReadOnlyDetails
+                publication={publication}
+                calendars={calendars}
+                clientAccounts={clientAccounts}
+                campaigns={campaigns}
+              />
+            </div>
+          ) : (
           <div className="grid grid-rows-[1fr_auto] overflow-hidden">
             <div className="flex flex-col gap-5 overflow-y-auto p-5">
               <form ref={formRef} id="pv-form" action={formAction} className="flex flex-col gap-5">
@@ -913,9 +934,13 @@ export function PublicationView({
               </Button>
             </div>
           </div>
+          )}
         </div>
       </DialogContent>
 
+      {/* Dialogs de staff (cerrar sin guardar, aprobar y avisar, eliminar): inalcanzables en readOnly. */}
+      {!readOnly && (
+      <>
       <AlertDialog open={confirmCloseOpen} onOpenChange={setConfirmCloseOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -980,6 +1005,105 @@ export function PublicationView({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      </>
+      )}
     </Dialog>
+  );
+}
+
+/** Columna derecha de PublicationView en readOnly (Client User): mismos datos y componentes que el cuerpo
+ * de PublicationDrawer (badges de destinos, StatusPill, CopyBlock, CTA/URL, Drive), sin notas internas. */
+function PublicationReadOnlyDetails({
+  publication,
+  calendars,
+  clientAccounts,
+  campaigns,
+}: {
+  publication: Publication;
+  calendars: Calendar[];
+  clientAccounts: ClientAccount[];
+  campaigns: Campaign[];
+}) {
+  const { getContentType, getPlatform, getStatus } = useLookups();
+  const calendar = calendars.find((c) => c.id === publication.calendarId);
+  const campaign = publication.campaignId ? campaigns.find((c) => c.id === publication.campaignId) : undefined;
+  const contentType = getContentType(publication.contentTypeId);
+  const status = getStatus(publication.statusId);
+
+  return (
+    <>
+      <div className="flex flex-col gap-1">
+        <h2 className="text-lg font-semibold">{publication.title}</h2>
+        <p className="text-sm text-muted-foreground">
+          {formatFullDate(publication.publicationDate)}
+          {publication.publicationTime ? ` · ${formatTime(publication.publicationTime)}` : ""}
+          {calendar ? ` · ${calendar.name}` : ""}
+        </p>
+      </div>
+
+      {publication.destinations.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {publication.destinations.map((destination) => {
+            const account = clientAccounts.find((a) => a.id === destination.clientAccountId);
+            if (!account) return null;
+            const platform = getPlatform(account.platformId);
+            if (!platform) return null;
+            const secondaryName = accountSecondaryName(account);
+            return (
+              <Badge key={destination.clientAccountId} variant="outline" className="gap-1.5 py-1">
+                <PlatformIcon platformKey={platform.key} className="size-3" style={{ color: platform.color }} />
+                {accountLabel(account)}
+                {secondaryName ? ` · ${secondaryName}` : ""}
+              </Badge>
+            );
+          })}
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center gap-1.5">
+        {contentType && <Badge variant="secondary">{contentType.label}</Badge>}
+        {status && <StatusPill status={status} size="md" />}
+        {campaign && <Badge variant="outline">{campaign.name}</Badge>}
+      </div>
+
+      <CopyBlock copy={publication.copy} />
+
+      {(publication.cta || publication.externalUrl) && (
+        <div className="flex flex-col gap-1.5 text-sm">
+          {publication.cta && (
+            <div>
+              <span className="text-muted-foreground">CTA: </span>
+              {publication.cta}
+            </div>
+          )}
+          {publication.externalUrl && (
+            <a
+              href={publication.externalUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex w-fit items-center gap-1 break-all text-primary hover:underline"
+            >
+              <ExternalLink className="size-3.5 shrink-0" />
+              {publication.externalUrl}
+            </a>
+          )}
+        </div>
+      )}
+
+      {publication.driveFolderUrl && (
+        <div>
+          <span className="mb-2 block text-xs font-medium uppercase tracking-wide text-muted-foreground">Archivos</span>
+          <a
+            href={publication.driveFolderUrl}
+            target="_blank"
+            rel="noreferrer"
+            className={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1.5")}
+          >
+            <FolderOpen className="size-3.5" />
+            Abrir carpeta en Drive
+          </a>
+        </div>
+      )}
+    </>
   );
 }

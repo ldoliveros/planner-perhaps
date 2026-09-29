@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import sharp from "sharp";
 import { createClient } from "@/lib/supabase/server";
-import { getPublicationById, listPublicationsInRange } from "@/lib/supabase/queries";
+import { getCurrentProfile, getPublicationById, listPublicationsInRange } from "@/lib/supabase/queries";
 import { mapPublicationAsset } from "@/lib/supabase/mappers";
 import type { Publication, PublicationAsset } from "@/types";
 
@@ -379,6 +379,10 @@ export async function deletePublication(publicationId: string, clientId: string)
  * resto de las acciones del proyecto.
  */
 export async function fetchPublicationsInRange(from: string, to: string): Promise<{ publications: Publication[] }> {
+  // Solo staff: una Server Action es invocable directo desde el navegador, y RLS acota filas pero no
+  // columnas — sin este gate un Client User podría leer sus publicaciones con internalNotes incluidas.
+  const profile = await getCurrentProfile();
+  if (profile?.role !== "super_admin" && profile?.role !== "account_manager") return { publications: [] };
   const publications = await listPublicationsInRange(from, to);
   return { publications };
 }

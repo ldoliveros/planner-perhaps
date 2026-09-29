@@ -236,7 +236,8 @@ export function CalendarScreen({
   const [selectedPublication, setSelectedPublication] = useState<Publication | null>(shared.publication);
   const missingSharedPublication = useRef(Boolean(shared.id) && !shared.publication);
   // Vista de Publicación integrada: staff (Editar/Duplicar/Crear), tanto en Publicaciones global como en el
-  // Planner de un cliente — Client User (readOnly) sigue abriendo PublicationDrawer sin cambios.
+  // Planner de un cliente. Client User (readOnly) también la abre al hacer click, pero en modo solo lectura
+  // (ver handleOpenPublication) — el deep-link ?publication= sigue usando PublicationDrawer para todos.
   const useIntegratedView = canManage;
   // Editar: { publication }. Duplicar: { duplicateFrom }. Crear: ninguno de los dos — PublicationView
   // deriva su modo de cuál de las dos props llega, igual que ya hacía PublicationForm.
@@ -251,12 +252,8 @@ export function CalendarScreen({
   // incluida Crear, que no tiene un id propio del cual derivar una key.
   const [viewKey, setViewKey] = useState(0);
   function handleOpenPublication(publication: Publication) {
-    if (useIntegratedView) {
-      setViewKey((k) => k + 1);
-      setViewState({ publication, clientId: publication.clientId });
-    } else {
-      setSelectedPublication(publication);
-    }
+    setViewKey((k) => k + 1);
+    setViewState({ publication, clientId: publication.clientId });
   }
   // Publicaciones (global): "Nueva publicación" no tiene un cliente fijo de antemano (a diferencia de
   // Editar/Duplicar, que lo resuelven de la publicación de origen) — este selector previo lo resuelve
@@ -774,6 +771,7 @@ export function CalendarScreen({
             campaigns={viewCampaigns}
             onSaved={isGlobal ? upsertGlobalPublication : undefined}
             onDeleted={isGlobal ? removeGlobalPublication : undefined}
+            readOnly={readOnly}
           />
         )}
         {global && (
