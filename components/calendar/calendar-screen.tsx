@@ -235,9 +235,9 @@ export function CalendarScreen({
   const [filters, setFilters] = useState<CalendarFiltersState>(EMPTY_FILTERS);
   const [selectedPublication, setSelectedPublication] = useState<Publication | null>(shared.publication);
   const missingSharedPublication = useRef(Boolean(shared.id) && !shared.publication);
-  // Vista de Publicación integrada: SOLO Publicaciones global + staff (Editar/Duplicar/Crear) — el resto
-  // sigue abriendo PublicationDrawer/PublicationForm sin cambios (Planner de un cliente, fuera de scope).
-  const useIntegratedView = isGlobal && canManage;
+  // Vista de Publicación integrada: staff (Editar/Duplicar/Crear), tanto en Publicaciones global como en el
+  // Planner de un cliente — Client User (readOnly) sigue abriendo PublicationDrawer sin cambios.
+  const useIntegratedView = canManage;
   // Editar: { publication }. Duplicar: { duplicateFrom }. Crear: ninguno de los dos — PublicationView
   // deriva su modo de cuál de las dos props llega, igual que ya hacía PublicationForm.
   const [viewState, setViewState] = useState<{
@@ -479,6 +479,12 @@ export function CalendarScreen({
   function openCreateForm(day?: Date) {
     const defaultDateStr = day ? format(day, "yyyy-MM-dd") : undefined;
     if (useIntegratedView) {
+      // Planner de un cliente: el cliente ya está fijo, sin selector previo.
+      if (!isGlobal) {
+        setViewKey((k) => k + 1);
+        setViewState({ clientId: client.id, defaultDate: defaultDateStr });
+        return;
+      }
       // Publicaciones (global): sin cliente fijo — con exactamente 1 cliente accesible no hace falta
       // preguntar; si hay más, se resuelve con el selector (ver handleClientPicked).
       const accessibleClients = global?.clients ?? [];
@@ -523,7 +529,8 @@ export function CalendarScreen({
   const formClientAccounts = isGlobal ? clientAccounts.filter((a) => a.clientId === formState.clientId) : clientAccounts;
   const formCampaigns = isGlobal ? campaigns.filter((c) => c.clientId === formState.clientId) : campaigns;
 
-  // Misma lógica de arriba, para la Vista de Publicación integrada (siempre en contexto global por ahora):
+  // Misma lógica de arriba, para la Vista de Publicación integrada (en el Planner de un cliente todo ya es de
+  // ese cliente, así que el filtro es inocuo):
   // el cliente sale de `publication`/`duplicateFrom` en Editar/Duplicar, o del clientId ya resuelto por el
   // selector previo en Crear — en los 3 casos `viewState.clientId` ya llega determinado.
   const viewCalendars = calendars.filter((c) => c.clientId === viewState?.clientId);
@@ -765,8 +772,8 @@ export function CalendarScreen({
             calendars={viewCalendars}
             clientAccounts={viewClientAccounts}
             campaigns={viewCampaigns}
-            onSaved={upsertGlobalPublication}
-            onDeleted={removeGlobalPublication}
+            onSaved={isGlobal ? upsertGlobalPublication : undefined}
+            onDeleted={isGlobal ? removeGlobalPublication : undefined}
           />
         )}
         {global && (
