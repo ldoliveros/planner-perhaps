@@ -621,10 +621,12 @@ export function PublicationView({
           )}
         </div>
 
-        <div className="grid grid-cols-1 overflow-y-auto md:grid-cols-[minmax(0,380px)_1fr] md:overflow-hidden">
+        <div className="min-h-0 scroll-pb-24 overflow-y-auto md:grid md:grid-cols-[minmax(0,380px)_1fr] md:overflow-hidden md:scroll-pb-0">
           {/* Izquierda: preview — sin scroll propio, centrado verticalmente cuando sobra alto; se mantiene
-              visible mientras la columna derecha scrollea (esa es la única con overflow-y-auto). */}
-          <div className="flex flex-col items-center justify-center gap-3 border-b border-border bg-muted/30 p-6 md:h-full md:overflow-hidden md:border-b-0 md:border-r">
+              visible mientras la columna derecha scrollea (esa es la única con overflow-y-auto). En mobile
+              (<md) no hay columnas: el cuerpo entero es el ÚNICO scroll (preview + form, sin scrolls
+              anidados) y el footer es sticky bottom-0 dentro de ese scroll. */}
+          <div className="flex flex-col items-center justify-center gap-3 border-b border-border bg-muted/30 p-4 md:h-full md:p-6 md:overflow-hidden md:border-b-0 md:border-r">
             {previewNode ? (
               <>
                 <div className="flex flex-col items-center gap-1.5">
@@ -676,7 +678,7 @@ export function PublicationView({
                 )}
               </>
             ) : (
-              <div className="flex aspect-9/16 w-full max-w-[300px] flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-border bg-muted p-6 text-center">
+              <div className="flex w-full max-w-[300px] flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-border bg-muted px-4 py-6 text-center md:aspect-9/16 md:p-6">
                 <ImageIcon className="size-8 text-muted-foreground/40" />
                 <p className="text-xs text-muted-foreground">
                   Todavía no hay preview para esta combinación de plataforma y tipo de contenido.
@@ -691,7 +693,7 @@ export function PublicationView({
               pasando por debajo del botón de guardar. En readOnly: solo la presentación de lectura, sin form
               ni footer. */}
           {readOnly && publication ? (
-            <div className="flex flex-col gap-5 overflow-y-auto p-5">
+            <div className="flex flex-col gap-5 p-5 md:overflow-y-auto">
               <PublicationReadOnlyDetails
                 publication={publication}
                 calendars={calendars}
@@ -700,8 +702,8 @@ export function PublicationView({
               />
             </div>
           ) : (
-          <div className="grid grid-rows-[1fr_auto] overflow-hidden">
-            <div className="flex flex-col gap-5 overflow-y-auto p-5">
+          <div className="contents md:grid md:grid-rows-[1fr_auto] md:overflow-hidden">
+            <div className="flex flex-col gap-5 p-5 md:overflow-y-auto">
               <form
                 ref={formRef}
                 id="pv-form"
@@ -1019,7 +1021,7 @@ export function PublicationView({
               )}
             </div>
 
-            <div className="flex shrink-0 justify-end border-t border-border bg-white px-5 py-3">
+            <div className="sticky bottom-0 z-10 flex shrink-0 justify-end border-t border-border bg-white px-5 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:static md:pb-3">
               <Button ref={submitButtonRef} type="submit" form="pv-form" disabled={isPending || !canSubmit} onClick={handleSaveClick}>
                 {submitLabel}
               </Button>
