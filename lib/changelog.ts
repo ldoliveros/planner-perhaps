@@ -21,7 +21,7 @@ export interface ChangelogRelease {
 export const CHANGELOG: ChangelogRelease[] = [
   {
     version: "1.6.0",
-    date: "2026-10-13",
+    date: "2026-10-24",
     entries: [
       {
         text: "Comentarios en las publicaciones En revisión: mencioná a otras personas con @, respondé comentarios y reaccioná con emojis.",
