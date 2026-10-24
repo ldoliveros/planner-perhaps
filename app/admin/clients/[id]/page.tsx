@@ -2,11 +2,13 @@ import { notFound } from "next/navigation";
 import { ClientDetailPageClient } from "@/components/admin/client-detail-page-client";
 import { createClient } from "@/lib/supabase/server";
 import {
+  countActivePublicationsByCalendar,
   getClientById,
   getCurrentProfile,
   getLookups,
   listCalendarsForClient,
   listClientAccountsForClient,
+  listTeamMembers,
   listUsersForClient,
   withAccessStatus,
 } from "@/lib/supabase/queries";
@@ -26,16 +28,18 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
     getCurrentProfile(),
   ]);
 
-  const calendarIds = calendars.map((c) => c.id);
-  const { data: publications } =
-    calendarIds.length > 0
-      ? await supabase.from("publications").select("calendar_id").in("calendar_id", calendarIds)
-      : { data: [] };
+  // v1.6: conteos sin archivadas (ver countActivePublicationsByCalendar).
+  const publicationCountByCalendarId = await countActivePublicationsByCalendar(calendars.map((c) => c.id));
 
-  const publicationCountByCalendarId: Record<string, number> = {};
-  for (const row of publications ?? []) {
-    publicationCountByCalendarId[row.calendar_id] = (publicationCountByCalendarId[row.calendar_id] ?? 0) + 1;
-  }
+  // v1.6 "Equipo asignado": miembros internos activos con sus asignaciones (misma consulta que la página Equipo,
+  // solo para Super Admin, que es quien puede gestionarlas).
+  const teamMembers =
+    profile?.role === "super_admin"
+      ? (await listTeamMembers())
+          .filter((m) => m.active)
+          .map((m) => ({ id: m.id, name: m.fullName || m.email || "Sin nombre", assignedClientIds: m.assignedClients.map((c) => c.id) }))
+          .sort((a, b) => a.name.localeCompare(b.name, "es", { sensitivity: "base" }))
+      : null;
 
   const accountIds = clientAccounts.map((a) => a.id);
   const { data: usedDestinations } =
@@ -55,6 +59,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
       accountTypes={lookups.accountTypes}
       clientUsers={profile?.role === "super_admin" ? await withAccessStatus(clientUsers) : clientUsers}
       canEditClient={profile?.role === "super_admin"}
+      teamMembers={teamMembers}
     />
   );
 }

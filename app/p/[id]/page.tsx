@@ -14,25 +14,51 @@ import { getCurrentProfile, getPublicationById } from "@/lib/supabase/queries";
  * vuelve a resolver el destino correcto después de ingresar). Sin acceso o id inexistente: mensaje genérico,
  * sin distinguir un caso del otro (evita filtrar si la publicación existe para otro cliente).
  */
-export default async function SharedPublicationPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
+export default async function SharedPublicationPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ tab?: string | string[] }>;
+}) {
+  const [{ id }, query] = await Promise.all([params, searchParams]);
+  // v1.6: ?tab=comments (abrir desde una notificación) se reenvía tal cual; cualquier otro valor se ignora.
+  const tabQuery = query.tab === "comments" ? "&tab=comments" : "";
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   if (!user) {
-    redirect(`/login?next=${encodeURIComponent(`/p/${id}`)}`);
+    redirect(`/login?next=${encodeURIComponent(`/p/${id}${tabQuery ? "?tab=comments" : ""}`)}`);
   }
 
   const [profile, publication] = await Promise.all([getCurrentProfile(), getPublicationById(id)]);
 
+  // v1.6: archivada (solo el staff puede leerla; para el Client User la RLS ya no la devuelve). No se abre en el
+  // Planner (no está en su lista): se avisa y se ofrece el Planner, donde está "Publicaciones archivadas".
+  if (publication?.archivedAt && (profile?.role === "super_admin" || profile?.role === "account_manager")) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-background px-4 text-center">
+        <p className="text-sm text-muted-foreground">
+          Esta publicación está archivada. Podés restaurarla desde «Publicaciones archivadas» en el menú del Planner.
+        </p>
+        <Link
+          href={`/admin/clients/${publication.clientId}/planner`}
+          className="text-sm font-medium text-foreground underline underline-offset-4"
+        >
+          Ir al Planner del cliente
+        </Link>
+      </div>
+    );
+  }
+
   if (publication) {
     if (profile?.role === "client") {
-      redirect(`/client/planner?publication=${publication.id}`);
+      redirect(`/client/planner?publication=${publication.id}${tabQuery}`);
     }
     if (profile?.role === "super_admin" || profile?.role === "account_manager") {
-      redirect(`/admin/clients/${publication.clientId}/planner?publication=${publication.id}`);
+      redirect(`/admin/clients/${publication.clientId}/planner?publication=${publication.id}${tabQuery}`);
     }
   }
 

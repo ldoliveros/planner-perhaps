@@ -128,3 +128,20 @@
     @apply font-sans;
   }
 }
+/*
+ * v1.6 — Pantallas administrativas (ver lib/admin-surface.ts): solo variables, acotadas a la pantalla que usa la
+ * clase. Los modales y menús se renderizan en portales fuera de este árbol y conservan sus estilos; el calendario y
+ * el portal Client User no la usan.
+ */
+.admin-surface {
+  --background: #ffffff;
+  --border: #e8eaed;
+  --input: #e8eaed;
+}
+.admin-surface [data-slot="table-row"]:hover {
+  background-color: #f8f9fa;
+}
+.admin-surface [data-slot="table-head"] {
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+}

@@ -22,14 +22,18 @@ import { toast } from "@/lib/toast";
 import type { AccountType, ClientAccount, Platform } from "@/types";
 
 const INITIAL_STATE: ClientAccountFormState = { error: null, savedAt: null };
-const NO_ACCOUNT_TYPE = "__none__";
+/** Tipo de cuenta preseleccionado al crear (slug del catálogo `account_types`). */
+const DEFAULT_ACCOUNT_TYPE_KEY = "empresa";
 
 interface ClientAccountFormDialogProps {
   clientId: string;
   platforms: Platform[];
   accountTypes: AccountType[];
   account?: ClientAccount;
-  trigger?: React.ReactElement;
+  /** `null` omite el trigger propio: útil cuando otro elemento (ej. un ítem de menú) controla `open`. */
+  trigger?: React.ReactElement | null;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 export function ClientAccountFormDialog({
@@ -38,27 +42,33 @@ export function ClientAccountFormDialog({
   accountTypes,
   account,
   trigger,
+  open: openProp,
+  onOpenChange,
 }: ClientAccountFormDialogProps) {
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = openProp ?? internalOpen;
   const [sessionKey, setSessionKey] = useState(0);
 
   function handleOpenChange(next: boolean) {
     if (next) setSessionKey((k) => k + 1);
-    setOpen(next);
+    setInternalOpen(next);
+    onOpenChange?.(next);
   }
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger
-        render={
-          trigger ?? (
-            <Button size="sm" className="gap-1.5">
-              <Plus />
-              Agregar cuenta
-            </Button>
-          )
-        }
-      />
+      {trigger !== null && (
+        <DialogTrigger
+          render={
+            trigger ?? (
+              <Button size="sm" className="gap-1.5">
+                <Plus />
+                Agregar cuenta
+              </Button>
+            )
+          }
+        />
+      )}
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{account ? "Editar cuenta" : "Nueva cuenta"}</DialogTitle>
@@ -69,7 +79,7 @@ export function ClientAccountFormDialog({
           platforms={platforms}
           accountTypes={accountTypes}
           account={account}
-          onDone={() => setOpen(false)}
+          onDone={() => handleOpenChange(false)}
         />
       </DialogContent>
     </Dialog>
@@ -96,8 +106,11 @@ function ClientAccountFormBody({
   const [platformId, setPlatformId] = useState(account?.platformId ?? "");
   const [name, setName] = useState(account?.name ?? "");
   const [handle, setHandle] = useState(account?.handle ?? "");
-  const [url, setUrl] = useState(account?.url ?? "");
-  const [accountTypeId, setAccountTypeId] = useState(account?.accountTypeId ?? NO_ACCOUNT_TYPE);
+  // Obligatorio. Crear: "Empresa" por defecto. Editar: el valor guardado; una cuenta histórica sin tipo arranca
+  // sin selección y hay que elegir uno para guardar (sin actualizaciones masivas).
+  const [accountTypeId, setAccountTypeId] = useState(
+    account ? (account.accountTypeId ?? "") : (accountTypes.find((a) => a.key === DEFAULT_ACCOUNT_TYPE_KEY)?.id ?? "")
+  );
   const [active, setActive] = useState(account?.active ?? true);
 
   useEffect(() => {
@@ -135,44 +148,46 @@ function ClientAccountFormBody({
         </Select>
       </div>
 
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="handle">Handle</Label>
-        <Input
-          id="handle"
-          name="handle"
-          value={handle}
-          onChange={(e) => setHandle(e.target.value)}
-          placeholder="Ej: miempresa"
-          required
-          autoFocus
-        />
-        <p className="text-xs text-muted-foreground">Sin @. Es el identificador principal de la cuenta.</p>
+      {/* Handle y Nombre en una fila (dos columnas iguales); en mobile, apilados. Mismo patrón que Invitar cliente. */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="handle">Handle / identificador</Label>
+          <Input
+            id="handle"
+            name="handle"
+            value={handle}
+            onChange={(e) => setHandle(e.target.value)}
+            placeholder="Ej: miempresa"
+            required
+            autoFocus
+          />
+          <p className="text-xs text-muted-foreground">Sin @. Es el identificador principal de la cuenta.</p>
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="name">Nombre (opcional)</Label>
+          <Input
+            id="name"
+            name="name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Ej: Mi Empresa"
+          />
+        </div>
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="name">Nombre (opcional)</Label>
-        <Input
-          id="name"
-          name="name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Ej: Mi Empresa"
-        />
-      </div>
-
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="accountTypeId">Tipo de cuenta (opcional)</Label>
+        <Label htmlFor="accountTypeId">Tipo de cuenta</Label>
         <Select
           name="accountTypeId"
           value={accountTypeId}
           onValueChange={(value) => setAccountTypeId(value as string)}
-          items={{ [NO_ACCOUNT_TYPE]: "Sin especificar", ...Object.fromEntries(accountTypes.map((a) => [a.id, a.name])) }}
+          items={Object.fromEntries(accountTypes.map((a) => [a.id, a.name]))}
         >
-          <SelectTrigger id="accountTypeId" className="w-full">
-            <SelectValue />
+          <SelectTrigger id="accountTypeId" className="w-full" aria-required="true">
+            <SelectValue placeholder="Elegí un tipo de cuenta" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={NO_ACCOUNT_TYPE}>Sin especificar</SelectItem>
             {accountTypes.map((a) => (
               <SelectItem key={a.id} value={a.id}>
                 {a.name}
@@ -180,18 +195,6 @@ function ClientAccountFormBody({
             ))}
           </SelectContent>
         </Select>
-      </div>
-
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="url">URL (opcional)</Label>
-        <Input
-          id="url"
-          name="url"
-          type="url"
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          placeholder="https://instagram.com/usuario"
-        />
       </div>
 
       <label className="flex w-fit items-center gap-2 text-sm text-foreground">

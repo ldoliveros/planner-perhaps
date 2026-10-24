@@ -5,10 +5,13 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { PlannerLogo } from "@/components/branding/planner-logo";
-import { getAdminNavItems } from "@/components/admin/admin-nav-items";
+import {
+  getAdminManageItems,
+  HOME_ITEM,
+  type AdminNavItem,
+} from "@/components/admin/admin-nav-items";
+import { AdminSpacesNav, useAdminSpaceNav, type AdminSpace } from "@/components/admin/admin-spaces-nav";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { UserMenu } from "@/components/shared/user-menu";
-import { ROLE_LABELS } from "@/lib/role-labels";
 import { APP_VERSION } from "@/lib/version";
 import { cn } from "cn";
 
@@ -19,18 +22,17 @@ const WIDTH_EXPANDED = "w-[232px]";
 
 interface AdminSidebarProps {
   role: "super_admin" | "account_manager";
-  email: string | null;
-  fullName: string | null;
-  avatarUrl: string | null;
   defaultCollapsed: boolean;
+  spaces: AdminSpace[];
 }
 
-export function AdminSidebar({ role, email, fullName, avatarUrl, defaultCollapsed }: AdminSidebarProps) {
+export function AdminSidebar({ role, defaultCollapsed, spaces }: AdminSidebarProps) {
   // pinned = abierto permanentemente; sin fijar = compacto que se expande temporalmente por hover.
   const [pinned, setPinned] = useState(!defaultCollapsed);
   const [hovered, setHovered] = useState(false);
   const pathname = usePathname();
-  const items = getAdminNavItems(role);
+  const manageItems = getAdminManageItems(role);
+  const { manageClientsActive } = useAdminSpaceNav();
 
   // Estado visual: compacto salvo que esté fijado o el mouse esté encima.
   const expanded = pinned || hovered;
@@ -41,6 +43,35 @@ export function AdminSidebar({ role, email, fullName, avatarUrl, defaultCollapse
     const next = !pinned;
     setPinned(next);
     document.cookie = `${COLLAPSE_COOKIE}=${next ? "0" : "1"}; path=/; max-age=31536000; samesite=lax`;
+  }
+
+  function renderItem(item: AdminNavItem, active: boolean) {
+    const Icon = item.icon;
+    const link = (
+      <Link
+        href={item.href}
+        aria-current={active ? "page" : undefined}
+        className={cn(
+          "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors",
+          collapsed && "justify-center px-0 py-2.5",
+          active ? "bg-white/10 text-white" : "text-white/55 hover:bg-white/5 hover:text-white/90"
+        )}
+      >
+        <Icon className="size-[18px] shrink-0" />
+        {!collapsed && <span className="truncate">{item.label}</span>}
+      </Link>
+    );
+
+    if (!collapsed) {
+      return <div key={item.href}>{link}</div>;
+    }
+
+    return (
+      <Tooltip key={item.href}>
+        <TooltipTrigger render={link} />
+        <TooltipContent side="right">{item.label}</TooltipContent>
+      </Tooltip>
+    );
   }
 
   return (
@@ -95,47 +126,14 @@ export function AdminSidebar({ role, email, fullName, avatarUrl, defaultCollapse
       </div>
 
       <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-2.5">
-        {items.map((item) => {
-          const active = pathname?.startsWith(item.href);
-          const Icon = item.icon;
-          const link = (
-            <Link
-              href={item.href}
-              className={cn(
-                "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors",
-                collapsed && "justify-center px-0 py-2.5",
-                active ? "bg-white/10 text-white" : "text-white/55 hover:bg-white/5 hover:text-white/90"
-              )}
-            >
-              <Icon className="size-[18px] shrink-0" />
-              {!collapsed && <span className="truncate">{item.label}</span>}
-            </Link>
-          );
-
-          if (!collapsed) {
-            return <div key={item.href}>{link}</div>;
-          }
-
-          return (
-            <Tooltip key={item.href}>
-              <TooltipTrigger render={link} />
-              <TooltipContent side="right">{item.label}</TooltipContent>
-            </Tooltip>
-          );
-        })}
+        {renderItem(HOME_ITEM, pathname === HOME_ITEM.href)}
+        <AdminSpacesNav spaces={spaces} variant="sidebar" collapsed={collapsed} />
+        {manageItems.map((item) =>
+              renderItem(item, item.href === "/admin/clients" ? manageClientsActive : Boolean(pathname?.startsWith(item.href)))
+            )}
       </nav>
 
       <div className="border-t border-white/10 p-2.5">
-        <UserMenu
-          email={email}
-          fullName={fullName}
-          avatarUrl={avatarUrl}
-          profileHref="/admin/profile"
-          signOutRedirectTo="/login"
-          roleLabel={ROLE_LABELS[role]}
-          variant="sidebar"
-          collapsed={collapsed}
-        />
         <Link
           href="/changelog"
           className={cn(

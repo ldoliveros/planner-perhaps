@@ -3,30 +3,36 @@
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { UserAccessBadge } from "@/components/admin/user-access-badge";
+import { ActiveStatusBadge } from "@/components/shared/active-status-badge";
+import { InactiveStatusBadge } from "@/components/shared/inactive-status-badge";
+import { ACCESS_STATUS_LABELS } from "@/lib/user-access";
 import { EmptyCard, ResponsiveList, RowCard } from "@/components/admin/responsive-list";
 import { TeamMemberCreateDialog, TeamMemberEditDialog } from "@/components/admin/team-member-form-dialog";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { ROLE_LABELS } from "@/lib/role-labels";
-import type { Client, TeamMember } from "@/types";
+import { ADMIN_ACTIONS_RESERVE } from "@/lib/admin-shell";
+import { ADMIN_PAGE_TITLE, ADMIN_SURFACE, ADMIN_TABLE_FRAME } from "@/lib/admin-surface";
+import { cn } from "cn";
+import type { TeamMember, UserAccessStatus } from "@/types";
 
 const MAX_VISIBLE_CLIENT_CHIPS = 3;
 
 interface TeamPageClientProps {
   members: TeamMember[];
-  clients: Client[];
 }
 
-export function TeamPageClient({ members, clients }: TeamPageClientProps) {
+export function TeamPageClient({ members }: TeamPageClientProps) {
   return (
-    <div className="flex flex-col gap-4 p-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-foreground">Equipo</h1>
-        <TeamMemberCreateDialog clients={clients} />
+    <div className={cn("flex min-h-full flex-col gap-5 p-6", ADMIN_SURFACE)}>
+      {/* Reserva el lugar de la campanita + avatar del layout (ver lib/admin-shell.ts). */}
+      <div className={cn("flex items-center justify-between", ADMIN_ACTIONS_RESERVE)}>
+        <h1 className={ADMIN_PAGE_TITLE}>Equipo</h1>
+        <TeamMemberCreateDialog />
       </div>
 
       <ResponsiveList
         table={
-          <div className="overflow-hidden rounded-lg border border-border bg-card">
+          <div className={ADMIN_TABLE_FRAME}>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -62,10 +68,10 @@ export function TeamPageClient({ members, clients }: TeamPageClientProps) {
                       <AssignedClients member={member} />
                     </TableCell>
                     <TableCell>
-                      <UserAccessBadge status={member.accessStatus} />
+                      <TeamStatusBadge status={member.accessStatus} />
                     </TableCell>
                     <TableCell className="text-right">
-                      <TeamMemberEditDialog member={member} clients={clients} />
+                      <TeamMemberEditDialog member={member} />
                     </TableCell>
                   </TableRow>
                 ))}
@@ -85,7 +91,7 @@ export function TeamPageClient({ members, clients }: TeamPageClientProps) {
                     {member.fullName && <span className="truncate text-xs text-muted-foreground">{member.email}</span>}
                     <div className="mt-1 flex flex-wrap items-center gap-1.5">
                       <Badge variant="outline">{ROLE_LABELS[member.role]}</Badge>
-                      <UserAccessBadge status={member.accessStatus} />
+                      <TeamStatusBadge status={member.accessStatus} />
                     </div>
                   </div>
                 </div>
@@ -94,7 +100,7 @@ export function TeamPageClient({ members, clients }: TeamPageClientProps) {
                   <AssignedClients member={member} />
                 </div>
                 <div className="flex justify-end [&_button]:pointer-coarse:h-11">
-                  <TeamMemberEditDialog member={member} clients={clients} />
+                  <TeamMemberEditDialog member={member} />
                 </div>
               </RowCard>
             ))}
@@ -129,4 +135,14 @@ function AssignedClients({ member }: { member: TeamMember }) {
       )}
     </div>
   );
+}
+
+/**
+ * Estado en Equipo (v1.6): mismos pills que Clientes — Activo (verde) y Desactivado (rojo) con punto. "Invitado" no
+ * tiene equivalente en Clientes y conserva el badge de acceso de siempre.
+ */
+function TeamStatusBadge({ status }: { status: UserAccessStatus }) {
+  if (status === "active") return <ActiveStatusBadge />;
+  if (status === "disabled") return <InactiveStatusBadge label={ACCESS_STATUS_LABELS.disabled} />;
+  return <UserAccessBadge status={status} />;
 }

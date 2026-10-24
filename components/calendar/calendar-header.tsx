@@ -1,293 +1,540 @@
 "use client";
 
-import type { ReactNode } from "react";
-import Image from "next/image";
-import { ChevronLeft, ChevronRight, Download, FolderOpen, Info, MoreHorizontal, Plus } from "lucide-react";
-import { Button, buttonVariants } from "@/components/ui/button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { useState, type ReactNode } from "react";
+import {
+  Archive,
+  Calendar1,
+  CalendarDays,
+  CalendarRange,
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Columns3,
+  Download,
+  FolderOpen,
+  Info,
+  Layers,
+  List,
+  MoreHorizontal,
+  Plus,
+  type LucideIcon,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { AvatarStack } from "@/components/shared/avatar-stack";
-import { getContrastTextColor, getReadableTextColor } from "@/lib/color-contrast";
+import { ClientLogo } from "@/components/shared/client-badge";
 import { cn } from "cn";
+import { PeriodPicker } from "@/components/calendar/period-picker";
+import { ADMIN_ACTIONS_RESERVE_FULL_BLEED_SHARED } from "@/lib/admin-shell";
+import { CAL_ACCENT_LINE, CAL_ACCENT_SOFT, CAL_HEADER_BG } from "@/lib/calendar-surface";
 import type { Client, ClientMember } from "@/types";
 
-export type CalendarView = "week" | "month" | "list";
+export type CalendarView = "day" | "week" | "month" | "list" | "board";
+/** Vistas del modo Calendario (Día / Semana / Mes). Lista y Tablero son modos propios. */
+export type CalendarGridView = Exclude<CalendarView, "list" | "board">;
 
 export interface HeaderDateRangeValue {
   from: string;
   to: string;
 }
 
-const VIEW_OPTIONS: { value: CalendarView; label: string }[] = [
-  { value: "week", label: "Semana" },
-  { value: "month", label: "Mes" },
-  { value: "list", label: "Lista" },
+/** Vistas del modo Calendario (Lista es su propio modo, en el selector Calendario / Tablero / Lista). */
+const CALENDAR_VIEW_OPTIONS: { value: CalendarGridView; label: string; icon: LucideIcon }[] = [
+  { value: "day", label: "Día", icon: Calendar1 },
+  { value: "week", label: "Semana", icon: CalendarRange },
+  { value: "month", label: "Mes", icon: CalendarDays },
 ];
 
-interface CalendarHeaderProps {
-  client: Client;
-  calendarLabel: string;
-  /** Descripcion del calendario actual — solo cuando hay exactamente uno seleccionado. */
-  calendarDescription?: string | null;
-  driveFolderUrl: string | null;
-  /** Ignorado en Lista: ahí la navegación temporal se reemplaza por Desde/Hasta (ver `dateRange`). */
-  periodLabel: string;
+/**
+ * Selector de vista del modo Calendario (Día / Semana / Mes): un desplegable con la vista activa. Apertura
+ * controlada: se cierra al elegir (mouse o teclado) y al cambiar de período. Mismo `onViewChange` (?view=).
+ */
+function ViewSelect({
+  view,
+  onViewChange,
+  closeKey,
+}: {
   view: CalendarView;
+  onViewChange: (view: CalendarView) => void;
+  /** Cambia con el período visible: si el menú quedó abierto, se cierra (ajuste de estado, sin remontar). */
+  closeKey: string;
+}) {
+  const active = CALENDAR_VIEW_OPTIONS.find((o) => o.value === view) ?? CALENDAR_VIEW_OPTIONS[1];
+  const ActiveIcon = active.icon;
+  const [open, setOpen] = useState(false);
+  const [lastCloseKey, setLastCloseKey] = useState(closeKey);
+  if (closeKey !== lastCloseKey) {
+    setLastCloseKey(closeKey);
+    setOpen(false);
+  }
+  return (
+    <DropdownMenu open={open} onOpenChange={setOpen}>
+      <DropdownMenuTrigger
+        render={
+          <Button variant="ghost" size="sm" className="h-[26px] min-w-[5.25rem] justify-between gap-1 px-2 text-[13px]" aria-label={`Vista: ${active.label}. Cambiar vista`} />
+        }
+      >
+        <span className="flex items-center gap-1.5">
+          <ActiveIcon className="size-3.5 text-muted-foreground" />
+          {active.label}
+        </span>
+        <ChevronDown className="size-3.5 text-muted-foreground" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="min-w-40">
+        <DropdownMenuRadioGroup
+          value={view}
+          onValueChange={(value) => {
+            setOpen(false);
+            onViewChange(value as CalendarView);
+          }}
+        >
+          {CALENDAR_VIEW_OPTIONS.map((option) => {
+            const Icon = option.icon;
+            return (
+              <DropdownMenuRadioItem key={option.value} value={option.value}>
+                <Icon className="size-4 text-muted-foreground" />
+                {option.label}
+              </DropdownMenuRadioItem>
+            );
+          })}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/**
+ * Selector Calendario / Lista / Tablero (solo íconos, con tooltip). Calendario vuelve a la última vista de calendario usada (Día, Semana o
+ * Mes); Tablero (v1.6) es la vista Kanban por estado editorial; Lista es la vista Lista de siempre. Tablero y Lista
+ * trabajan sobre el mes elegido (mismo selector de período que Mes).
+ */
+function ModeSwitch({
+  view,
+  onViewChange,
+  defaultCalendarView,
+}: {
+  view: CalendarView;
+  onViewChange: (view: CalendarView) => void;
+  defaultCalendarView: CalendarGridView;
+}) {
+  const isList = view === "list";
+  const isBoard = view === "board";
+  const isCalendar = !isList && !isBoard;
+  const [lastCalendarView, setLastCalendarView] = useState<CalendarGridView>(
+    view === "list" || view === "board" ? defaultCalendarView : view
+  );
+  if (view !== "list" && view !== "board" && view !== lastCalendarView) setLastCalendarView(view);
+
+  const modes = [
+    { label: "Calendario", icon: CalendarDays, active: isCalendar, select: () => onViewChange(lastCalendarView) },
+    { label: "Lista", icon: List, active: isList, select: () => onViewChange("list") },
+    { label: "Tablero", icon: Columns3, active: isBoard, select: () => onViewChange("board") },
+  ];
+  return (
+    <div className="flex items-center gap-0.5 rounded-lg border border-border bg-white p-0.5" role="group" aria-label="Modo de visualización">
+      {modes.map(({ label, icon: Icon, active, select }) => (
+        <Tooltip key={label}>
+          <TooltipTrigger
+            render={
+              <button
+                type="button"
+                aria-label={label}
+                aria-pressed={active}
+                onClick={() => !active && select()}
+                className={cn(
+                  "flex size-9 items-center justify-center rounded-md transition-colors",
+                  // Vista activa: color principal del contexto (cliente, o el predeterminado en vistas globales).
+                  active ? CAL_ACCENT_SOFT : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                )}
+              />
+            }
+          >
+            <Icon className="size-4" />
+          </TooltipTrigger>
+          <TooltipContent side="bottom">{label}</TooltipContent>
+        </Tooltip>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Navegación temporal del encabezado (‹ › · período · Hoy · Día/Semana/Mes). Exportada para el Escritorio, que usa
+ * exactamente los mismos controles; en Lista no muestra Día/Semana/Mes.
+ */
+export function PeriodNav({
+  view,
+  anchorDate,
+  periodLabel,
+  onDateSelect,
+  onViewChange,
+  onPrev,
+  onNext,
+  onToday,
+}: {
+  view: CalendarView;
+  anchorDate: Date;
+  periodLabel: string;
+  onDateSelect: (date: Date) => void;
   onViewChange: (view: CalendarView) => void;
   onPrev: () => void;
   onNext: () => void;
-  /** En Lista, además de llevar `anchorDate` a hoy, restablece `dateRange` a su rango por defecto. */
+  onToday: () => void;
+}) {
+  return (
+    <div className="flex min-w-0 flex-wrap items-center gap-0.5">
+      <Button variant="ghost" size="icon-sm" className="size-[26px]" onClick={onPrev} aria-label="Período anterior">
+        <ChevronLeft />
+      </Button>
+      <Button variant="ghost" size="icon-sm" className="size-[26px]" onClick={onNext} aria-label="Período siguiente">
+        <ChevronRight />
+      </Button>
+      {/* key: cambiar de vista cierra el selector si quedó abierto. */}
+      <PeriodPicker key={view} view={view} anchorDate={anchorDate} label={periodLabel} onSelect={onDateSelect} />
+      <Button variant="outline" size="sm" className="h-[26px] px-2 text-[13px]" onClick={onToday}>
+        Hoy
+      </Button>
+      {view !== "list" && view !== "board" && (
+        <ViewSelect view={view} onViewChange={onViewChange} closeKey={anchorDate.toDateString()} />
+      )}
+    </div>
+  );
+}
+
+/** Un espacio (cliente) del selector del encabezado. */
+export type SpaceOption = Pick<Client, "id" | "name" | "logoUrl" | "color">;
+
+const SPACE_TRIGGER =
+  "flex min-w-0 items-center gap-2 rounded-full bg-muted/60 py-0.5 pr-3 pl-0.5 text-left transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none";
+const SPACE_TEXT = "min-w-0 truncate text-lg leading-7 font-semibold text-foreground";
+
+/** Marca de "Todos los espacios": `large` en el selector del encabezado (32 px, como el logo de un cliente). */
+function AllSpacesMark({ large = false }: { large?: boolean }) {
+  return (
+    <span
+      className={cn(
+        "flex shrink-0 items-center justify-center rounded-full text-foreground",
+        large ? "size-8 bg-white shadow-xs" : "size-6 bg-muted"
+      )}
+    >
+      <Layers className={large ? "size-4" : "size-3.5"} />
+    </span>
+  );
+}
+
+/**
+ * Selector de espacio del encabezado (v1.6). La RUTA es la única fuente de verdad del contexto: "Todos los espacios"
+ * es el calendario global (/admin/publications) y cada cliente es su Planner. Elegir una opción navega (no escribe
+ * ningún filtro), así "Ver todos" nunca arrastra un filtro Espacio oculto. Mismo componente en los dos contextos.
+ * Sin `onSelectSpace` (portal Client User) solo muestra el logo/inicial y el nombre.
+ */
+export function SpaceSelector({
+  client,
+  isGlobal,
+  spaces,
+  onSelectSpace,
+}: {
+  client: SpaceOption;
+  isGlobal: boolean;
+  spaces?: SpaceOption[];
+  onSelectSpace?: (clientId: string | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  if (spaces && onSelectSpace) {
+    const label = isGlobal ? "Todos los espacios" : client.name;
+    const options: { id: string | null; space?: SpaceOption }[] = [
+      { id: null },
+      ...spaces.map((space) => ({ id: space.id, space })),
+    ];
+    return (
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger render={<button type="button" className={SPACE_TRIGGER} aria-label={`Espacio: ${label}. Cambiar de espacio`} />}>
+          {isGlobal ? <AllSpacesMark large /> : <ClientLogo client={client} className="size-8" sizes={32} />}
+          <span className={SPACE_TEXT}>{label}</span>
+          <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
+        </PopoverTrigger>
+        <PopoverContent align="start" className="w-[min(18rem,calc(100vw-2rem))] gap-0 p-1">
+          <ul className="flex max-h-[min(20rem,60dvh)] flex-col overflow-y-auto" aria-label="Espacios">
+            {options.map(({ id, space }) => {
+              const active = id === null ? isGlobal : !isGlobal && id === client.id;
+              return (
+                <li key={id ?? "all"}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOpen(false);
+                      if (!active) onSelectSpace(id);
+                    }}
+                    aria-current={active ? "true" : undefined}
+                    className={cn(
+                      "flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-left text-sm transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none",
+                      active && "bg-muted/70 font-medium"
+                    )}
+                  >
+                    {space ? <ClientLogo client={space} className="size-6" sizes={24} /> : <AllSpacesMark />}
+                    <span className="min-w-0 flex-1 truncate">{space ? space.name : "Todos los espacios"}</span>
+                    {active && <Check className="size-4 shrink-0 text-[var(--cal-accent-ink)]" />}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </PopoverContent>
+      </Popover>
+    );
+  }
+
+  return (
+    <div className="flex min-w-0 items-center gap-2 py-0.5">
+      <ClientLogo client={client} className="size-8" sizes={32} />
+      <span className={SPACE_TEXT}>{client.name}</span>
+    </div>
+  );
+}
+
+interface CalendarHeaderProps {
+  client: Client;
+  /** Calendario global (`/admin/publications`): selector de espacios en lugar del cliente fijo. */
+  isGlobal: boolean;
+  /** Descripción del calendario actual — solo cuando hay exactamente uno seleccionado. */
+  calendarDescription?: string | null;
+  driveFolderUrl: string | null;
+  /** Período visible ("lunes 12 de octubre", "6 – 12 de octubre", "Octubre 2026"): abre el selector de fecha. */
+  periodLabel: string;
+  /** Fecha de referencia del período visible (v1.6): el selector de fecha la usa como valor actual. */
+  anchorDate: Date;
+  /** Salto directo desde el selector de fecha (día, semana o mes según la vista). */
+  onDateSelect: (date: Date) => void;
+  view: CalendarView;
+  onViewChange: (view: CalendarView) => void;
+  /** Vista con la que "Calendario" abre si se viene de Lista sin haber usado antes Día / Semana / Mes. */
+  defaultCalendarView: CalendarGridView;
+  onPrev: () => void;
+  onNext: () => void;
+  /** En Lista con rango personalizado, además de llevar `anchorDate` a hoy, restablece `dateRange`. */
   onToday: () => void;
   onCreate?: () => void;
   /** Exportar CSV del contexto actual. Solo se pasa a quien puede editar (no Client User). */
   onExport?: () => void;
-  allClients?: { id: string; name: string }[];
-  onSwitchClient?: (clientId: string) => void;
-  /** Solo Planner de cliente (nunca Publicaciones global — el call site no lo pasa ahí): integrantes con
-   * acceso a este cliente, avatares superpuestos + tooltip. Ausente/vacío no renderiza nada. */
+  /** v1.6: abre el panel "Publicaciones archivadas" (solo staff y con el archivado disponible en la base). */
+  onOpenArchived?: () => void;
+  archivedCount?: number;
+  /** Espacios (clientes) a los que se puede cambiar desde el selector — solo staff; el portal Client User no lo pasa. */
+  spaces?: SpaceOption[];
+  /** Navega al espacio elegido: `null` = "Todos los espacios" (calendario global), si no el Planner del cliente. */
+  onSelectSpace?: (clientId: string | null) => void;
+  /** Solo Planner de cliente: integrantes con acceso a este cliente (avatares + tooltip). */
   members?: ClientMember[];
-  /** Solo Lista: Desde/Hasta reemplaza a ← Hoy → + período visible (no es la navegación de Semana/Mes). */
+  /**
+   * Solo Lista con rango personalizado (hoy desactivado, ver LIST_CUSTOM_RANGE_ENABLED en CalendarScreen):
+   * Desde/Hasta reemplaza a ‹ › + selector + Hoy. Sin este prop, Lista navega por meses como Mes.
+   */
   dateRange?: HeaderDateRangeValue;
   onDateRangeChange?: (value: HeaderDateRangeValue) => void;
-  /** Solo < md: botón "Filtros" que va en la misma fila que el selector Semana/Mes/Lista. */
-  mobileFilters?: ReactNode;
-  /** Publicaciones (global): sin avatar/logo de cliente ni el espacio que ocupa. */
-  hideAvatar?: boolean;
+  /** Extremo derecho de la segunda fila: filtros (ícono) y búsqueda (lupa). Los arma CalendarScreen. */
+  toolbarEnd?: ReactNode;
 }
 
+/**
+ * Encabezado del calendario (v1.6), compartido por el calendario global, el Planner de cada cliente y el portal
+ * Client User. Fila 1: título "Planner" + selector de espacio · Calendario / Tablero / Lista, "+", (campanita y
+ * avatar del layout). Fila 2: ‹ › período · Hoy · Día/Semana/Mes · filtros y búsqueda. La línea superior y los
+ * acentos usan la paleta del contexto (celeste en el global, color del cliente en su Planner).
+ */
 export function CalendarHeader({
   client,
-  calendarLabel,
+  isGlobal,
   calendarDescription,
   driveFolderUrl,
   periodLabel,
+  anchorDate,
+  onDateSelect,
   view,
   onViewChange,
+  defaultCalendarView,
   onPrev,
   onNext,
   onToday,
   onCreate,
   onExport,
-  allClients,
-  onSwitchClient,
+  onOpenArchived,
+  archivedCount = 0,
+  spaces,
+  onSelectSpace,
   members,
   dateRange,
   onDateRangeChange,
-  mobileFilters,
-  hideAvatar = false,
+  toolbarEnd,
 }: CalendarHeaderProps) {
-  const initialTextColor = getContrastTextColor(client.color);
-  // Vista activa: fondo = color del cliente, texto con el mejor contraste (solo la opción activa).
-  const activeViewStyle = { backgroundColor: client.color, color: getReadableTextColor(client.color) };
-
   return (
-    <div className="border-b border-border bg-background">
-      {/* Acento de color del cliente: identidad, sin teñir el resto de la UI */}
-      <div className="h-[3px] w-full" style={{ backgroundColor: client.color }} />
+    <div className={CAL_HEADER_BG}>
+      {/* Línea superior: color principal del contexto (cliente, o celeste en el calendario global). */}
+      <div className={cn("h-[3px] w-full", CAL_ACCENT_LINE)} />
 
-      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 max-md:gap-y-2 md:px-6 md:py-4">
-        <div className="flex items-center gap-3 max-md:min-w-0 max-md:flex-1">
-          {!hideAvatar && (
-            <div
-              className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl text-base font-semibold md:h-11 md:w-11"
-              style={
-                client.logoUrl
-                  ? undefined
-                  : { backgroundColor: client.color, color: initialTextColor }
-              }
-            >
-              {client.logoUrl ? (
-                <Image src={client.logoUrl} alt={client.name} fill sizes="44px" className="object-cover" />
-              ) : (
-                client.name.charAt(0)
-              )}
-            </div>
-          )}
-          <div className="leading-tight max-md:min-w-0">
-            {allClients && allClients.length > 1 && onSwitchClient ? (
-              <Select
-                value={client.id}
-                onValueChange={(value) => onSwitchClient(value as string)}
-                items={Object.fromEntries(allClients.map((c) => [c.id, c.name]))}
-              >
-                <SelectTrigger className="h-auto gap-1 border-none bg-transparent p-0 text-xs font-medium shadow-none data-[size=default]:pointer-coarse:h-8" style={{ color: client.color }}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {allClients.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            ) : (
-              <div className="text-xs font-medium max-md:truncate" style={{ color: client.color }}>
-                {client.name}
-              </div>
+      {/* Fila 1. En /admin reserva a la derecha el lugar de la campanita + avatar del layout (lib/admin-shell.ts). */}
+      <div
+        className={cn(
+          "flex flex-wrap items-start justify-between gap-x-2 gap-y-1 px-4 pt-2 md:px-6",
+          ADMIN_ACTIONS_RESERVE_FULL_BLEED_SHARED
+        )}
+      >
+        <div className="flex min-w-0 flex-col items-start gap-1 max-md:flex-1">
+          <h1 className="flex items-center gap-1 text-[15px] leading-5 font-semibold text-foreground">
+            Planner
+            {calendarDescription && (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button
+                      type="button"
+                      aria-label={`Descripción del calendario: ${calendarDescription}`}
+                      className="flex size-4 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground"
+                    />
+                  }
+                >
+                  <Info className="size-3.5" />
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-64 whitespace-pre-wrap">
+                  {calendarDescription}
+                </TooltipContent>
+              </Tooltip>
             )}
-            <h1 className="flex items-center gap-1 text-base font-semibold text-foreground max-md:min-w-0">
-              <span className="max-md:truncate">{calendarLabel}</span>
-              {calendarDescription && (
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <button
-                        type="button"
-                        aria-label={`Descripción del calendario: ${calendarDescription}`}
-                        className="flex size-4 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground"
-                      />
-                    }
-                  >
-                    <Info className="size-3.5" />
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom" className="max-w-64 whitespace-pre-wrap">
-                    {calendarDescription}
-                  </TooltipContent>
-                </Tooltip>
-              )}
-            </h1>
+          </h1>
+          <div className="flex max-w-full min-w-0 -translate-x-0.5 items-center">
+            <SpaceSelector
+              client={client}
+              isGlobal={isGlobal}
+              spaces={spaces}
+              onSelectSpace={onSelectSpace}
+            />
           </div>
         </div>
 
-        {members && members.length > 0 && (
-          <div className="hidden md:flex">
-            <AvatarStack members={members} clientColor={client.color} />
-          </div>
-        )}
-
-        {/* Solo < md: acciones principales junto al título, para no gastar una fila entera. */}
-        {(onCreate || onExport || driveFolderUrl) && (
-          <div className="flex items-center gap-1.5 md:hidden">
-            {onCreate && (
-              <Button size="icon" onClick={onCreate} aria-label="Nuevo contenido">
-                <Plus />
-              </Button>
-            )}
-            {(onExport || driveFolderUrl) && (
-              <DropdownMenu>
-                <DropdownMenuTrigger render={<Button variant="outline" size="icon" aria-label="Más acciones" />}>
-                  <MoreHorizontal />
-                </DropdownMenuTrigger>
-                <DropdownMenuContent>
-                  {driveFolderUrl && (
-                    <DropdownMenuItem render={<a href={driveFolderUrl} target="_blank" rel="noreferrer" />}>
-                      <FolderOpen />
-                      Abrir en Drive
-                    </DropdownMenuItem>
-                  )}
-                  {onExport && (
-                    <DropdownMenuItem onClick={onExport}>
-                      <Download />
-                      Exportar CSV
-                    </DropdownMenuItem>
-                  )}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
-          </div>
-        )}
-
-        <div className="flex flex-wrap items-center gap-2 max-md:w-full">
-          {view === "list" ? (
-            // Lista: Desde/Hasta reemplaza a ← Hoy → + período visible — no es la navegación de Semana/Mes, es
-            // el rango propio de Lista. Sin flechas anterior/siguiente (no aplican a un rango de fechas); "Hoy"
-            // se conserva y restablece ese rango a su período por defecto alrededor de la fecha actual.
-            <div className="flex flex-wrap items-center gap-1.5">
-              <Label className="text-xs text-muted-foreground">Desde</Label>
-              <Input
-                type="date"
-                aria-label="Desde"
-                value={dateRange?.from ?? ""}
-                onChange={(e) => onDateRangeChange?.({ from: e.target.value, to: dateRange?.to ?? "" })}
-                className="h-8 w-[8.5rem] pointer-coarse:h-9"
-              />
-              <span className="text-muted-foreground" aria-hidden>
-                ·
-              </span>
-              <Label className="text-xs text-muted-foreground">Hasta</Label>
-              <Input
-                type="date"
-                aria-label="Hasta"
-                value={dateRange?.to ?? ""}
-                onChange={(e) => onDateRangeChange?.({ from: dateRange?.from ?? "", to: e.target.value })}
-                className="h-8 w-[8.5rem] pointer-coarse:h-9"
-              />
-              <span className="text-muted-foreground" aria-hidden>
-                ·
-              </span>
-              <Button variant="ghost" size="sm" onClick={onToday}>
-                Hoy
-              </Button>
+        {/* Grupo derecho: comparte el eje vertical con la campanita y el avatar del layout de /admin
+            (AdminHeaderActions en modo compacto, top 15 px). "+" y avatar: 32 px y circulares; el resto, 28 px. */}
+        <div className="flex shrink-0 items-center gap-1.5 md:mt-1">
+          {members && members.length > 0 && (
+            <div className="hidden lg:flex">
+              <AvatarStack members={members} clientColor={client.color} />
             </div>
-          ) : (
-            <>
-              <div className="flex items-center gap-0.5 rounded-lg border border-border p-0.5">
-                <Button variant="ghost" size="icon-sm" onClick={onPrev} aria-label="Período anterior">
-                  <ChevronLeft />
-                </Button>
-                <Button variant="ghost" size="sm" onClick={onToday}>
-                  Hoy
-                </Button>
-                <Button variant="ghost" size="icon-sm" onClick={onNext} aria-label="Período siguiente">
-                  <ChevronRight />
-                </Button>
-              </div>
-
-              <span className="min-w-[9rem] text-sm text-muted-foreground max-md:min-w-0 max-md:flex-1 max-md:truncate">{periodLabel}</span>
-            </>
           )}
-
-          {/* En < md: selector de vista + botón "Filtros" comparten fila (no hay barra de filtros aparte). */}
-          <div className="flex items-center gap-2 max-md:order-last max-md:w-full">
-            <div className="flex items-center rounded-lg border border-border p-0.5 text-sm max-md:flex-1">
-              {VIEW_OPTIONS.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => onViewChange(option.value)}
-                  aria-pressed={view === option.value}
-                  style={view === option.value ? activeViewStyle : undefined}
-                  className={cn(
-                    "rounded-md px-2.5 py-1 font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/50 max-md:flex-1 max-md:py-2 pointer-coarse:py-2.5",
-                    view === option.value ? "shadow-xs hover:brightness-95" : "text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-            {mobileFilters && <div className="md:hidden">{mobileFilters}</div>}
+          <div className="max-md:hidden">
+            <ModeSwitch view={view} onViewChange={onViewChange} defaultCalendarView={defaultCalendarView} />
           </div>
-
-          {driveFolderUrl && (
-            <a
-              href={driveFolderUrl}
-              target="_blank"
-              rel="noreferrer"
-              className={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1.5 max-md:hidden")}
-            >
-              <FolderOpen />
-              Abrir en Drive
-            </a>
+          {/* Drive / Exportar CSV (solo Planner de cliente): en un menú compacto, como ya era en mobile. */}
+          {(onExport || driveFolderUrl || onOpenArchived) && (
+            <DropdownMenu>
+              <DropdownMenuTrigger render={<Button variant="outline" size="icon-sm" aria-label="Más acciones" />}>
+                <MoreHorizontal />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {driveFolderUrl && (
+                  <DropdownMenuItem render={<a href={driveFolderUrl} target="_blank" rel="noreferrer" />}>
+                    <FolderOpen />
+                    Abrir en Drive
+                  </DropdownMenuItem>
+                )}
+                {onExport && (
+                  <DropdownMenuItem onClick={onExport}>
+                    <Download />
+                    Exportar CSV
+                  </DropdownMenuItem>
+                )}
+                {onOpenArchived && (
+                  <DropdownMenuItem onClick={onOpenArchived}>
+                    <Archive />
+                    Publicaciones archivadas ({archivedCount})
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
-
-          {onExport && (
-            <Button variant="outline" size="sm" className="gap-1.5 max-md:hidden" onClick={onExport}>
-              <Download />
-              Exportar CSV
-            </Button>
-          )}
-
           {onCreate && (
-            <Button size="sm" className="gap-1.5 max-md:hidden" onClick={onCreate}>
-              <Plus />
-              Nuevo contenido
-            </Button>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
+                    onClick={onCreate}
+                    aria-label="Nuevo contenido"
+                    className={cn(
+                      "flex size-8 items-center justify-center rounded-full transition-[filter] hover:brightness-95 focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none pointer-coarse:size-11",
+                      CAL_ACCENT_SOFT
+                    )}
+                  />
+                }
+              >
+                <Plus className="size-[18px]" />
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Nuevo contenido</TooltipContent>
+            </Tooltip>
           )}
+        </div>
+      </div>
+
+      {/* Fila 2: navegación temporal a la izquierda; filtros y búsqueda a la derecha. */}
+      <div className="flex flex-wrap items-center justify-between gap-1 px-4 pt-2 pb-1.5 md:px-6">
+        {view === "list" && dateRange ? (
+          // Lista con rango personalizado (desactivado): Desde/Hasta + Hoy, sin flechas ni selector de período.
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Label className="text-xs text-muted-foreground">Desde</Label>
+            <Input
+              type="date"
+              aria-label="Desde"
+              value={dateRange?.from ?? ""}
+              onChange={(e) => onDateRangeChange?.({ from: e.target.value, to: dateRange?.to ?? "" })}
+              className="h-8 w-[8.5rem] pointer-coarse:h-9"
+            />
+            <span className="text-muted-foreground" aria-hidden>
+              ·
+            </span>
+            <Label className="text-xs text-muted-foreground">Hasta</Label>
+            <Input
+              type="date"
+              aria-label="Hasta"
+              value={dateRange?.to ?? ""}
+              onChange={(e) => onDateRangeChange?.({ from: dateRange?.from ?? "", to: e.target.value })}
+              className="h-8 w-[8.5rem] pointer-coarse:h-9"
+            />
+            <span className="text-muted-foreground" aria-hidden>
+              ·
+            </span>
+            <Button variant="ghost" size="sm" onClick={onToday}>
+              Hoy
+            </Button>
+          </div>
+        ) : (
+          <PeriodNav
+            view={view}
+            anchorDate={anchorDate}
+            periodLabel={periodLabel}
+            onDateSelect={onDateSelect}
+            onViewChange={onViewChange}
+            onPrev={onPrev}
+            onNext={onNext}
+            onToday={onToday}
+          />
+        )}
+
+        <div className="flex items-center gap-1">
+          {/* Mobile: el selector Calendario / Tablero / Lista va en esta fila (en desktop está arriba). */}
+          <div className="md:hidden">
+            <ModeSwitch view={view} onViewChange={onViewChange} defaultCalendarView={defaultCalendarView} />
+          </div>
+          {toolbarEnd}
         </div>
       </div>
     </div>

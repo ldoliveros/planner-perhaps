@@ -57,11 +57,11 @@ export function PublicationClientPicker({ open, onOpenChange, clients, onSelect 
                 onClick={() => onSelect(c.id)}
                 className="flex items-center gap-2.5 rounded-lg px-2 py-2 text-left text-sm transition-colors hover:bg-muted"
               >
-                <span className="relative flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted text-xs font-semibold text-foreground">
+                <span className="relative flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted leading-none font-semibold text-foreground [container-type:size]">
                   {c.logoUrl ? (
                     <Image src={c.logoUrl} alt="" fill sizes="28px" className="object-cover" />
                   ) : (
-                    c.name.charAt(0).toUpperCase()
+                    <span style={{ fontSize: "50cqmin" }}>{c.name.charAt(0).toUpperCase()}</span>
                   )}
                 </span>
                 <span className="truncate">{c.name}</span>

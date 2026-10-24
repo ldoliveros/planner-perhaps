@@ -360,13 +360,20 @@ export async function runDailyAgenda(options: AgendaOptions): Promise<AgendaRunR
       continue;
     }
 
-    const { data: pubs, error: pubsErr } = await supabase
-      .from("publications")
-      .select("id, client_id, title, publication_time, status_id")
-      .eq("publication_date", today)
-      .in("client_id", clientIds)
-      .in("status_id", pendingStatusIds)
-      .order("publication_time", { ascending: true, nullsFirst: true });
+    // v1.6: las publicaciones ARCHIVADAS no entran en la agenda. Si la columna todavía no existe (migración
+    // 20261017000001 sin aplicar, 42703), se consulta como antes: así el orden de deploy función/migración no importa.
+    const queryPubs = (excludeArchived: boolean) => {
+      let query = supabase
+        .from("publications")
+        .select("id, client_id, title, publication_time, status_id")
+        .eq("publication_date", today)
+        .in("client_id", clientIds)
+        .in("status_id", pendingStatusIds);
+      if (excludeArchived) query = query.is("archived_at", null);
+      return query.order("publication_time", { ascending: true, nullsFirst: true });
+    };
+    let { data: pubs, error: pubsErr } = await queryPubs(true);
+    if (pubsErr && (pubsErr as { code?: string }).code === "42703") ({ data: pubs, error: pubsErr } = await queryPubs(false));
     if (pubsErr) throw pubsErr;
 
     if (!pubs || pubs.length === 0) {

@@ -3,7 +3,7 @@
 import type { ButtonHTMLAttributes } from "react";
 import Image from "next/image";
 import { DndContext, DragOverlay, useDraggable } from "@dnd-kit/core";
-import { Plus } from "lucide-react";
+import { ImageIcon, Plus } from "lucide-react";
 import { isWeekend } from "date-fns";
 import { cn } from "cn";
 import { DayDropZone, toDateKey, usePublicationDnd } from "@/components/calendar/publication-dnd";
@@ -12,7 +12,15 @@ import { PlatformIcon } from "@/components/icons/brand-icons";
 import { StatusPill } from "@/components/shared/status-pill";
 import { ClientBadge } from "@/components/shared/client-badge";
 import { useLookups } from "@/components/providers/lookups-provider";
-import { hexToRgba } from "@/lib/color-contrast";
+import {
+  CAL_DAY_ADD_BUTTON,
+  CAL_DAY_BG,
+  CAL_DAY_NAMES,
+  CAL_GRID_FRAME,
+  CAL_LINE_BORDER,
+  CAL_OUTSIDE_BG,
+  CAL_WEEKEND_BG,
+} from "@/lib/calendar-surface";
 import {
   formatDayNumber,
   formatWeekdayAndDay,
@@ -81,7 +89,8 @@ function MonthChip({
     <div
       style={{ minHeight: CHIP_MIN_HEIGHT }}
       className={cn(
-        "group/chip relative flex w-full shrink-0 items-start gap-2 rounded-md px-1 py-1 transition-colors hover:bg-muted",
+        // v1.6: fondo blanco propio (también sobre el tinte de fin de semana) con un contorno sutil; mismas medidas.
+        "group/chip relative flex w-full shrink-0 items-start gap-2 rounded-md bg-white px-1 py-1 shadow-xs ring-1 ring-black/[0.04] transition-colors hover:bg-muted",
         dragState === "dragging" && "opacity-40",
         dragState === "saving" && "animate-pulse opacity-70"
       )}
@@ -97,9 +106,13 @@ function MonthChip({
           dragProps && "cursor-grab active:cursor-grabbing"
         )}
       />
-      <span className="relative size-12 shrink-0 overflow-hidden rounded-sm bg-muted">
-        {primaryAsset?.thumbnailUrl && (
+      <span className="relative size-12 shrink-0 overflow-hidden rounded-sm bg-muted ring-1 ring-inset ring-black/[0.04]">
+        {primaryAsset?.thumbnailUrl ? (
           <Image src={primaryAsset.thumbnailUrl} alt="" fill sizes="48px" className="object-cover" />
+        ) : (
+          <span className="flex size-full items-center justify-center text-muted-foreground/45">
+            <ImageIcon className="size-4" />
+          </span>
         )}
       </span>
       <div className="absolute right-0.5 top-0.5 z-10 opacity-100 transition-opacity [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover/chip:opacity-100 [@media(hover:hover)]:group-focus-within/chip:opacity-100">
@@ -180,7 +193,6 @@ interface MonthDayCellProps {
   getClientId?: (publication: Publication) => string | undefined;
   showClient?: boolean;
   onCreateForDay?: (day: Date) => void;
-  clientColor: string;
   showCalendarLabel: boolean;
   canMove: boolean;
   saving: Record<string, true>;
@@ -198,7 +210,6 @@ function MonthDayCell({
   getClientId,
   showClient,
   onCreateForDay,
-  clientColor,
   showCalendarLabel,
   canMove,
   saving,
@@ -206,7 +217,10 @@ function MonthDayCell({
 }: MonthDayCellProps) {
   const today = isToday(day);
   const weekend = isWeekend(day);
-  const bgClass = today ? "bg-primary/[0.03]" : !weekend && !inCurrentMonth ? "bg-muted/30" : "";
+  // Paleta del calendario (variables de CalendarScreen): fuera del mes, neutro discreto; fin de semana un poco más
+  // perceptible que los días hábiles. Hoy NO cambia el fondo de la celda (conserva el de su día de la semana): su
+  // indicador es el círculo del número.
+  const bgClass = !inCurrentMonth ? CAL_OUTSIDE_BG : weekend ? CAL_WEEKEND_BG : CAL_DAY_BG;
 
   return (
     <DayDropZone
@@ -217,8 +231,7 @@ function MonthDayCell({
       // mes — ver el `grid` de MonthView) y no un contenido que empuja su fila a crecer. Sin esto, el número de
       // día y el "+" seguirían fijos por su propio contenido, pero el área de chips (flex-1 de abajo) no tendría
       // límite real para activar su scroll interno.
-      className={cn("group/day flex min-h-0 flex-col gap-0.5 border-r border-b border-border p-1.5", bgClass)}
-      style={!today && weekend ? { backgroundColor: hexToRgba(clientColor, 0.05) } : undefined}
+      className={cn("group/day relative flex min-h-0 flex-col gap-0.5 border-r border-b p-1.5", CAL_LINE_BORDER, bgClass)}
     >
       <div className="flex shrink-0 items-center justify-between">
         <span
@@ -237,11 +250,11 @@ function MonthDayCell({
           <button
             type="button"
             onClick={() => onCreateForDay(day)}
-            className="flex size-5 items-center justify-center rounded-md text-muted-foreground opacity-0 transition hover:bg-muted hover:text-foreground group-hover/day:opacity-100"
+            className={cn("absolute top-1 right-1 z-10", CAL_DAY_ADD_BUTTON)}
             aria-label="Nuevo contenido este día"
             title="Nuevo contenido este día"
           >
-            <Plus className="size-3.5" />
+            <Plus className="size-4" strokeWidth={2.5} />
           </button>
         )}
       </div>
@@ -280,7 +293,6 @@ interface MonthViewProps {
   getClientId?: (publication: Publication) => string | undefined;
   showClient?: boolean;
   onCreateForDay?: (day: Date) => void;
-  clientColor: string;
   showCalendarLabel: boolean;
 }
 
@@ -294,7 +306,6 @@ export function MonthView({
   getClientId,
   showClient,
   onCreateForDay,
-  clientColor,
   showCalendarLabel,
 }: MonthViewProps) {
   const gridDays = getMonthGridDays(anchorDate);
@@ -311,11 +322,11 @@ export function MonthView({
   return (
     <DndContext id="month-view-dnd" {...contextProps}>
       <div className="flex min-h-0 flex-1 flex-col">
-        <div className="grid shrink-0 grid-cols-7 border-b border-border">
+        <div className={cn("grid shrink-0 grid-cols-7", CAL_DAY_NAMES)}>
           {WEEKDAY_LABELS.map((label) => (
             <div
               key={label}
-              className="py-2 text-center text-[11px] font-medium tracking-wide text-muted-foreground"
+              className="py-2 text-center text-[11px] font-medium tracking-wide"
             >
               {label}
             </div>
@@ -327,7 +338,11 @@ export function MonthView({
             (dado por `min-h-0 flex-1` de arriba, acotado a su vez por el layout del Planner), sea cual sea el
             contenido — y cada celda decide cuántos chips entran ahí y scrollea el resto (ver MonthDayCell). */}
         <div
-          className="grid min-h-0 flex-1 grid-cols-7 border-t border-l border-border"
+          // Sin línea propia en la última columna ni en la última fila: ese borde lo da el contorno de la grilla.
+          className={cn(
+            "grid min-h-0 flex-1 grid-cols-7 [&>*:nth-child(7n)]:border-r-0 [&>*:nth-last-child(-n+7)]:border-b-0",
+            CAL_GRID_FRAME
+          )}
           style={{ gridTemplateRows: `repeat(${weekCount}, minmax(0, 1fr))` }}
         >
           {gridDays.map((day) => {
@@ -348,7 +363,6 @@ export function MonthView({
                 getClientId={getClientId}
                 showClient={showClient}
                 onCreateForDay={onCreateForDay}
-                clientColor={clientColor}
                 showCalendarLabel={showCalendarLabel}
                 canMove={canMove}
                 saving={saving}

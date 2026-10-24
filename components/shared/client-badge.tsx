@@ -24,23 +24,42 @@ interface ClientBadgeProps {
   className?: string;
 }
 
+/**
+ * Logo redondo del cliente (o su inicial sobre el color del cliente). El tamaño lo da `className` (p. ej. "size-4");
+ * `sizes` es el ancho máximo en px para next/image.
+ */
+export function ClientLogo({
+  client,
+  className,
+  sizes = 20,
+}: {
+  client: Pick<Client, "name" | "logoUrl" | "color">;
+  className?: string;
+  sizes?: number;
+}) {
+  return (
+    <span
+      className={cn(
+        "relative flex shrink-0 items-center justify-center overflow-hidden rounded-full font-semibold leading-none [container-type:size]",
+        className
+      )}
+      style={client.logoUrl ? undefined : { backgroundColor: client.color, color: getContrastTextColor(client.color) }}
+    >
+      {client.logoUrl ? (
+        <Image src={client.logoUrl} alt="" fill sizes={`${sizes}px`} className="object-cover" />
+      ) : (
+        // Inicial proporcional al círculo (mitad de su lado), sea cual sea el tamaño del logo en cada lugar.
+        <span style={{ fontSize: "50cqmin" }}>{client.name.charAt(0)}</span>
+      )}
+    </span>
+  );
+}
+
 export function ClientBadge({ client, size = "sm", className }: ClientBadgeProps) {
   const { logo, text, gap } = SIZE_CLASSES[size];
   return (
     <span className={cn("flex min-w-0 items-center", gap, className)} title={client.name}>
-      <span
-        className={cn(
-          "relative flex shrink-0 items-center justify-center overflow-hidden rounded-full font-semibold leading-none",
-          logo
-        )}
-        style={client.logoUrl ? undefined : { backgroundColor: client.color, color: getContrastTextColor(client.color) }}
-      >
-        {client.logoUrl ? (
-          <Image src={client.logoUrl} alt="" fill sizes="20px" className="object-cover" />
-        ) : (
-          <span style={{ fontSize: "0.6em" }}>{client.name.charAt(0)}</span>
-        )}
-      </span>
+      <ClientLogo client={client} className={logo} />
       <span className={cn("min-w-0 truncate font-medium text-muted-foreground", text)}>{client.name}</span>
     </span>
   );

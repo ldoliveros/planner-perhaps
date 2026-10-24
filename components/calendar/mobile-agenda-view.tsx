@@ -88,7 +88,7 @@ export function MobileAgendaView({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="-mr-2 ml-auto"
+                  className="-mr-2 ml-auto rounded-full"
                   aria-label={`Nuevo contenido el ${fullLabel}`}
                   onClick={() => onCreateForDay(day)}
                 >

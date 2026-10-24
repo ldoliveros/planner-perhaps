@@ -28,6 +28,10 @@ interface AgendaListViewProps {
   /** No usado por esta vista (Lista tiene su propia grilla fija: Fecha/Hora/Contenido/Cliente/Canal/Tipo/Estado) —
    * se sigue aceptando para no tener que tocar el call site en CalendarScreen, que lo pasa también a Semana/Mes. */
   showCalendarLabel: boolean;
+  /** Búsqueda global (v1.6): nombre del calendario debajo del título. Lista no lo usa. */
+  showCalendarName?: boolean;
+  /** Búsqueda global (v1.6): días del más reciente al más antiguo (Lista: cronológico). */
+  newestFirst?: boolean;
 }
 
 const byTime = (a: Publication, b: Publication) => (a.publicationTime ?? "").localeCompare(b.publicationTime ?? "");
@@ -51,8 +55,10 @@ export function AgendaListView({
   onDeletePublication,
   getClientId,
   showClient,
+  showCalendarName = false,
+  newestFirst = false,
 }: AgendaListViewProps) {
-  const { getClient, getClientAccount, getContentType, getPlatform, getStatus } = useLookups();
+  const { getCalendar, getClient, getClientAccount, getContentType, getPlatform, getStatus } = useLookups();
 
   const groups = new Map<string, Publication[]>();
   for (const publication of publications) {
@@ -61,6 +67,7 @@ export function AgendaListView({
     else groups.set(publication.publicationDate, [publication]);
   }
   const sortedDates = Array.from(groups.keys()).sort();
+  if (newestFirst) sortedDates.reverse();
 
   if (sortedDates.length === 0) {
     return (
@@ -143,7 +150,16 @@ export function AgendaListView({
                           </span>
                         )}
                       </span>
-                      <span className="min-w-0 truncate text-sm font-medium text-foreground">{publication.title}</span>
+                      {showCalendarName ? (
+                        <span className="flex min-w-0 flex-col">
+                          <span className="min-w-0 truncate text-sm font-medium text-foreground">{publication.title}</span>
+                          <span className="min-w-0 truncate text-xs text-muted-foreground">
+                            {getCalendar(publication.calendarId)?.name}
+                          </span>
+                        </span>
+                      ) : (
+                        <span className="min-w-0 truncate text-sm font-medium text-foreground">{publication.title}</span>
+                      )}
                     </button>
 
                     {showClient && (

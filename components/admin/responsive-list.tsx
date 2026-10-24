@@ -23,13 +23,13 @@ export function ResponsiveList({ table, cards }: { table: ReactNode; cards: Reac
 
 /** Card base de una fila en mobile: contenido arriba y acciones abajo (ver CARD_ACTIONS_CLASS). */
 export function RowCard({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn("flex flex-col gap-3 rounded-lg border border-border bg-card p-3", className)}>{children}</div>;
+  return <div className={cn("flex flex-col gap-3 rounded-xl border border-border bg-card p-3", className)}>{children}</div>;
 }
 
 /** Empty state en formato card (las tablas usan una fila con colSpan). */
 export function EmptyCard({ children }: { children: ReactNode }) {
   return (
-    <div className="rounded-lg border border-dashed border-border bg-card p-6 text-center text-sm text-muted-foreground">
+    <div className="rounded-xl border border-dashed border-border bg-card p-6 text-center text-sm text-muted-foreground">
       {children}
     </div>
   );

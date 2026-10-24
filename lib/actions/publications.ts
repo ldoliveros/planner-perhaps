@@ -3,8 +3,15 @@
 import { revalidatePath } from "next/cache";
 import sharp from "sharp";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentProfile, getPublicationById, listPublicationsInRange } from "@/lib/supabase/queries";
+import {
+  getCurrentProfile,
+  getPublicationById,
+  listArchivedPublications,
+  listPublicationsInRange,
+} from "@/lib/supabase/queries";
 import { mapPublicationAsset } from "@/lib/supabase/mappers";
+import { classifySaveConflict, saveConflictMessage } from "@/lib/editorial-transitions";
+import { isValidTrelloUrl, TRELLO_URL_ERROR } from "@/lib/trello-url";
 import type { Publication, PublicationAsset } from "@/types";
 
 const THUMBNAILS_BUCKET = "thumbnails";
@@ -20,6 +27,18 @@ export interface PublicationFormState {
   /** Publicación completa recién guardada (INSERT o UPDATE), lista para usar sin depender de que
    * router.refresh() re-sincronice el estado local de PublicationScreen (ver CalendarScreen, modo global). */
   publication?: Publication;
+  /** v1.6: true cuando el guardado se rechazó entero porque la publicación cambió (estado o contenido)
+   * después de abrir el editor. No se escribió nada. */
+  conflict?: boolean;
+  /** v1.6: la publicación ya no existe (p. ej. otro usuario la eliminó) o no hay permiso para editarla. */
+  notFound?: boolean;
+  /** v1.6: updated_at de la fila recién guardada — nueva versión base del editor para el próximo guardado. */
+  updatedAt?: string;
+  /** v1.6: la fila de `publications` SÍ se guardó, pero falló un paso posterior (destinos, imágenes, Storage).
+   * Nunca se presenta como éxito: la vista lo muestra como error y no reintenta en modo Crear. */
+  partial?: boolean;
+  /** Con `partial` en un Crear/Duplicar: id de la publicación que quedó creada. */
+  createdPublicationId?: string;
 }
 
 interface DestinationInput {
@@ -55,14 +74,13 @@ export async function savePublication(
   const publicationDate = String(formData.get("publicationDate") ?? "");
   const publicationTime = String(formData.get("publicationTime") ?? "").trim() || null;
   const copy = String(formData.get("copy") ?? "");
-  const cta = String(formData.get("cta") ?? "").trim() || null;
-  const externalUrl = String(formData.get("externalUrl") ?? "").trim() || null;
-  // internal_notes ya no se edita desde este formulario (ver v1.2 — ajuste
-  // previo al Bloque C). Si el campo no viene en el formData en absoluto, NO
-  // se incluye en el payload — así nunca se pisa con null un valor histórico
-  // ya guardado. Solo se tocaría si en el futuro algún formulario SÍ lo envía.
-  const internalNotesRaw = formData.get("internalNotes");
-  const internalNotes = internalNotesRaw === null ? undefined : String(internalNotesRaw).trim() || null;
+  // v1.6: CTA (`cta`) y URL (`external_url`) ya no se editan ni se escriben: el payload no los incluye, así un
+  // guardado nunca pisa con null los valores históricos de esas columnas.
+  // Link a Trello: si el campo no viene en el formData (formulario anterior a v1.6), no se toca la columna.
+  const trelloUrlRaw = formData.get("trelloUrl");
+  const trelloUrl = trelloUrlRaw === null ? undefined : String(trelloUrlRaw).trim() || null;
+  // v1.6: Notas internas dejó de ser parte de Planner — no se lee, no se muestra y no se escribe
+  // (la columna publications.internal_notes se retira con pending-migrations/v1.6/…_drop_publications_internal_notes).
   const statusId = String(formData.get("statusId") ?? "");
   const driveFolderUrl = String(formData.get("driveFolderUrl") ?? "").trim() || null;
   const destinations = parseJsonArray<DestinationInput>(formData.get("destinations"));
@@ -73,6 +91,9 @@ export async function savePublication(
   }
   if (destinations.length === 0) {
     return { error: "Elegí al menos un canal de destino.", savedAt: null };
+  }
+  if (trelloUrl && !isValidTrelloUrl(trelloUrl)) {
+    return { error: TRELLO_URL_ERROR, savedAt: null };
   }
 
   // Carrusel: se valida ANTES de escribir nada. Un input file vacío igual viaja como un File de size 0
@@ -91,6 +112,16 @@ export async function savePublication(
     }
   }
 
+  // Concurrencia (v1.6) — bloqueo optimista con la versión con la que se abrió el editor:
+  // `originalStatusId` + `originalUpdatedAt` (publications.updated_at, que el trigger set_updated_at mueve en
+  // cada UPDATE). El UPDATE de `publications` es la PRIMERA escritura del guardado y es condicional a ambos:
+  // si otro usuario cambió el estado (p. ej. el cliente aprobó) o guardó contenido mientras tanto, afecta 0
+  // filas y se rechaza el guardado ENTERO — sin tocar destinos, assets ni Storage. Si ganó este guardado, el
+  // UPDATE ya movió updated_at, así que cualquier guardado concurrente posterior también se rechaza.
+  // Sin estos campos (Crear, o un formulario anterior a v1.6) se mantiene el comportamiento previo.
+  const originalStatusId = String(formData.get("originalStatusId") ?? "").trim() || null;
+  const originalUpdatedAt = String(formData.get("originalUpdatedAt") ?? "").trim() || null;
+
   const supabase = await createClient();
   const publicationPayload = {
     calendar_id: calendarId,
@@ -100,26 +131,69 @@ export async function savePublication(
     publication_date: publicationDate,
     publication_time: publicationTime,
     copy,
-    cta,
-    external_url: externalUrl,
     status_id: statusId,
     drive_folder_url: driveFolderUrl,
-    ...(internalNotes !== undefined ? { internal_notes: internalNotes } : {}),
+    ...(trelloUrl !== undefined ? { trello_url: trelloUrl } : {}),
   };
 
   let publicationId = id;
 
+  let savedUpdatedAt: string | undefined;
+
   if (publicationId) {
-    const { error } = await supabase.from("publications").update(publicationPayload).eq("id", publicationId);
+    let updateQuery = supabase.from("publications").update(publicationPayload).eq("id", publicationId);
+    if (originalStatusId && originalUpdatedAt) {
+      updateQuery = updateQuery.eq("status_id", originalStatusId).eq("updated_at", originalUpdatedAt);
+    }
+    const { data: updatedRows, error } = await updateQuery.select("id, updated_at");
     if (error) return { error: error.message, savedAt: null };
+    if (!updatedRows || updatedRows.length === 0) {
+      if (!originalStatusId || !originalUpdatedAt) {
+        return { error: saveConflictMessage("not_found"), savedAt: null, notFound: true };
+      }
+      const { data: currentRow } = await supabase
+        .from("publications")
+        .select("status_id, updated_at")
+        .eq("id", publicationId)
+        .maybeSingle();
+      const kind = classifySaveConflict({
+        originalStatusId,
+        originalUpdatedAt,
+        current: currentRow ? { statusId: currentRow.status_id, updatedAt: currentRow.updated_at } : null,
+      });
+      const label = kind === "status_changed" ? await currentStatusLabel(supabase, publicationId) : null;
+      return {
+        error: saveConflictMessage(kind, label),
+        savedAt: null,
+        conflict: kind !== "not_found",
+        notFound: kind === "not_found",
+      };
+    }
+    savedUpdatedAt = updatedRows[0].updated_at;
   } else {
     const { data, error } = await supabase
       .from("publications")
       .insert(publicationPayload)
-      .select("id")
+      .select("id, updated_at")
       .single();
     if (error) return { error: error.message, savedAt: null };
     publicationId = data.id;
+    savedUpdatedAt = data.updated_at;
+  }
+
+  // Desde acá la escritura principal YA ocurrió: cualquier falla posterior es un guardado PARCIAL. Se informa
+  // como error (nunca como éxito) con la versión nueva, así la vista no reintenta un Crear que ya creó la fila
+  // ni toma su propio guardado como un conflicto con "otra persona".
+  const isCreate = !id;
+  const savedId = publicationId;
+  function partialFailure(detail: string): PublicationFormState {
+    return {
+      error: `${isCreate ? "La publicación se creó" : "Los datos principales se guardaron"}, pero falló un paso posterior: ${detail.replace(/\.$/, "")}. Revisá la publicación antes de volver a guardar.`,
+      savedAt: null,
+      partial: true,
+      updatedAt: savedUpdatedAt,
+      createdPublicationId: isCreate ? (savedId ?? undefined) : undefined,
+    };
   }
 
   const { data: pubRow, error: pubReadError } = await supabase
@@ -128,7 +202,7 @@ export async function savePublication(
     .eq("id", publicationId)
     .single();
   if (pubReadError || !pubRow) {
-    return { error: pubReadError?.message ?? "No se pudo leer la publicación.", savedAt: null };
+    return partialFailure(pubReadError?.message ?? "No se pudo leer la publicación.");
   }
   const clientId = pubRow.client_id;
 
@@ -137,7 +211,7 @@ export async function savePublication(
     .from("publication_destinations")
     .delete()
     .eq("publication_id", publicationId);
-  if (deleteDestError) return { error: deleteDestError.message, savedAt: null };
+  if (deleteDestError) return partialFailure(deleteDestError.message);
 
   const { error: insertDestError } = await supabase.from("publication_destinations").insert(
     destinations.map((d) => ({
@@ -145,7 +219,7 @@ export async function savePublication(
       client_account_id: d.clientAccountId,
     }))
   );
-  if (insertDestError) return { error: insertDestError.message, savedAt: null };
+  if (insertDestError) return partialFailure(insertDestError.message);
 
   let responseAssets: PublicationAsset[] | undefined;
 
@@ -158,7 +232,7 @@ export async function savePublication(
       .from("publication_assets")
       .select("id, thumbnail_url")
       .eq("publication_id", publicationId);
-    if (existingAssetsError) return { error: existingAssetsError.message, savedAt: null };
+    if (existingAssetsError) return partialFailure(existingAssetsError.message);
 
     const existingIds = new Set((existingAssets ?? []).map((a) => a.id));
     const keptIds = new Set<string>();
@@ -173,7 +247,7 @@ export async function savePublication(
           .from("publication_assets")
           .update({ sort_order: index, is_primary: isPrimary })
           .eq("id", slot.assetId);
-        if (error) return { error: error.message, savedAt: null };
+        if (error) return partialFailure(error.message);
         continue;
       }
 
@@ -191,7 +265,7 @@ export async function savePublication(
       const { error: uploadError } = await supabase.storage
         .from("thumbnails")
         .upload(path, optimized, { contentType: "image/webp", upsert: true });
-      if (uploadError) return { error: uploadError.message, savedAt: null };
+      if (uploadError) return partialFailure(uploadError.message);
 
       const { error: insertError } = await supabase.from("publication_assets").insert({
         id: assetId,
@@ -202,7 +276,7 @@ export async function savePublication(
         sort_order: index,
         is_primary: isPrimary,
       });
-      if (insertError) return { error: insertError.message, savedAt: null };
+      if (insertError) return partialFailure(insertError.message);
       keptIds.add(assetId);
     }
 
@@ -217,14 +291,14 @@ export async function savePublication(
       if (removedPaths.length > 0) {
         const { error: removeStorageError } = await supabase.storage.from(THUMBNAILS_BUCKET).remove(removedPaths);
         if (removeStorageError) {
-          return { error: `No se pudieron eliminar imágenes del almacenamiento: ${removeStorageError.message}`, savedAt: null };
+          return partialFailure(`No se pudieron eliminar imágenes del almacenamiento: ${removeStorageError.message}`);
         }
       }
       const { error: deleteAssetsError } = await supabase
         .from("publication_assets")
         .delete()
         .in("id", removed.map((a) => a.id));
-      if (deleteAssetsError) return { error: deleteAssetsError.message, savedAt: null };
+      if (deleteAssetsError) return partialFailure(deleteAssetsError.message);
     }
 
     // El cliente necesita los assetId/URLs reales asignados acá para no volver a subir estas mismas
@@ -234,7 +308,7 @@ export async function savePublication(
       .select("*")
       .eq("publication_id", publicationId)
       .order("sort_order", { ascending: true });
-    if (freshAssetsError) return { error: freshAssetsError.message, savedAt: null };
+    if (freshAssetsError) return partialFailure(freshAssetsError.message);
 
     const freshPaths = (freshAssets ?? []).map((a) => a.thumbnail_url).filter((p): p is string => Boolean(p));
     const urlByPath = new Map<string, string>();
@@ -263,7 +337,7 @@ export async function savePublication(
     const { error: uploadError } = await supabase.storage
       .from("thumbnails")
       .upload(path, optimized, { contentType: "image/webp", upsert: true });
-    if (uploadError) return { error: uploadError.message, savedAt: null };
+    if (uploadError) return partialFailure(uploadError.message);
 
     const { data: existingPrimary } = await supabase
       .from("publication_assets")
@@ -292,7 +366,27 @@ export async function savePublication(
   // Reutiliza getPublicationById tal cual (misma query que ya usa /p/[id], ya scopeada por RLS y con
   // thumbnails firmados) — evita reconstruir a mano el Publication completo (destinos + assets) acá.
   const publication = await getPublicationById(publicationId);
-  return { error: null, savedAt: Date.now(), assets: responseAssets, publication: publication ?? undefined };
+  return {
+    error: null,
+    savedAt: Date.now(),
+    assets: responseAssets,
+    publication: publication ?? undefined,
+    updatedAt: savedUpdatedAt,
+  };
+}
+
+async function currentStatusLabel(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  publicationId: string
+): Promise<string | null> {
+  const { data } = await supabase
+    .from("publications")
+    .select("status_id")
+    .eq("id", publicationId)
+    .maybeSingle();
+  if (!data) return null;
+  const { data: status } = await supabase.from("statuses").select("label").eq("id", data.status_id).maybeSingle();
+  return status?.label ?? null;
 }
 
 /**
@@ -307,7 +401,10 @@ export async function savePublication(
  */
 export async function setPublicationStatus(
   publicationId: string,
-  statusId: string
+  statusId: string,
+  /** v1.6: estado que el usuario veía al elegir el nuevo. Si otro lo cambió mientras tanto, no se aplica
+   * (UPDATE condicional) y se devuelve un error explícito en vez de pisarlo. */
+  expectedStatusId?: string
 ): Promise<{ error: string | null }> {
   const supabase = await createClient();
 
@@ -316,15 +413,18 @@ export async function setPublicationStatus(
     return { error: "Estado inválido." };
   }
 
-  const { data: updated, error } = await supabase
-    .from("publications")
-    .update({ status_id: statusId })
-    .eq("id", publicationId)
-    .select("id, client_id")
-    .maybeSingle();
+  let updateQuery = supabase.from("publications").update({ status_id: statusId }).eq("id", publicationId);
+  if (expectedStatusId) updateQuery = updateQuery.eq("status_id", expectedStatusId);
+  const { data: updated, error } = await updateQuery.select("id, client_id").maybeSingle();
 
   if (error) return { error: error.message };
-  if (!updated) return { error: "No se pudo actualizar el estado: publicación no encontrada o sin permisos." };
+  if (!updated) {
+    const currentLabel = expectedStatusId ? await currentStatusLabel(supabase, publicationId) : null;
+    if (currentLabel) {
+      return { error: `Otro usuario cambió el estado mientras tanto (ahora: ${currentLabel}). Actualizá la vista y volvé a intentar.` };
+    }
+    return { error: "No se pudo actualizar el estado: publicación no encontrada o sin permisos." };
+  }
 
   revalidatePath(`/admin/clients/${updated.client_id}/planner`);
   revalidatePath(`/admin/clients/${updated.client_id}`);
@@ -459,10 +559,78 @@ export async function deletePublication(
  * resto de las acciones del proyecto.
  */
 export async function fetchPublicationsInRange(from: string, to: string): Promise<{ publications: Publication[] }> {
-  // Solo staff: una Server Action es invocable directo desde el navegador, y RLS acota filas pero no
-  // columnas — sin este gate un Client User podría leer sus publicaciones con internalNotes incluidas.
+  // Solo staff: es la lectura del calendario global ("Ver todos"), que el Client User no usa. Una Server Action es
+  // invocable directo desde el navegador, así que el rol se verifica acá (la RLS además acota las filas).
   const profile = await getCurrentProfile();
   if (profile?.role !== "super_admin" && profile?.role !== "account_manager") return { publications: [] };
   const publications = await listPublicationsInRange(from, to);
   return { publications };
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// v1.6 — Archivar / restaurar (supabase/pending-migrations/v1.6/20261017000001_v16_publication_archive.sql).
+// Archivar NO toca el estado editorial ni ningún otro dato; una archivada queda de solo lectura hasta restaurarla.
+// Permisos: la RLS `publications_manage` (Super Admin / Account Manager asignado) — un Client User no puede (0 filas).
+// ---------------------------------------------------------------------------------------------------------------
+
+const ARCHIVE_UNAVAILABLE = "Archivar todavía no está disponible en la base de datos.";
+
+/** Columna de archivado inexistente (migración no aplicada): 42703 de Postgres / PGRST204 de PostgREST. */
+function isArchiveUnavailable(code: string | undefined): boolean {
+  return code === "42703" || code === "PGRST204";
+}
+
+function revalidatePlannerPaths(clientId: string) {
+  revalidatePath(`/admin/clients/${clientId}/planner`);
+  revalidatePath(`/admin/clients/${clientId}`);
+  revalidatePath("/admin/calendars");
+  revalidatePath("/admin/clients");
+  revalidatePath("/admin/publications");
+  revalidatePath("/admin");
+}
+
+export async function archivePublication(publicationId: string): Promise<{ error: string | null }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Tu sesión expiró. Volvé a ingresar." };
+  const { data: updated, error } = await supabase
+    .from("publications")
+    .update({ archived_at: new Date().toISOString(), archived_by: user.id })
+    .eq("id", publicationId)
+    .is("archived_at", null)
+    .select("id, client_id")
+    .maybeSingle();
+  if (error) return { error: isArchiveUnavailable(error.code) ? ARCHIVE_UNAVAILABLE : error.message };
+  if (!updated) return { error: "No se pudo archivar: ya estaba archivada, no existe o no tenés permisos." };
+  revalidatePlannerPaths(updated.client_id);
+  return { error: null };
+}
+
+export async function restorePublication(
+  publicationId: string
+): Promise<{ error: string | null; publication: Publication | null }> {
+  const supabase = await createClient();
+  const { data: updated, error } = await supabase
+    .from("publications")
+    .update({ archived_at: null, archived_by: null })
+    .eq("id", publicationId)
+    .not("archived_at", "is", null)
+    .select("id, client_id")
+    .maybeSingle();
+  if (error) return { error: isArchiveUnavailable(error.code) ? ARCHIVE_UNAVAILABLE : error.message, publication: null };
+  if (!updated) return { error: "No se pudo restaurar: no está archivada, no existe o no tenés permisos.", publication: null };
+  revalidatePlannerPaths(updated.client_id);
+  // Versión vigente (con miniaturas firmadas) para volver a mostrarla al instante en la lista local.
+  return { error: null, publication: await getPublicationById(publicationId) };
+}
+
+/** Listado del panel "Publicaciones archivadas" (solo staff; `clientId` null = todos los clientes que gestiona). */
+export async function fetchArchivedPublications(
+  clientId: string | null
+): Promise<{ publications: Publication[]; available: boolean }> {
+  const profile = await getCurrentProfile();
+  if (profile?.role !== "super_admin" && profile?.role !== "account_manager") return { publications: [], available: false };
+  return listArchivedPublications(clientId);
 }

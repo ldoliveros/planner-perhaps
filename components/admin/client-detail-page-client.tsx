@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { Archive, ArchiveRestore, ArrowLeft, CalendarDays, Pencil, Plus, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, ArrowLeft, CalendarDays, Pencil, Plus, Power, PowerOff, Send, Trash2 } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -32,10 +32,15 @@ import { deleteClientAccount, setClientAccountActive } from "@/lib/actions/clien
 import { deleteClientUser } from "@/lib/actions/client-users";
 import { toast } from "@/lib/toast";
 import { ClientUserFormDialog } from "@/components/admin/client-user-form-dialog";
-import { ResendInvitationButton } from "@/components/admin/resend-invitation-button";
+import { useResendInvitation } from "@/components/admin/resend-invitation-button";
+import { RowActionsMenu } from "@/components/admin/row-actions-menu";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { UserAccessBadge } from "@/components/admin/user-access-badge";
 import { accountLabel, accountSecondaryName } from "@/lib/account-label";
 import type { AccountType, Calendar, Client, ClientAccount, ClientUser, Platform } from "@/types";
+import { ClientTeamSection, type ClientTeamMember } from "@/components/admin/client-team-section";
+import { ADMIN_SECTION_TITLE, ADMIN_SURFACE, ADMIN_TABLE_FRAME } from "@/lib/admin-surface";
+import { cn } from "cn";
 
 interface ClientDetailPageClientProps {
   client: Client;
@@ -47,6 +52,8 @@ interface ClientDetailPageClientProps {
   accountTypes: AccountType[];
   clientUsers: ClientUser[];
   canEditClient: boolean;
+  /** v1.6: miembros activos del equipo para "Equipo asignado". Solo Super Admin (null = la sección no se muestra). */
+  teamMembers: ClientTeamMember[] | null;
 }
 
 export function ClientDetailPageClient({
@@ -59,6 +66,7 @@ export function ClientDetailPageClient({
   accountTypes,
   clientUsers,
   canEditClient,
+  teamMembers,
 }: ClientDetailPageClientProps) {
   const platformMap = new Map(platforms.map((p) => [p.id, p]));
   const accountTypeMap = new Map(accountTypes.map((a) => [a.id, a]));
@@ -66,19 +74,22 @@ export function ClientDetailPageClient({
   const activeCalendars = calendars.filter((c) => c.status !== "archived");
   const archivedCalendars = calendars.filter((c) => c.status === "archived");
   return (
-    <div className="flex flex-col gap-6 p-6">
+    <div className={cn("flex min-h-full flex-col gap-8 p-6", ADMIN_SURFACE)}>
+      {/* v1.6: encabezado sin tarjeta — volver, identidad del cliente (nombre con más protagonismo) y acciones a la
+          derecha, separado de las secciones por un divisor sutil. */}
+      <div className="flex flex-col gap-4 border-b border-border pb-6">
       <Link
         href="/admin/clients"
-        className="flex w-fit items-center gap-1 text-xs text-muted-foreground hover:text-foreground pointer-coarse:min-h-11"
+        className="flex w-fit items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground pointer-coarse:min-h-11"
       >
-        <ArrowLeft className="size-3.5" />
+        <ArrowLeft className="size-4" />
         Clientes
       </Link>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card p-4">
-        <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex min-w-0 items-center gap-4">
           <div
-            className="relative flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-xl text-lg font-semibold"
+            className="relative flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl leading-none font-semibold [container-type:size]"
             style={
               client.logoUrl
                 ? undefined
@@ -86,12 +97,13 @@ export function ClientDetailPageClient({
             }
           >
             {client.logoUrl ? (
-              <Image src={client.logoUrl} alt={client.name} fill sizes="56px" className="object-cover" />
+              <Image src={client.logoUrl} alt={client.name} fill sizes="64px" className="object-cover" />
             ) : (
-              client.name.charAt(0)
+              <span style={{ fontSize: "50cqmin" }}>{client.name.charAt(0)}</span>
             )}
           </div>
-          <div>
+          <div className="flex min-w-0 flex-col gap-1">
+            <h1 className="truncate text-2xl font-semibold tracking-tight text-foreground">{client.name}</h1>
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: client.color }} />
               {client.color}
@@ -101,7 +113,6 @@ export function ClientDetailPageClient({
                 </Badge>
               )}
             </div>
-            <h1 className="text-lg font-semibold text-foreground">{client.name}</h1>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -128,10 +139,15 @@ export function ClientDetailPageClient({
           {canEditClient && <ClientArchiveActions client={client} calendarCount={calendars.length} />}
         </div>
       </div>
+      </div>
 
-      <div className="flex flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-foreground">Calendarios</h2>
+      {/* v1.6: secciones en dos columnas de igual ancho en desktop (Calendarios | Cuentas / Canales, luego Equipo
+          asignado | Usuarios), alineadas arriba sin igualar alturas; una columna en tablet y mobile, en ese mismo orden
+          de lectura. min-w-0: las tablas se ajustan al ancho de su columna (truncando) en vez de ensanchar la página. */}
+      <div className="grid grid-cols-1 items-start gap-8 xl:grid-cols-2">
+      <div className="flex min-w-0 flex-col gap-3">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className={ADMIN_SECTION_TITLE}>Calendarios</h2>
           <CalendarFormDialog
             lockedClient={client}
             trigger={
@@ -163,30 +179,30 @@ export function ClientDetailPageClient({
         )}
       </div>
 
-      <div className="flex flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-foreground">Cuentas / Canales</h2>
+      <div className="flex min-w-0 flex-col gap-3">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className={ADMIN_SECTION_TITLE}>Cuentas / Canales</h2>
           <ClientAccountFormDialog clientId={client.id} platforms={platforms} accountTypes={accountTypes} />
         </div>
 
         <ResponsiveList
           table={
-            <div className="overflow-hidden rounded-lg border border-border bg-card">
+            <div className={ADMIN_TABLE_FRAME}>
               <Table className={SECTION_TABLE_CLASS}>
-                <SectionColGroup />
+                <SectionColGroup widths={[null, null, "w-[96px]", "w-[84px]", "w-[48px]"]} />
                 <TableHeader>
                   <TableRow>
                     <TableHead>Handle</TableHead>
                     <TableHead>Nombre</TableHead>
                     <TableHead>Tipo</TableHead>
                     <TableHead>Estado</TableHead>
-                    <TableHead className="text-right">Acciones</TableHead>
+                    <ActionsHead />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {clientAccounts.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
+                      <TableCell colSpan={5} className="py-8 text-center whitespace-normal text-muted-foreground">
                         {ACCOUNTS_EMPTY}
                       </TableCell>
                     </TableRow>
@@ -229,30 +245,36 @@ export function ClientDetailPageClient({
         />
       </div>
 
-      <div className="flex flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-foreground">Usuarios</h2>
+      {teamMembers && (
+        <div className="min-w-0">
+          <ClientTeamSection clientId={client.id} members={teamMembers} />
+        </div>
+      )}
+
+      <div className="flex min-w-0 flex-col gap-3">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className={ADMIN_SECTION_TITLE}>Usuarios</h2>
           <ClientUserFormDialog clientId={client.id} />
         </div>
 
         <ResponsiveList
           table={
-            <div className="overflow-hidden rounded-lg border border-border bg-card">
+            <div className={ADMIN_TABLE_FRAME}>
               <Table className={SECTION_TABLE_CLASS}>
-                <SectionColGroup />
+                <SectionColGroup widths={["w-[40%]", null, "w-[92px]", "w-[96px]", "w-[48px]"]} />
                 <TableHeader>
                   <TableRow>
                     <TableHead>Email</TableHead>
                     <TableHead>Nombre</TableHead>
                     <TableHead>Fecha de alta</TableHead>
                     <TableHead>Estado</TableHead>
-                    <TableHead className="text-right">Acciones</TableHead>
+                    <ActionsHead />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {clientUsers.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
+                      <TableCell colSpan={5} className="py-8 text-center whitespace-normal text-muted-foreground">
                         {USERS_EMPTY}
                       </TableCell>
                     </TableRow>
@@ -274,30 +296,38 @@ export function ClientDetailPageClient({
           }
         />
       </div>
+      </div>
     </div>
   );
 }
 
 /**
- * Base visual común de las tres tablas de la ficha (Calendarios, Cuentas, Usuarios):
- * [principal flexible] [secundario] [secundario] [Estado] [Acciones]. Las columnas de Estado y Acciones
- * tienen el mismo ancho fijo en las tres, así quedan alineadas al hacer scroll. Calendarios tiene un
- * solo dato secundario y lo extiende sobre las dos columnas (colSpan) en vez de dejar una columna vacía.
+ * Tablas de la ficha (v1.6, media columna en desktop): ancho fijo por columna con los textos largos truncados (con
+ * `title`), las secundarias acotadas y las acciones reducidas a "Ver" + "•••" (Calendarios) o solo "•••". Por debajo
+ * de `min-w` la tabla se desplaza dentro de su propio marco, nunca la página.
  */
-const SECTION_TABLE_CLASS = "table-fixed min-w-[720px]";
+const SECTION_TABLE_CLASS = "table-fixed min-w-[440px]";
 
 const ACCOUNTS_EMPTY = <>Todavía no hay cuentas configuradas. Agregá la primera con &quot;Agregar cuenta&quot;.</>;
 const USERS_EMPTY = <>Todavía no hay usuarios invitados. Invitá al primero con &quot;Invitar cliente&quot;.</>;
 
-function SectionColGroup() {
+/** Anchos de columna (`null` = flexible). */
+function SectionColGroup({ widths }: { widths: (string | null)[] }) {
   return (
     <colgroup>
-      <col />
-      <col className="w-[120px]" />
-      <col className="w-[100px]" />
-      <col className="w-[96px]" />
-      <col className="w-[240px]" />
+      {widths.map((width, i) => (
+        <col key={i} className={width ?? undefined} />
+      ))}
     </colgroup>
+  );
+}
+
+/** Columna de acciones: el encabezado queda para lectores de pantalla (el "•••" ya se explica solo). */
+function ActionsHead() {
+  return (
+    <TableHead className="text-right">
+      <span className="sr-only">Acciones</span>
+    </TableHead>
   );
 }
 
@@ -315,21 +345,21 @@ function CalendarsSubTable({
   return (
     <ResponsiveList
       table={
-        <div className="overflow-hidden rounded-lg border border-border bg-card">
+        <div className={ADMIN_TABLE_FRAME}>
           <Table className={SECTION_TABLE_CLASS}>
-            <SectionColGroup />
+            <SectionColGroup widths={[null, "w-[104px]", "w-[96px]", "w-[104px]"]} />
             <TableHeader>
               <TableRow>
                 <TableHead>Calendario</TableHead>
-                <TableHead colSpan={2}>Publicaciones</TableHead>
+                <TableHead>Publicaciones</TableHead>
                 <TableHead>Estado</TableHead>
-                <TableHead className="text-right">Acciones</TableHead>
+                <ActionsHead />
               </TableRow>
             </TableHeader>
             <TableBody>
               {calendars.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
+                  <TableCell colSpan={4} className="py-8 text-center whitespace-normal text-muted-foreground">
                     {emptyMessage}
                   </TableCell>
                 </TableRow>
@@ -337,7 +367,7 @@ function CalendarsSubTable({
               {calendars.map((calendar) => (
                 <TableRow key={calendar.id}>
                   <TableCell className="truncate font-medium text-foreground" title={calendar.name}>{calendar.name}</TableCell>
-                  <TableCell colSpan={2} className="text-muted-foreground">
+                  <TableCell className="text-muted-foreground">
                     {publicationCountByCalendarId[calendar.id] ?? 0}
                   </TableCell>
                   <TableCell>
@@ -348,6 +378,7 @@ function CalendarsSubTable({
                       client={client}
                       calendar={calendar}
                       publicationCount={publicationCountByCalendarId[calendar.id] ?? 0}
+                      compact
                     />
                   </TableCell>
                 </TableRow>
@@ -381,6 +412,7 @@ function CalendarsSubTable({
                     calendar={calendar}
                     publicationCount={publicationCount}
                     className="justify-start"
+                    compact
                   />
                 </div>
               </RowCard>
@@ -496,14 +528,23 @@ function ClientUserRow({
 
   const createdAt = new Date(user.createdAt).toLocaleDateString("es-AR");
   const statusBadge = user.accessStatus ? <UserAccessBadge status={user.accessStatus} /> : null;
+  const { resend, isPending: isResending } = useResendInvitation(user.id);
+  // v1.6: acciones en el menú "•••" (mismos nombres y comportamiento); Eliminar abre su confirmación de siempre.
   const actions = (
     <>
-      {canResendInvitation && user.accessStatus === "invited" && <ResendInvitationButton userId={user.id} variant="ghost" />}
-      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-        <AlertDialogTrigger render={<Button variant="ghost" size="sm" className="gap-1.5 text-destructive" />}>
-          <Trash2 className="size-3.5" />
+      <RowActionsMenu label={`Más acciones de ${user.email ?? "este usuario"}`}>
+        {canResendInvitation && user.accessStatus === "invited" && (
+          <DropdownMenuItem disabled={isResending} onClick={resend}>
+            <Send />
+            {isResending ? "Enviando..." : "Reenviar invitación"}
+          </DropdownMenuItem>
+        )}
+        <DropdownMenuItem variant="destructive" onClick={() => setDeleteOpen(true)}>
+          <Trash2 />
           Eliminar
-        </AlertDialogTrigger>
+        </DropdownMenuItem>
+      </RowActionsMenu>
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>¿Eliminar a &quot;{user.email}&quot;?</AlertDialogTitle>
@@ -533,9 +574,11 @@ function ClientUserRow({
               {user.fullName ?? "Sin nombre"} · Alta {createdAt}
             </span>
           </div>
-          {statusBadge}
+          <div className="flex shrink-0 items-center gap-1">
+            {statusBadge}
+            {actions}
+          </div>
         </div>
-        <div className={CARD_ACTIONS_CLASS}>{actions}</div>
       </RowCard>
     );
   }
@@ -544,10 +587,10 @@ function ClientUserRow({
     <TableRow>
       <TableCell className="truncate font-medium text-foreground" title={user.email ?? undefined}>{user.email}</TableCell>
       <TableCell className="truncate text-muted-foreground">{user.fullName ?? "—"}</TableCell>
-      <TableCell className="text-muted-foreground">{createdAt}</TableCell>
+      <TableCell className="truncate text-muted-foreground">{createdAt}</TableCell>
       <TableCell>{statusBadge}</TableCell>
       <TableCell className="text-right">
-        <div className="flex items-center justify-end gap-1">{actions}</div>
+        <div className="flex items-center justify-end">{actions}</div>
       </TableCell>
     </TableRow>
   );
@@ -574,6 +617,7 @@ function ClientAccountRow({
 }) {
   const router = useRouter();
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [isDeleting, startDeleteTransition] = useTransition();
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -605,28 +649,34 @@ function ClientAccountRow({
   }
 
   const statusBadge = <Badge variant={account.active ? "secondary" : "outline"}>{account.active ? "Activa" : "Inactiva"}</Badge>;
+  // v1.6: acciones en el menú "•••" (mismos nombres y comportamiento); Editar abre el diálogo de siempre y Eliminar
+  // su confirmación, ambos fuera del menú.
   const actions = (
     <>
-      <Button variant="ghost" size="sm" disabled={isPending} onClick={toggleActive}>
-        {account.active ? "Desactivar" : "Activar"}
-      </Button>
+      <RowActionsMenu label={`Más acciones de ${accountLabel(account)}`}>
+        <DropdownMenuItem onClick={() => setEditOpen(true)}>
+          <Pencil />
+          Editar
+        </DropdownMenuItem>
+        <DropdownMenuItem disabled={isPending} onClick={toggleActive}>
+          {account.active ? <PowerOff /> : <Power />}
+          {account.active ? "Desactivar" : "Activar"}
+        </DropdownMenuItem>
+        <DropdownMenuItem variant="destructive" onClick={() => setDeleteOpen(true)}>
+          <Trash2 />
+          Eliminar
+        </DropdownMenuItem>
+      </RowActionsMenu>
       <ClientAccountFormDialog
         clientId={clientId}
         platforms={platforms}
         accountTypes={accountTypes}
         account={account}
-        trigger={
-          <Button variant="ghost" size="sm" className="gap-1.5">
-            <Pencil className="size-3.5" />
-            Editar
-          </Button>
-        }
+        trigger={null}
+        open={editOpen}
+        onOpenChange={setEditOpen}
       />
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-        <AlertDialogTrigger render={<Button variant="ghost" size="sm" className="gap-1.5 text-destructive" />}>
-          <Trash2 className="size-3.5" />
-          Eliminar
-        </AlertDialogTrigger>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>¿Eliminar la cuenta &quot;{accountLabel(account)}&quot;?</AlertDialogTitle>
@@ -665,9 +715,11 @@ function ClientAccountRow({
             </span>
             {secondary && <span className="truncate text-xs text-muted-foreground">{secondary}</span>}
           </div>
-          {statusBadge}
+          <div className="flex shrink-0 items-center gap-1">
+            {statusBadge}
+            {actions}
+          </div>
         </div>
-        <div className={CARD_ACTIONS_CLASS}>{actions}</div>
       </RowCard>
     );
   }
@@ -688,7 +740,7 @@ function ClientAccountRow({
       <TableCell className="truncate text-muted-foreground">{accountType?.name ?? "—"}</TableCell>
       <TableCell>{statusBadge}</TableCell>
       <TableCell className="text-right">
-        <div className="flex justify-end gap-1">{actions}</div>
+        <div className="flex items-center justify-end">{actions}</div>
       </TableCell>
     </TableRow>
   );

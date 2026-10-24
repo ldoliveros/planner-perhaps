@@ -14,6 +14,7 @@ export const PLANNER_CSV_HEADERS = [
   "Copy",
   "Campaña",
   "Carpeta de Drive",
+  "Trello",
 ] as const;
 
 /** Escapa una celda según RFC 4180: comillas si tiene coma, comilla doble o salto de línea; comillas internas duplicadas. */
@@ -80,6 +81,7 @@ export function buildPlannerCsv(publications: Publication[], lookups: PlannerCsv
       p.copy,
       p.campaignId ? (campaignById.get(p.campaignId)?.name ?? "") : "",
       p.driveFolderUrl ?? "",
+      p.trelloUrl ?? "",
     ];
   });
 

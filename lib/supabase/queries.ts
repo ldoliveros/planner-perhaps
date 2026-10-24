@@ -39,7 +39,17 @@ export interface Lookups {
   statuses: Status[];
 }
 
-export async function getLookups(): Promise<Lookups> {
+/**
+ * Resultado con el error de Supabase explícito (v1.6, dashboard de Inicio): distingue "sin datos" de "falló la
+ * consulta". Las funciones `list*`/`get*` de siempre delegan en las `fetch*` y conservan su comportamiento
+ * (ante un error devuelven vacío), así ninguna otra pantalla cambia.
+ */
+export interface QueryResult<T> {
+  data: T;
+  error: string | null;
+}
+
+export async function fetchLookups(): Promise<QueryResult<Lookups>> {
   const supabase = await createClient();
   const [platforms, accountTypes, contentTypes, statuses] = await Promise.all([
     supabase.from("platforms").select("*").eq("active", true).order("sort_order"),
@@ -47,20 +57,32 @@ export async function getLookups(): Promise<Lookups> {
     supabase.from("content_types").select("*").order("sort_order"),
     supabase.from("statuses").select("*").order("sort_order"),
   ]);
+  const error = platforms.error ?? accountTypes.error ?? contentTypes.error ?? statuses.error;
 
   return {
-    platforms: (platforms.data ?? []).map(mapPlatform),
-    accountTypes: (accountTypes.data ?? []).map(mapAccountType),
-    contentTypes: (contentTypes.data ?? []).map(mapContentType),
-    statuses: (statuses.data ?? []).map(mapStatus),
+    data: {
+      platforms: (platforms.data ?? []).map(mapPlatform),
+      accountTypes: (accountTypes.data ?? []).map(mapAccountType),
+      contentTypes: (contentTypes.data ?? []).map(mapContentType),
+      statuses: (statuses.data ?? []).map(mapStatus),
+    },
+    error: error?.message ?? null,
   };
 }
 
-export async function listClients(): Promise<Client[]> {
+export async function getLookups(): Promise<Lookups> {
+  return (await fetchLookups()).data;
+}
+
+export async function fetchClients(): Promise<QueryResult<Client[]>> {
   const supabase = await createClient();
-  const { data } = await supabase.from("clients").select("*").order("name");
+  const { data, error } = await supabase.from("clients").select("*").order("name");
   const clients = (data ?? []).map(mapClient);
-  return withSignedClientLogos(supabase, clients);
+  return { data: await withSignedClientLogos(supabase, clients), error: error?.message ?? null };
+}
+
+export async function listClients(): Promise<Client[]> {
+  return (await fetchClients()).data;
 }
 
 export async function getClientById(id: string): Promise<Client | null> {
@@ -91,10 +113,14 @@ function sortAccountsByHandle(accounts: ClientAccount[], options: { bySortOrder?
   });
 }
 
-export async function listAllClientAccountsAdmin(): Promise<ClientAccount[]> {
+export async function fetchAllClientAccountsAdmin(): Promise<QueryResult<ClientAccount[]>> {
   const supabase = await createClient();
-  const { data } = await supabase.from("client_accounts").select("*");
-  return sortAccountsByHandle((data ?? []).map(mapClientAccount));
+  const { data, error } = await supabase.from("client_accounts").select("*");
+  return { data: sortAccountsByHandle((data ?? []).map(mapClientAccount)), error: error?.message ?? null };
+}
+
+export async function listAllClientAccountsAdmin(): Promise<ClientAccount[]> {
+  return (await fetchAllClientAccountsAdmin()).data;
 }
 
 export async function listClientAccountsForClient(clientId: string): Promise<ClientAccount[]> {
@@ -122,6 +148,15 @@ export async function listAllCampaignsAdmin(): Promise<Campaign[]> {
   return (data ?? []).map(mapCampaign);
 }
 
+/**
+ * v1.6 archivado: las listas del Planner, del calendario global, del Escritorio y del CSV NO incluyen publicaciones
+ * archivadas. Se filtra acá (en servidor) y no en la consulta para que funcione igual antes de aplicar
+ * 20261017000001 (sin la columna, `archivedAt` es null). Para el Client User la RLS ya no las devuelve.
+ */
+function withoutArchived(publications: Publication[]): Publication[] {
+  return publications.filter((p) => !p.archivedAt);
+}
+
 export async function listPublicationsForClient(clientId: string): Promise<Publication[]> {
   const supabase = await createClient();
   const { data } = await supabase
@@ -129,15 +164,65 @@ export async function listPublicationsForClient(clientId: string): Promise<Publi
     .select(PUBLICATION_SELECT)
     .eq("client_id", clientId)
     .order("publication_date");
-  const publications = (data ?? []).map(mapPublication);
+  const publications = withoutArchived((data ?? []).map(mapPublication));
   return withSignedThumbnails(supabase, publications);
 }
 
 export async function listAllPublicationsAdmin(): Promise<Publication[]> {
   const supabase = await createClient();
   const { data } = await supabase.from("publications").select(PUBLICATION_SELECT).order("publication_date");
-  const publications = (data ?? []).map(mapPublication);
+  const publications = withoutArchived((data ?? []).map(mapPublication));
   return withSignedThumbnails(supabase, publications);
+}
+
+export interface ArchivedPublicationsResult {
+  publications: Publication[];
+  /** false = 20261017000001 todavía no aplicada (sin columna archived_at): la sección no se ofrece. */
+  available: boolean;
+}
+
+/**
+ * Publicaciones archivadas (staff): de un cliente o, sin `clientId`, de todos los que el usuario puede gestionar (RLS
+ * `publications_manage`). Más recientes primero. El Client User no tiene política que se las devuelva.
+ */
+export async function listArchivedPublications(clientId: string | null): Promise<ArchivedPublicationsResult> {
+  const supabase = await createClient();
+  let query = supabase
+    .from("publications")
+    .select(PUBLICATION_SELECT)
+    .not("archived_at", "is", null)
+    .order("archived_at", { ascending: false });
+  if (clientId) query = query.eq("client_id", clientId);
+  const { data, error } = await query;
+  // Sin la columna archived_at (42703 / PGRST204) la sección no está disponible; otro error se informa vacío.
+  if (error) return { publications: [], available: error.code !== "42703" && error.code !== "PGRST204" };
+  // El filtro `.not(... "is", null)` sobre una columna opcional del tipo generado deja `data` sin tipar.
+  const rows = (data ?? []) as unknown as Parameters<typeof mapPublication>[0][];
+  const publications = rows.map(mapPublication);
+  return { publications: await withSignedThumbnails(supabase, publications), available: true };
+}
+
+/**
+ * Cantidad de publicaciones ACTIVAS (no archivadas) por calendario, para las pantallas de Clientes / Calendarios /
+ * ficha del cliente. Sin la columna de archivado (migración no aplicada) cuenta todas, como antes. El borrado de un
+ * calendario sigue contando TODAS en el servidor (lib/actions/calendars.ts): uno con archivadas no se borra.
+ */
+export async function countActivePublicationsByCalendar(calendarIds?: string[]): Promise<Record<string, number>> {
+  const supabase = await createClient();
+  if (calendarIds && calendarIds.length === 0) return {};
+  const run = (columns: string) => {
+    let query = supabase.from("publications").select(columns);
+    if (calendarIds) query = query.in("calendar_id", calendarIds);
+    return query;
+  };
+  let { data, error } = await run("calendar_id, archived_at");
+  if (error) ({ data, error } = await run("calendar_id"));
+  const counts: Record<string, number> = {};
+  for (const row of (data ?? []) as unknown as { calendar_id: string; archived_at?: string | null }[]) {
+    if (row.archived_at) continue;
+    counts[row.calendar_id] = (counts[row.calendar_id] ?? 0) + 1;
+  }
+  return counts;
 }
 
 /**
@@ -149,16 +234,86 @@ export async function listAllPublicationsAdmin(): Promise<Publication[]> {
  * RLS (`publications_manage` / `publications_select_own`) sigue aplicando: Account Manager ve únicamente sus
  * clientes asignados, Super Admin ve todos — sin lógica de permisos extra acá.
  */
-export async function listPublicationsInRange(from: string, to: string): Promise<Publication[]> {
+export async function fetchPublicationsInRange(from: string, to: string): Promise<QueryResult<Publication[]>> {
   const supabase = await createClient();
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("publications")
     .select(PUBLICATION_SELECT)
     .gte("publication_date", from)
     .lte("publication_date", to)
     .order("publication_date");
+  const publications = withoutArchived((data ?? []).map(mapPublication));
+  return { data: await withSignedThumbnails(supabase, publications), error: error?.message ?? null };
+}
+
+export async function listPublicationsInRange(from: string, to: string): Promise<Publication[]> {
+  return (await fetchPublicationsInRange(from, to)).data;
+}
+
+export interface PublicationSearchResult {
+  publications: Publication[];
+  /** Total de coincidencias (todas las páginas); null si la página pedida está fuera de rango. */
+  total: number | null;
+  error: string | null;
+}
+
+/**
+ * Búsqueda global por título (v1.6, /admin/search y /client/search): en TODA la base, sin rango de fechas, con la
+ * sesión del usuario — la RLS decide qué clientes, calendarios y publicaciones ve cada rol (Super Admin todo, Account
+ * Manager sus clientes, Client User el suyo). Excluye archivadas en la consulta (así la paginación cuenta bien; sin
+ * la columna, 20261017000001 sin aplicar, se busca como antes). Descartadas incluidas. Orden estable: fecha más
+ * reciente primero, después hora e id. Patrón: `titleSearchPattern` (lib/publication-search.ts). `clientId` (espacio
+ * opcional, ya validado contra los clientes visibles) acota en la consulta, antes de paginar; la RLS aplica igual.
+ */
+export async function searchPublicationsByTitle(
+  pattern: string,
+  page: number,
+  pageSize: number,
+  clientId: string | null = null
+): Promise<PublicationSearchResult> {
+  const supabase = await createClient();
+  const from = (page - 1) * pageSize;
+  const run = (excludeArchived: boolean) => {
+    let query = supabase.from("publications").select(PUBLICATION_SELECT, { count: "exact" }).filter("title", "imatch", pattern);
+    if (excludeArchived) query = query.is("archived_at", null);
+    if (clientId) query = query.eq("client_id", clientId);
+    return query
+      .order("publication_date", { ascending: false })
+      .order("publication_time", { ascending: false, nullsFirst: false })
+      .order("id")
+      .range(from, from + pageSize - 1);
+  };
+  let { data, error, count } = await run(true);
+  if (error && (error.code === "42703" || error.code === "PGRST204")) ({ data, error, count } = await run(false));
+  // Página más allá del final (PostgREST 416 / PGRST103): sin resultados, la UI ofrece volver a la primera.
+  if (error?.code === "PGRST103") return { publications: [], total: null, error: null };
+  if (error) return { publications: [], total: 0, error: error.message };
   const publications = (data ?? []).map(mapPublication);
-  return withSignedThumbnails(supabase, publications);
+  return { publications: await withSignedThumbnails(supabase, publications), total: count ?? publications.length, error: null };
+}
+
+/** Clientes, calendarios y cuentas que necesita una lista de publicaciones (solo esos ids, bajo RLS). */
+export async function listLookupsForPublications(publications: Publication[]): Promise<{
+  clients: Client[];
+  calendars: Calendar[];
+  clientAccounts: ClientAccount[];
+}> {
+  const clientIds = Array.from(new Set(publications.map((p) => p.clientId)));
+  const calendarIds = Array.from(new Set(publications.map((p) => p.calendarId)));
+  const accountIds = Array.from(new Set(publications.flatMap((p) => p.destinations.map((d) => d.clientAccountId))));
+  if (publications.length === 0) return { clients: [], calendars: [], clientAccounts: [] };
+  const supabase = await createClient();
+  const [clientsRes, calendarsRes, accountsRes] = await Promise.all([
+    supabase.from("clients").select("*").in("id", clientIds),
+    supabase.from("calendars").select("*").in("id", calendarIds),
+    accountIds.length > 0 ? supabase.from("client_accounts").select("*").in("id", accountIds) : Promise.resolve({ data: [] }),
+  ]);
+  const clients = await withSignedClientLogos(supabase, (clientsRes.data ?? []).map(mapClient));
+  return {
+    clients,
+    calendars: (calendarsRes.data ?? []).map(mapCalendar),
+    clientAccounts: (accountsRes.data ?? []).map(mapClientAccount),
+  };
 }
 
 export async function getPublicationById(id: string): Promise<Publication | null> {

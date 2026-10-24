@@ -10,6 +10,7 @@ import {
 import { getSiteURL } from "@/lib/site-url";
 import { friendlyInviteError } from "@/lib/friendly-errors";
 import { createClient } from "@/lib/supabase/server";
+import { FIRST_NAME_REQUIRED_ERROR, joinPersonName } from "@/lib/person-name";
 
 export interface TeamActionState {
   error: string | null;
@@ -62,19 +63,42 @@ async function getTeamMemberTarget(
   return { error: null, role: target.role };
 }
 
+/**
+ * Deja las asignaciones del usuario exactamente en `clientIds`. v1.6: solo borra las que se quitan e inserta las
+ * nuevas — las que siguen conservan su fila y su `created_at`, que es la fecha de incorporación a ese cliente (la
+ * usa el contador de comentarios no leídos para no mostrar como pendiente lo anterior a la incorporación). Mismo
+ * resultado final que antes (borrar todo y reinsertar).
+ */
 async function replaceAssignments(
   admin: ReturnType<typeof createAdminClient>,
   userId: string,
   clientIds: string[]
 ): Promise<string | null> {
-  const { error: deleteError } = await admin.from("user_client_assignments").delete().eq("user_id", userId);
-  if (deleteError) return deleteError.message;
+  const { data: current, error: readError } = await admin
+    .from("user_client_assignments")
+    .select("client_id")
+    .eq("user_id", userId);
+  if (readError) return readError.message;
 
-  if (clientIds.length > 0) {
+  const wanted = new Set(clientIds);
+  const existing = new Set((current ?? []).map((row) => row.client_id));
+  const toRemove = [...existing].filter((id) => !wanted.has(id));
+  const toAdd = [...wanted].filter((id) => !existing.has(id));
+
+  if (toRemove.length > 0) {
+    const { error: deleteError } = await admin
+      .from("user_client_assignments")
+      .delete()
+      .eq("user_id", userId)
+      .in("client_id", toRemove);
+    if (deleteError) return deleteError.message;
+  }
+
+  if (toAdd.length > 0) {
     const callerId = await getCallerId();
     const { error: insertError } = await admin
       .from("user_client_assignments")
-      .insert(clientIds.map((clientId) => ({ user_id: userId, client_id: clientId, created_by: callerId })));
+      .insert(toAdd.map((clientId) => ({ user_id: userId, client_id: clientId, created_by: callerId })));
     if (insertError) return insertError.message;
   }
   return null;
@@ -85,10 +109,14 @@ export async function inviteTeamMember(
   formData: FormData
 ): Promise<TeamActionState> {
   const email = String(formData.get("email") ?? "").trim();
-  const fullName = String(formData.get("fullName") ?? "").trim() || null;
+  // Nombre (obligatorio) + Apellido (opcional) → full_name, con espacio solo si hay Apellido.
+  const fullName = joinPersonName(String(formData.get("firstName") ?? ""), String(formData.get("lastName") ?? ""));
   const role = String(formData.get("role") ?? "");
   const clientIds = Array.from(new Set(parseJsonArray<string>(formData.get("clientIds"))));
 
+  if (!fullName) {
+    return { error: FIRST_NAME_REQUIRED_ERROR, savedAt: null };
+  }
   if (!email) {
     return { error: "Completá el email.", savedAt: null };
   }
@@ -114,7 +142,7 @@ export async function inviteTeamMember(
 
   const siteURL = await getSiteURL();
   const { data, error } = await admin.auth.admin.inviteUserByEmail(email, {
-    data: fullName ? { full_name: fullName } : undefined,
+    data: { full_name: fullName },
     redirectTo: `${siteURL}/auth/callback`,
   });
   if (error) {
@@ -139,6 +167,9 @@ export async function inviteTeamMember(
 }
 
 export async function updateTeamMemberName(userId: string, fullName: string): Promise<{ error: string | null }> {
+  // El caller ya une Nombre + Apellido (joinPersonName); el Nombre es obligatorio.
+  const name = fullName.trim().replace(/\s+/g, " ");
+  if (!name) return { error: FIRST_NAME_REQUIRED_ERROR };
   try {
     await requireSuperAdmin();
   } catch {
@@ -149,7 +180,7 @@ export async function updateTeamMemberName(userId: string, fullName: string): Pr
   const target = await getTeamMemberTarget(admin, userId);
   if (target.error) return { error: target.error };
 
-  const { error } = await admin.from("profiles").update({ full_name: fullName.trim() || null }).eq("id", userId);
+  const { error } = await admin.from("profiles").update({ full_name: name }).eq("id", userId);
   if (error) return { error: error.message };
 
   revalidatePath("/admin/team");

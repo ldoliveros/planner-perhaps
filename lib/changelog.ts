@@ -20,6 +20,56 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG: ChangelogRelease[] = [
   {
+    version: "1.6.0",
+    date: "2026-10-13",
+    entries: [
+      {
+        text: "Comentarios en las publicaciones En revisión: mencioná a otras personas con @, respondé comentarios y reaccioná con emojis.",
+        roles: ["super_admin", "account_manager", "client"],
+      },
+      {
+        text: "Aprobaciones: el cliente aprueba la publicación desde Planner y queda registrado quién la aprobó y cuándo.",
+        roles: ["super_admin", "account_manager", "client"],
+      },
+      {
+        text: "Notificaciones dentro de Planner: la campanita te avisa de menciones, comentarios, revisiones y aprobaciones, con su historial completo.",
+        roles: ["super_admin", "account_manager", "client"],
+      },
+      {
+        text: "Cambios en vivo: lo que otra persona crea, edita, mueve o archiva se ve al instante, sin recargar.",
+        roles: ["super_admin", "account_manager", "client"],
+      },
+      {
+        text: "Búsqueda global: tocá la lupa para buscar publicaciones por título en todas las fechas y espacios a los que tenés acceso.",
+        roles: ["super_admin", "account_manager", "client"],
+      },
+      {
+        text: "Tablero: nueva vista con una columna por estado. Arrastrá una publicación a otra columna para cambiarle el estado.",
+        roles: ["super_admin", "account_manager"],
+      },
+      {
+        text: "Tablero: nueva vista con las publicaciones del mes agrupadas por estado.",
+        roles: ["client"],
+      },
+      {
+        text: "Archivados: archivá las publicaciones que ya no necesitás sin eliminarlas, con opción de deshacer y de restaurarlas cuando quieras.",
+        roles: ["super_admin", "account_manager"],
+      },
+      {
+        text: "Enviar a revisión: pasar una publicación a En revisión pide confirmación y cada cambio de estado queda en el historial.",
+        roles: ["super_admin", "account_manager"],
+      },
+      {
+        text: "Si otra persona guardó cambios en la publicación mientras la editabas, Planner te avisa en lugar de pisarlos.",
+        roles: ["super_admin", "account_manager"],
+      },
+      {
+        text: "Nuevo Inicio con indicadores del mes, próximas publicaciones y notificaciones sin leer, y link a Trello en cada publicación.",
+        roles: ["super_admin", "account_manager"],
+      },
+    ],
+  },
+  {
     version: "1.5.1",
     date: "2026-09-29",
     entries: [

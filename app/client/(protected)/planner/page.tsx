@@ -31,9 +31,7 @@ export default async function ClientPlannerPage() {
     <CalendarScreen
       client={client}
       calendars={calendars}
-      // internalNotes es exclusivo de staff: se descarta acá, en servidor, para que nunca viaje al navegador
-      // del Client User (no alcanza con ocultarlo en la UI).
-      publications={publications.map((p) => ({ ...p, internalNotes: null }))}
+      publications={publications}
       clientAccounts={clientAccounts}
       campaigns={campaigns}
       lookups={lookups}

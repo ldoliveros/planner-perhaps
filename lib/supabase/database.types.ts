@@ -167,6 +167,10 @@ export type PublicationRow = {
   internal_notes: string | null;
   drive_folder_id: string | null;
   drive_folder_url: string | null;
+  trello_url: string | null;
+  // v1.6 archivado (20261017000001). Opcionales: antes de aplicar la migración la consulta no las trae.
+  archived_at?: string | null;
+  archived_by?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -185,6 +189,9 @@ export type PublicationInsert = {
   internal_notes?: string | null;
   drive_folder_id?: string | null;
   drive_folder_url?: string | null;
+  trello_url?: string | null;
+  archived_at?: string | null;
+  archived_by?: string | null;
 };
 export type PublicationUpdate = Partial<PublicationInsert>;
 
