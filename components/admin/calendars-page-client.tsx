@@ -7,6 +7,8 @@ import { CalendarFormDialog } from "@/components/admin/calendar-form-dialog";
 import { CalendarRowActions } from "@/components/admin/calendar-row-actions";
 import { CARD_ACTIONS_CLASS, EmptyCard, ResponsiveList, RowCard } from "@/components/admin/responsive-list";
 import { CALENDAR_STATUS_LABELS } from "@/lib/calendar-labels";
+import { ADMIN_ACTIONS_RESERVE } from "@/lib/admin-shell";
+import { cn } from "cn";
 import type { Calendar, Client } from "@/types";
 
 interface CalendarsPageClientProps {
@@ -22,7 +24,8 @@ export function CalendarsPageClient({ calendars, clients, publicationCountByCale
 
   return (
     <div className="flex flex-col gap-6 p-6">
-      <div className="flex items-center justify-between">
+      {/* Reserva el lugar de la campanita + avatar del layout (ver lib/admin-shell.ts). */}
+      <div className={cn("flex items-center justify-between", ADMIN_ACTIONS_RESERVE)}>
         <h1 className="text-lg font-semibold text-foreground">Calendarios</h1>
         <CalendarFormDialog clients={clients} />
       </div>

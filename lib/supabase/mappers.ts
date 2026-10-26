@@ -148,9 +148,11 @@ export function mapPublication(row: PublicationRowWithRelations): Publication {
     copy: row.copy,
     cta: row.cta,
     externalUrl: row.external_url,
-    internalNotes: row.internal_notes,
     driveFolderId: row.drive_folder_id,
+    archivedAt: row.archived_at ?? null,
     driveFolderUrl: row.drive_folder_url,
+    trelloUrl: row.trello_url ?? null,
+    updatedAt: row.updated_at,
     destinations: (row.publication_destinations ?? []).map(mapPublicationDestination),
     assets: (row.publication_assets ?? [])
       .slice()

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createAdminClient, requireSuperAdmin } from "@/lib/supabase/admin";
 import { getSiteURL } from "@/lib/site-url";
 import { friendlyInviteError } from "@/lib/friendly-errors";
+import { FIRST_NAME_REQUIRED_ERROR, joinPersonName } from "@/lib/person-name";
 
 export interface InviteClientUserState {
   error: string | null;
@@ -15,9 +16,13 @@ export async function inviteClientUser(
   formData: FormData
 ): Promise<InviteClientUserState> {
   const email = String(formData.get("email") ?? "").trim();
-  const fullName = String(formData.get("fullName") ?? "").trim() || null;
+  // Nombre (obligatorio) + Apellido (opcional) → full_name, con espacio solo si hay Apellido.
+  const fullName = joinPersonName(String(formData.get("firstName") ?? ""), String(formData.get("lastName") ?? ""));
   const clientId = String(formData.get("clientId") ?? "");
 
+  if (!fullName) {
+    return { error: FIRST_NAME_REQUIRED_ERROR, savedAt: null };
+  }
   if (!email || !clientId) {
     return { error: "Completá el email.", savedAt: null };
   }

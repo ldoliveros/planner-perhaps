@@ -14,8 +14,9 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { RowActionsMenu } from "@/components/admin/row-actions-menu";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -29,6 +30,8 @@ import { deleteClient, setClientActive } from "@/lib/actions/clients";
 import { CALENDAR_STATUS_LABELS } from "@/lib/calendar-labels";
 import { getContrastTextColor } from "@/lib/color-contrast";
 import { toast } from "@/lib/toast";
+import { ADMIN_ACTIONS_RESERVE } from "@/lib/admin-shell";
+import { ADMIN_PAGE_TITLE, ADMIN_SURFACE, ADMIN_TABLE_FRAME } from "@/lib/admin-surface";
 import { cn } from "cn";
 import type { Calendar, Client } from "@/types";
 
@@ -57,9 +60,10 @@ export function ClientsPageClient({ clients, calendars, publicationCountByCalend
   }
 
   return (
-    <div className="flex flex-col gap-6 p-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-foreground">Clientes</h1>
+    <div className={cn("flex min-h-full flex-col gap-6 p-6", ADMIN_SURFACE)}>
+      {/* Reserva el lugar de la campanita + avatar del layout (ver lib/admin-shell.ts). */}
+      <div className={cn("flex items-center justify-between", ADMIN_ACTIONS_RESERVE)}>
+        <h1 className={ADMIN_PAGE_TITLE}>Clientes</h1>
         {canCreateClients && <ClientFormDialog />}
       </div>
 
@@ -115,7 +119,7 @@ function ClientsTable({
   return (
     <ResponsiveList
       table={
-        <div className="overflow-hidden rounded-lg border border-border bg-card">
+        <div className={ADMIN_TABLE_FRAME}>
           <Table>
             <TableHeader>
               <TableRow>
@@ -234,13 +238,13 @@ function ClientRow({
 
   const logo = (sizeClass: string, sizes: string) => (
     <span
-      className={`relative flex ${sizeClass} shrink-0 items-center justify-center overflow-hidden rounded-md text-xs font-semibold`}
+      className={`relative flex ${sizeClass} shrink-0 items-center justify-center overflow-hidden rounded-md leading-none font-semibold [container-type:size]`}
       style={client.logoUrl ? undefined : { backgroundColor: client.color, color: getContrastTextColor(client.color) }}
     >
       {client.logoUrl ? (
         <Image src={client.logoUrl} alt="" fill sizes={sizes} className="object-cover" />
       ) : (
-        client.name.charAt(0)
+        <span style={{ fontSize: "50cqmin" }}>{client.name.charAt(0)}</span>
       )}
     </span>
   );
@@ -265,22 +269,28 @@ function ClientRow({
         <CalendarDays className="size-3.5" />
         Ver planner
       </Button>
-      <Button variant="ghost" size="sm" className="gap-1.5" nativeButton={false} render={<Link href={`/admin/clients/${client.id}`} />}>
-        <Pencil className="size-3.5" />
-        Editar
-      </Button>
-      {canManage && (
-        <>
-          <Button variant="ghost" size="sm" className="gap-1.5" disabled={isArchiving} onClick={handleToggleActive}>
-            {client.active ? <Archive className="size-3.5" /> : <ArchiveRestore className="size-3.5" />}
+      {/* v1.6: acciones secundarias en el menú "•••" (mismos nombres y comportamiento; Eliminar conserva su
+          confirmación, que se abre fuera del menú). */}
+      <RowActionsMenu label={`Más acciones de ${client.name}`}>
+        <DropdownMenuItem render={<Link href={`/admin/clients/${client.id}`} />}>
+          <Pencil />
+          Editar
+        </DropdownMenuItem>
+        {canManage && (
+          <DropdownMenuItem disabled={isArchiving} onClick={handleToggleActive}>
+            {client.active ? <Archive /> : <ArchiveRestore />}
             {client.active ? "Desactivar" : "Activar"}
-          </Button>
-          {!client.active && (
+          </DropdownMenuItem>
+        )}
+        {canManage && !client.active && (
+          <DropdownMenuItem variant="destructive" onClick={() => setDeleteOpen(true)}>
+            <Trash2 />
+            Eliminar definitivamente
+          </DropdownMenuItem>
+        )}
+      </RowActionsMenu>
+      {canManage && !client.active && (
             <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-              <AlertDialogTrigger render={<Button variant="ghost" size="sm" className="gap-1.5 text-destructive" />}>
-                <Trash2 className="size-3.5" />
-                Eliminar definitivamente
-              </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>
                   <AlertDialogTitle>¿Eliminar el cliente &quot;{client.name}&quot;?</AlertDialogTitle>
@@ -301,8 +311,6 @@ function ClientRow({
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
-          )}
-        </>
       )}
     </>
   );
@@ -379,7 +387,7 @@ function ClientRow({
         <TableCell className="text-muted-foreground">{calendarCountLabel}</TableCell>
         <TableCell>{statusBadge}</TableCell>
         <TableCell className="text-right">
-          <div className="flex justify-end gap-1">{actions}</div>
+          <div className="flex items-center justify-end gap-1">{actions}</div>
         </TableCell>
       </TableRow>
       {expanded &&

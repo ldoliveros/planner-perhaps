@@ -136,7 +136,7 @@ export function MobileMonthView({
             <Button
               variant="ghost"
               size="icon"
-              className="-mr-2"
+              className="-mr-2 rounded-full"
               aria-label={`Nuevo contenido el ${selectedLabel}`}
               onClick={() => onCreateForDay(selectedDay)}
             >

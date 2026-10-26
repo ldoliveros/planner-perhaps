@@ -1,15 +1,13 @@
 import { CalendarsPageClient } from "@/components/admin/calendars-page-client";
-import { createClient } from "@/lib/supabase/server";
-import { listCalendars, listClients } from "@/lib/supabase/queries";
+import { countActivePublicationsByCalendar, listCalendars, listClients } from "@/lib/supabase/queries";
 
 export default async function CalendarsPage() {
-  const [calendars, clients, supabase] = await Promise.all([listCalendars(), listClients(), createClient()]);
-  const { data: publications } = await supabase.from("publications").select("calendar_id");
-
-  const publicationCountByCalendarId: Record<string, number> = {};
-  for (const row of publications ?? []) {
-    publicationCountByCalendarId[row.calendar_id] = (publicationCountByCalendarId[row.calendar_id] ?? 0) + 1;
-  }
+  // v1.6: conteos sin archivadas (ver countActivePublicationsByCalendar).
+  const [calendars, clients, publicationCountByCalendarId] = await Promise.all([
+    listCalendars(),
+    listClients(),
+    countActivePublicationsByCalendar(),
+  ]);
 
   return (
     <CalendarsPageClient

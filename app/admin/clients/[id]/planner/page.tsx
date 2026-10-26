@@ -37,7 +37,7 @@ export default async function ClientPlannerPage({ params }: { params: Promise<{ 
       lookups={lookups}
       allClients={allClients
         .filter((c) => c.active || c.id === client.id)
-        .map((c) => ({ id: c.id, name: c.name }))}
+        .map((c) => ({ id: c.id, name: c.name, logoUrl: c.logoUrl, color: c.color }))}
       members={members}
     />
   );

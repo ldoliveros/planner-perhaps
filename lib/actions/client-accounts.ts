@@ -18,7 +18,6 @@ export async function saveClientAccount(
   // El handle se guarda SIN "@" (es presentación): se recorta y se quita el "@" inicial que el usuario pueda haber escrito.
   const handle = String(formData.get("handle") ?? "").trim().replace(/^@+/, "");
   const name = String(formData.get("name") ?? "").trim() || null;
-  const url = String(formData.get("url") ?? "").trim() || null;
   const accountTypeIdRaw = String(formData.get("accountTypeId") ?? "").trim();
   const accountTypeId = accountTypeIdRaw && accountTypeIdRaw !== "__none__" ? accountTypeIdRaw : null;
   const active = formData.get("active") === "on";
@@ -32,6 +31,11 @@ export async function saveClientAccount(
   if (/\s/.test(handle)) {
     return { error: "El handle no puede contener espacios.", savedAt: null };
   }
+  // v1.6: Tipo de cuenta obligatorio (la columna sigue admitiendo NULL: cuentas históricas sin tipo se resuelven
+  // al editarlas, eligiendo uno).
+  if (!accountTypeId) {
+    return { error: "Elegí el tipo de cuenta.", savedAt: null };
+  }
 
   const supabase = await createClient();
   const payload = {
@@ -39,7 +43,8 @@ export async function saveClientAccount(
     platform_id: platformId,
     name,
     handle,
-    url,
+    // v1.6: la URL ya no se edita ni se escribe — así crear deja la columna en NULL y editar nunca pisa las URLs
+    // históricas (la columna `url`, el tipo y el mapper se conservan).
     account_type_id: accountTypeId,
     active,
   };

@@ -3,37 +3,65 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { addMonths, addWeeks, format } from "date-fns";
-import { CalendarDays, X } from "lucide-react";
+import { addDays, addMonths, addWeeks, format } from "date-fns";
+import { CalendarDays, Loader2, X } from "lucide-react";
 import { cn } from "cn";
 import { Button } from "@/components/ui/button";
-import { CalendarHeader, type CalendarView } from "@/components/calendar/calendar-header";
+import { CalendarHeader, type CalendarGridView, type CalendarView, type SpaceOption } from "@/components/calendar/calendar-header";
+import { BoardView } from "@/components/calendar/board-view";
+import { PublicationSearchDialog } from "@/components/search/publication-search-dialog";
 import {
-  CalendarFiltersBar,
+  ActiveFilterChips,
+  FiltersMenu,
+  SearchButton,
   EMPTY_FILTERS,
   MobileFilters,
   type CalendarFiltersState,
   type DateRangeValue,
 } from "@/components/calendar/calendar-filters";
-import { PublicationSearchBox } from "@/components/calendar/publication-search-box";
 import { WeekView } from "@/components/calendar/week-view";
+import { DayView } from "@/components/calendar/day-view";
 import { MonthView } from "@/components/calendar/month-view";
 import { AgendaListView } from "@/components/calendar/agenda-list-view";
 import { MobileAgendaView } from "@/components/calendar/mobile-agenda-view";
 import { MobileMonthView } from "@/components/calendar/mobile-month-view";
-import { PublicationView } from "@/components/publication/publication-view";
+import { PublicationView, type PublicationViewTab } from "@/components/publication/publication-view";
 import { PublicationPatchProvider } from "@/components/calendar/publication-patch-context";
 import { PublicationClientPicker } from "@/components/calendar/publication-client-picker";
 import { LookupsProvider } from "@/components/providers/lookups-provider";
-import { formatMonthYear, formatWeekRange, getMonthGridDays, getWeekDays, isSameMonthAs } from "@/lib/date-utils";
+import {
+  formatFullDateFromDate,
+  formatMonthYear,
+  formatWeekRange,
+  getMonthGridDays,
+  getWeekDays,
+  isSameMonthAs,
+} from "@/lib/date-utils";
 import { usePlannerShortcuts } from "@/lib/use-planner-shortcuts";
 import { useMediaQuery } from "@/lib/use-media-query";
 import { buildPlannerCsv, downloadCsv } from "@/lib/planner-csv";
 import { getRelevantFilterOptions, pruneFilters, withSelectedOptions } from "@/lib/planner-filter-options";
 import { replaceSearchParams } from "@/lib/history-search-params";
+import {
+  CAL_GRID_FRAME,
+  CAL_WORKSPACE_BG,
+  GLOBAL_CALENDAR_THEME,
+  calendarThemeFromColor,
+  calendarThemeStyle,
+} from "@/lib/calendar-surface";
 import { slugify } from "@/lib/slugify";
 import { toast } from "@/lib/toast";
-import { fetchPublicationsInRange } from "@/lib/actions/publications";
+import {
+  archivePublication,
+  deletePublication,
+  fetchArchivedPublications,
+  fetchPublicationsInRange,
+  restorePublication,
+} from "@/lib/actions/publications";
+import { PublicationArchiveProvider } from "@/components/calendar/publication-archive-context";
+import { ArchivedPublicationsSheet } from "@/components/calendar/archived-publications-sheet";
+import { fetchPublicationForView } from "@/lib/actions/editorial-flow";
+import { usePublicationsLive } from "@/lib/use-publications-live";
 import type { Lookups } from "@/lib/supabase/queries";
 import type { Calendar, Campaign, Client, ClientAccount, ClientMember, Publication } from "@/types";
 
@@ -64,8 +92,8 @@ interface CalendarScreenProps {
   campaigns: Campaign[];
   lookups: Lookups;
   readOnly?: boolean;
-  /** Solo admin: habilita el selector compacto de cliente en el header (Planner de un cliente). */
-  allClients?: { id: string; name: string }[];
+  /** Solo admin (Planner de un cliente): espacios a los que se puede cambiar desde el selector del encabezado. */
+  allClients?: SpaceOption[];
   /** Solo Planner de cliente (nunca se pasa desde Publicaciones global): integrantes con acceso a
    * este cliente, para el AvatarStack del header. */
   members?: ClientMember[];
@@ -79,6 +107,29 @@ interface CalendarScreenProps {
     clients: Client[];
     initialRange: { from: string; to: string };
   };
+}
+
+/**
+ * v1.6 — Lista navega por meses (como Mes): ← Hoy → + selector de mes. El rango personalizado Desde/Hasta queda
+ * implementado pero oculto mientras se prueba la experiencia simplificada; poner `true` lo reactiva tal cual
+ * (controles en el encabezado, filtro de Lista por Desde/Hasta y su carga de datos). Con `false`, un `from`
+ * entrante (enlaces del Escritorio, que siempre mandan un mes completo) fija el mes de Lista y se reemplaza por
+ * `?date=` en la URL.
+ */
+const LIST_CUSTOM_RANGE_ENABLED = false;
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Fecha local de un "YYYY-MM-DD" válido del query string; null si no es una fecha válida. */
+function dateFromParam(value: string | null): Date | null {
+  if (!value || !ISO_DATE.test(value)) return null;
+  const date = new Date(`${value}T00:00:00`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+/** ?tab= del deep-link (v1.6): solo "comments" cambia la pestaña inicial; cualquier otro valor abre la primera. */
+function tabFromParam(value: string | null): PublicationViewTab {
+  return value === "comments" ? "comments" : "main";
 }
 
 export function CalendarScreen({
@@ -100,27 +151,29 @@ export function CalendarScreen({
   const canManage = !readOnly;
   // Crear ahora también está disponible en Publicaciones global para staff (ver el modo
   // create de PublicationView, con un selector de cliente previo — Publicaciones no tiene uno fijo).
-  // Exportar CSV sigue siendo exclusivo del Planner de un cliente.
+  // Exportar CSV: staff, en el Planner de un cliente y (v1.6) también en el calendario global ("Ver todos"), en el
+  // menú ••• del encabezado. Misma función de exportación en los dos contextos.
   const canCreatePublication = canManage;
-  const canExport = canManage && !isGlobal;
+  const canExport = canManage;
 
   const clientAccountMap = useMemo(() => new Map(clientAccounts.map((a) => [a.id, a])), [clientAccounts]);
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  function handleSwitchClient(clientId: string) {
-    router.push(`/admin/clients/${clientId}/planner`);
-  }
 
-  // Publicaciones (global) abre por defecto en Lista; el Planner de un cliente sigue abriendo en Semana. Un
-  // `?view=` explícito (incl. `?view=week`) siempre gana — solo la AUSENCIA del param resuelve por contexto.
+  // v1.6: el calendario global abre por defecto en Mes (modo Calendario); el Planner de un cliente, en Semana. Un
+  // `?view=` explícito (incl. `?view=list`, p. ej. los enlaces del Escritorio) siempre gana — solo la AUSENCIA del
+  // param resuelve por contexto.
   // Puramente derivado del prop `global` + los searchParams ya disponibles en el primer render: no dispara
   // ningún efecto ni fetch adicional para fijar este default.
-  const defaultView: CalendarView = isGlobal ? "list" : "week";
+  const defaultView: CalendarView = isGlobal ? "month" : "week";
+  const defaultCalendarView: CalendarGridView = isGlobal ? "month" : "week";
   const rawView = searchParams.get("view");
   const view: CalendarView =
-    rawView === "month" || rawView === "list" || rawView === "week" ? rawView : defaultView;
+    rawView === "day" || rawView === "month" || rawView === "list" || rawView === "week" || rawView === "board"
+      ? rawView
+      : defaultView;
 
   // Se monta UNA sola versión de la vista (desktop o mobile). `null` = todavía sin hidratar (SSR): se emiten
   // ambas y el CSS (hidden md:flex / md:hidden) muestra la que corresponde, sin parpadeo.
@@ -144,7 +197,8 @@ export function CalendarScreen({
     return raw.split(",").filter((id) => validIds.has(id));
   }, [searchParams, global]);
 
-  // Solo Lista (los dos contextos): Desde/Hasta. No es la navegación de Semana/Mes (esa sigue siendo ← Hoy →).
+  // Desde/Hasta (rango personalizado de Lista): solo se usan con LIST_CUSTOM_RANGE_ENABLED. Con Lista por meses, un
+  // `from` entrante solo fija el mes inicial (ver anchorDate).
   const dateFrom = searchParams.get("from") ?? "";
   const dateTo = searchParams.get("to") ?? "";
 
@@ -177,7 +231,6 @@ export function CalendarScreen({
   );
 
   // Buscador compacto (título + copy): estado local, no viaja a la URL — no hace falta que sea deep-linkeable.
-  const [search, setSearch] = useState("");
 
   // Solo Publicaciones (global): publicaciones cargadas hasta ahora + el rango que cubren. Arranca con lo que
   // trajo el Server Component (initialRange) y crece bajo demanda (ensureRange) — nunca "todo el histórico".
@@ -187,7 +240,16 @@ export function CalendarScreen({
   // todo el fetch (no solo la porción síncrona) — sin necesidad de un setState manual antes/después, que el
   // linter de efectos marca como anti-patrón al dispararse desde el useEffect de más abajo.
   const [isLoadingRange, startRangeTransition] = useTransition();
-  const effectivePublications = global ? globalPublications : publications;
+  // Planner de un cliente (v1.6): copia local de lo que trae el Server Component, para aplicar los cambios en vivo
+  // de otras sesiones (usePublicationsLive). Cuando el servidor manda una lista nueva (router.refresh tras un guardado
+  // propio), vuelve a mandar: ajuste durante el render, sin efecto.
+  const [plannerPublications, setPlannerPublications] = useState(publications);
+  const [lastPublicationsProp, setLastPublicationsProp] = useState(publications);
+  if (!global && publications !== lastPublicationsProp) {
+    setLastPublicationsProp(publications);
+    setPlannerPublications(publications);
+  }
+  const effectivePublications = global ? globalPublications : plannerPublications;
 
   // Publicaciones (global): PublicationView informa Crear/Duplicar/Editar/Eliminar apenas savePublication
   // resuelve — parchea globalPublications directo (upsert/remove por id), sin esperar a que
@@ -205,6 +267,24 @@ export function CalendarScreen({
   const removeGlobalPublication = useCallback((publicationId: string) => {
     setGlobalPublications((prev) => prev.filter((p) => p.id !== publicationId));
   }, []);
+  // En vivo (v1.6): misma operación para el calendario global y el Planner de un cliente.
+  const setLivePublications = global ? setGlobalPublications : setPlannerPublications;
+  const upsertLivePublication = useCallback(
+    (publication: Publication) =>
+      setLivePublications((prev) => {
+        const index = prev.findIndex((p) => p.id === publication.id);
+        if (index === -1) return [...prev, publication];
+        const next = [...prev];
+        next[index] = publication;
+        return next;
+      }),
+    [setLivePublications]
+  );
+  const removeLivePublication = useCallback(
+    (publicationId: string) =>
+      setLivePublications((prev) => (prev.some((p) => p.id === publicationId) ? prev.filter((p) => p.id !== publicationId) : prev)),
+    [setLivePublications]
+  );
   // Cambiar estado / Cambiar fecha / drag & drop: parche parcial por id, vía PublicationPatchProvider (ver abajo).
   const patchGlobalPublication = useCallback((publicationId: string, patch: Partial<Publication>) => {
     setGlobalPublications((prev) => prev.map((p) => (p.id === publicationId ? { ...p, ...patch } : p)));
@@ -237,14 +317,30 @@ export function CalendarScreen({
     return {
       id,
       publication: id ? (effectivePublications.find((p) => p.id === id) ?? null) : null,
+      // v1.6: ?tab=comments (abrir desde una notificación) abre la Vista en Comentarios.
+      tab: tabFromParam(searchParams.get("tab")),
       duplicateId,
       duplicateFrom: duplicateId ? (effectivePublications.find((p) => p.id === duplicateId) ?? null) : null,
     };
   });
-  const [anchorDate, setAnchorDate] = useState(() =>
-    shared.publication ? new Date(`${shared.publication.publicationDate}T00:00:00`) : new Date()
-  );
-  const [filters, setFilters] = useState<CalendarFiltersState>(EMPTY_FILTERS);
+  // Fecha de referencia del período visible. Prioridad: publicación del deep-link → ?date= (v1.6, persiste la
+  // navegación) → mes de ?from= en Lista (enlaces del Escritorio) → hoy. El efecto de sincronización de abajo la
+  // refleja en ?date=.
+  const [anchorDate, setAnchorDate] = useState(() => {
+    if (shared.publication) return new Date(`${shared.publication.publicationDate}T00:00:00`);
+    const fromDate = dateFromParam(searchParams.get("date"));
+    if (fromDate) return fromDate;
+    const listFrom = !LIST_CUSTOM_RANGE_ENABLED && view === "list" ? dateFromParam(searchParams.get("from")) : null;
+    return listFrom ?? new Date();
+  });
+  // v1.6: ?status=<key>[,<key>…] (enlaces del dashboard de Inicio) arranca con esos estados en el filtro Estado de
+  // siempre (varios = el KPI "Publicaciones", que excluye las descartadas). Lectura única al montar; el efecto de abajo
+  // lo saca de la URL (el filtro no se refleja en la URL). Claves desconocidas se ignoran.
+  const [filters, setFilters] = useState<CalendarFiltersState>(() => {
+    const keys = (searchParams.get("status") ?? "").split(",").filter(Boolean);
+    const statusIds = lookups.statuses.filter((s) => keys.includes(s.key)).map((s) => s.id);
+    return statusIds.length > 0 ? { ...EMPTY_FILTERS, statusIds } : EMPTY_FILTERS;
+  });
   const missingSharedPublication = useRef(
     (Boolean(shared.id) && !shared.publication) || (Boolean(shared.duplicateId) && !shared.duplicateFrom)
   );
@@ -253,13 +349,17 @@ export function CalendarScreen({
   // (ver handleOpenPublication), igual que el deep-link ?publication= (staff editable, Client User read-only).
   // Editar: { publication }. Duplicar: { duplicateFrom }. Crear: ninguno de los dos — PublicationView
   // deriva su modo de cuál de las dos props llega.
+  // Eliminaciones hechas desde ESTA sesión (Vista de Publicación): su evento en vivo no debe avisar "otro usuario".
+  const selfDeletedIds = useRef<Set<string>>(new Set());
   const [viewState, setViewState] = useState<{
     publication?: Publication;
     duplicateFrom?: Publication;
     clientId: string;
     defaultDate?: string;
+    /** Pestaña inicial de la Vista (desde el calendario: la primera). */
+    tab?: PublicationViewTab;
   } | null>(() => {
-    if (shared.publication) return { publication: shared.publication, clientId: shared.publication.clientId };
+    if (shared.publication) return { publication: shared.publication, clientId: shared.publication.clientId, tab: shared.tab };
     if (shared.duplicateFrom) return { duplicateFrom: shared.duplicateFrom, clientId: shared.duplicateFrom.clientId };
     return null;
   });
@@ -267,14 +367,34 @@ export function CalendarScreen({
   // PublicationView para que su estado "original" de dirty-check arranque limpio en cada target nuevo,
   // incluida Crear, que no tiene un id propio del cual derivar una key.
   const [viewKey, setViewKey] = useState(0);
-  function handleOpenPublication(publication: Publication) {
+  function openPublicationView(publication: Publication, tab: PublicationViewTab) {
     setViewKey((k) => k + 1);
-    setViewState({ publication, clientId: publication.clientId });
+    setViewState({ publication, clientId: publication.clientId, tab });
+  }
+  function handleOpenPublication(publication: Publication) {
+    openPublicationView(publication, "main");
+  }
+
+  // v1.6 — ?publication=<id> que llega con el Planner YA montado (abrir una notificación o un link /p/<id>
+  // estando en este mismo Planner): `shared` solo se lee al montar, así que sin esto no se abriría nada. Se
+  // ajusta durante el render (patrón de React). Si ya hay una Vista de Publicación abierta no se reemplaza (podría
+  // tener cambios sin guardar); el efecto de abajo limpia el parámetro igual.
+  const publicationParam = searchParams.get("publication");
+  const [lastPublicationParam, setLastPublicationParam] = useState<string | null>(publicationParam);
+  if (publicationParam !== lastPublicationParam) {
+    setLastPublicationParam(publicationParam);
+    const target = publicationParam ? effectivePublications.find((p) => p.id === publicationParam) : undefined;
+    if (target && viewState === null) {
+      setAnchorDate(new Date(`${target.publicationDate}T00:00:00`));
+      openPublicationView(target, tabFromParam(searchParams.get("tab")));
+    }
   }
   // Publicaciones (global): "Nueva publicación" no tiene un cliente fijo de antemano (a diferencia de
   // Editar/Duplicar, que lo resuelven de la publicación de origen) — este selector previo lo resuelve
   // antes de abrir PublicationView en modo create (ver openCreateForm/handleClientPicked abajo).
   const [clientPickerOpen, setClientPickerOpen] = useState(false);
+  // v1.6: búsqueda global en un modal (lupa del encabezado); hereda el espacio que se está viendo.
+  const [searchOpen, setSearchOpen] = useState(false);
   const [pendingCreateDate, setPendingCreateDate] = useState<string | undefined>(undefined);
   function handleClientPicked(pickedClientId: string) {
     setClientPickerOpen(false);
@@ -288,25 +408,39 @@ export function CalendarScreen({
   // usa Mes/el rango inicial de Publicaciones global), en vez de dejar el filtro de fechas donde haya quedado.
   const handleToday = useCallback(() => {
     setAnchorDate(new Date());
-    if (view === "list") {
+    if (LIST_CUSTOM_RANGE_ENABLED && view === "list") {
       const days = getMonthGridDays(new Date());
       setDateRange({ from: format(days[0], "yyyy-MM-dd"), to: format(days[days.length - 1], "yyyy-MM-dd") });
     }
   }, [view, setDateRange]);
 
+  // ← / → y los atajos de teclado avanzan un período de la vista: un día, una semana o un mes (Mes y Lista).
+  const stepPeriod = useCallback(
+    (delta: number) =>
+      setAnchorDate((d) => (view === "day" ? addDays(d, delta) : view === "week" ? addWeeks(d, delta) : addMonths(d, delta))),
+    [view]
+  );
+
   const weekDays = useMemo(() => getWeekDays(anchorDate), [anchorDate]);
-  const periodLabel = view === "month" ? formatMonthYear(anchorDate) : formatWeekRange(weekDays);
+  const periodLabel =
+    view === "day" ? formatFullDateFromDate(anchorDate) : view === "week" ? formatWeekRange(weekDays) : formatMonthYear(anchorDate);
+  // Días del período visible: el día (Día), la semana (Semana) o el mes real sin días grises (Mes y Lista).
   const agendaDays = useMemo(
-    () => (view === "month" ? getMonthGridDays(anchorDate).filter((d) => isSameMonthAs(d, anchorDate)) : weekDays),
+    () =>
+      view === "day"
+        ? [anchorDate]
+        : view === "week"
+          ? weekDays
+          : getMonthGridDays(anchorDate).filter((d) => isSameMonthAs(d, anchorDate)),
     [view, weekDays, anchorDate]
   );
 
-  // Publicaciones (global): Semana/Mes piden el rango que van a necesitar apenas cambia el período visible o la
-  // vista — si ya está cubierto por lo cargado, ensureRange no hace nada (ver arriba). Lista no entra acá: su
-  // rango lo maneja el efecto de Desde/Hasta, de abajo, independiente del período de Semana/Mes.
+  // Publicaciones (global): cada vista pide el rango que va a necesitar apenas cambia el período visible o la vista
+  // (Día, Semana, la grilla de Mes o el mes de Lista) — si ya está cubierto por lo cargado, ensureRange no hace nada
+  // (ver arriba). Lista con rango personalizado (LIST_CUSTOM_RANGE_ENABLED) lo maneja el efecto de Desde/Hasta.
   useEffect(() => {
-    if (!global || view === "list") return;
-    const days = view === "month" ? getMonthGridDays(anchorDate) : weekDays;
+    if (!global || (LIST_CUSTOM_RANGE_ENABLED && view === "list")) return;
+    const days = view === "month" ? getMonthGridDays(anchorDate) : agendaDays;
     ensureRange(format(days[0], "yyyy-MM-dd"), format(days[days.length - 1], "yyyy-MM-dd"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [global, view, anchorDate]);
@@ -314,19 +448,13 @@ export function CalendarScreen({
   // Publicaciones (global) + Lista: si el usuario fija Desde Y Hasta más allá de lo cargado, se pide ese rango.
   // Con uno solo de los dos (o ninguno), Lista filtra sobre lo que ya está en el cliente, sin pedir nada.
   useEffect(() => {
-    if (!global || view !== "list" || !dateFrom || !dateTo) return;
+    if (!LIST_CUSTOM_RANGE_ENABLED || !global || view !== "list" || !dateFrom || !dateTo) return;
     ensureRange(dateFrom, dateTo);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [global, view, dateFrom, dateTo]);
 
   const visibleCalendars = calendarIds.length > 0 ? calendars.filter((c) => calendarIds.includes(c.id)) : calendars;
   const showCalendarLabel = visibleCalendars.length > 1;
-  const calendarLabel =
-    visibleCalendars.length === 1
-      ? visibleCalendars[0].name
-      : calendarIds.length === 0
-        ? "Todos los calendarios"
-        : `${visibleCalendars.length} calendarios`;
   const driveFolderUrl = visibleCalendars.length === 1 ? visibleCalendars[0].driveFolderUrl : client.driveFolderUrl;
   const calendarDescription = visibleCalendars.length === 1 ? visibleCalendars[0].description : null;
 
@@ -342,8 +470,8 @@ export function CalendarScreen({
     return clientScopedPublications.filter((p) => calendarIds.includes(p.calendarId));
   }, [clientScopedPublications, calendarIds]);
 
-  // Fechas del período visible (semana en Semana, mes real sin días grises en Mes): mismo criterio para las
-  // opciones de filtro y para el CSV. Lista ya no usa esto — tiene su propio rango (Desde/Hasta o todo lo cargado).
+  // Fechas del período visible (día, semana o mes real sin días grises en Mes y Lista): mismo criterio para las
+  // opciones de filtro, para Lista y para el CSV.
   const periodDateKeys = useMemo(() => new Set(agendaDays.map((d) => format(d, "yyyy-MM-dd"))), [agendaDays]);
 
   const filterCatalog = useMemo(
@@ -394,11 +522,7 @@ export function CalendarScreen({
     activeFilters.campaigns.length > 0;
 
   const filteredPublications = useMemo(() => {
-    const query = search.trim().toLowerCase();
     return calendarScopedPublications.filter((p) => {
-      if (query && !p.title.toLowerCase().includes(query) && !p.copy.toLowerCase().includes(query)) {
-        return false;
-      }
       if (
         activeFilters.platformIds.length > 0 &&
         !p.destinations.some((d) => {
@@ -422,19 +546,26 @@ export function CalendarScreen({
       }
       return true;
     });
-  }, [calendarScopedPublications, activeFilters, clientAccountMap, search]);
+  }, [calendarScopedPublications, activeFilters, clientAccountMap]);
 
-  // Lista: rango propio (Desde/Hasta), independiente del período de Semana/Mes. Sin Desde/Hasta, muestra todo
-  // lo ya cargado/filtrado (en el Planner de un cliente eso es su historial completo; en Publicaciones, el
-  // rango cargado hasta el momento).
+  // Lista: el mes visible. Con LIST_CUSTOM_RANGE_ENABLED, su rango propio Desde/Hasta (sin rango, todo lo
+  // cargado/filtrado: en el Planner de un cliente su historial completo; en Publicaciones, lo cargado).
   const listPublications = useMemo(() => {
+    // v1.6: Lista = el mes visible (mismos días que Mes). Rango personalizado solo con LIST_CUSTOM_RANGE_ENABLED.
+    if (!LIST_CUSTOM_RANGE_ENABLED) return filteredPublications.filter((p) => periodDateKeys.has(p.publicationDate));
     if (!dateFrom && !dateTo) return filteredPublications;
     return filteredPublications.filter((p) => {
       if (dateFrom && p.publicationDate < dateFrom) return false;
       if (dateTo && p.publicationDate > dateTo) return false;
       return true;
     });
-  }, [filteredPublications, dateFrom, dateTo]);
+  }, [filteredPublications, dateFrom, dateTo, periodDateKeys]);
+
+  // Tablero (v1.6): siempre el mes visible (mismos días que Mes), con los mismos filtros; sin rango personalizado.
+  const boardPublications = useMemo(
+    () => filteredPublications.filter((p) => periodDateKeys.has(p.publicationDate)),
+    [filteredPublications, periodDateKeys]
+  );
 
   // Mobile Lista agrupa por día como el resto de MobileAgendaView — estos son los días con contenido en el
   // rango de Lista (no el período de Semana/Mes).
@@ -444,8 +575,7 @@ export function CalendarScreen({
   }, [listPublications]);
 
   // Exporta lo que el usuario está viendo: mismas publicaciones (calendarios + filtros) y mismo período
-  // (agendaDays: semana en Semana/Lista, mes en Mes). No hay query ni lógica de filtros aparte. Solo el Planner
-  // de un cliente lo ofrece (ver canExport) — Publicaciones no lo tenía antes tampoco.
+  // (agendaDays: el día, la semana o el mes). No hay query ni lógica de filtros aparte. Solo staff (ver canExport).
   function handleExportCsv() {
     try {
       const toExport = filteredPublications.filter((p) => periodDateKeys.has(p.publicationDate));
@@ -521,7 +651,9 @@ export function CalendarScreen({
   // (nunca se intentó abrir, ver `shared`).
   useEffect(() => {
     if (!searchParams.has("publication") && !searchParams.has("duplicate")) return;
-    if (missingSharedPublication.current) {
+    const requestedId = searchParams.get("publication");
+    const missingLater = Boolean(requestedId && !effectivePublications.some((p) => p.id === requestedId));
+    if (missingSharedPublication.current || missingLater) {
       missingSharedPublication.current = false;
       // Un tick después: el Toaster (padre) se suscribe al manager en un efecto que corre después de los de sus
       // hijos, así que un toast emitido en el primer commit se perdería. Sin cleanup a propósito (StrictMode).
@@ -530,38 +662,234 @@ export function CalendarScreen({
         0
       );
     }
-    replaceSearchParams(pathname, searchParams, { publication: null, duplicate: null });
+    // Link que llega con OTRA publicación abierta (no se reemplaza para no perder cambios sin guardar): se avisa.
+    // Desde la campanita/toast no pasa por acá: lo resuelve la propia vista (ver OpenPublicationHandle).
+    else if (requestedId && viewState?.publication && viewState.publication.id !== requestedId) {
+      setTimeout(() => toast.info("Hay una publicación abierta", "Cerrala para ver la que pediste."), 0);
+    }
+    replaceSearchParams(pathname, searchParams, { publication: null, duplicate: null, tab: null });
+    // viewState se lee solo para elegir el aviso; no debe re-disparar el efecto.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, pathname, effectivePublications]);
+
+  useEffect(() => {
+    if (searchParams.has("status")) replaceSearchParams(pathname, searchParams, { status: null });
   }, [searchParams, pathname]);
+
+  // v1.6: ?date= refleja la fecha de referencia (sin el param = hoy), así la navegación sobrevive a recargas y
+  // enlaces. Con Lista por meses, un from/to entrante ya se usó para fijar el mes y se quita de la URL. Último
+  // efecto que toca la URL: parte de la URL vigente (no del snapshot de searchParams) para no pisar lo que otros
+  // efectos del mismo commit ya escribieron.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const anchorKey = format(anchorDate, "yyyy-MM-dd");
+    const wantedDate = anchorKey === format(new Date(), "yyyy-MM-dd") ? null : anchorKey;
+    const updates: Record<string, string | null> = {};
+    if (params.get("date") !== wantedDate) updates.date = wantedDate;
+    if (!LIST_CUSTOM_RANGE_ENABLED && (params.has("from") || params.has("to"))) {
+      updates.from = null;
+      updates.to = null;
+    }
+    if (Object.keys(updates).length > 0) replaceSearchParams(pathname, params, updates);
+  }, [anchorDate, pathname, searchParams]);
+
+  // v1.6 — Selector de espacio: la RUTA es la única fuente de verdad del contexto ("Todos los espacios" =
+  // /admin/publications; un cliente = su Planner). Cambiar de espacio navega conservando la vista y la fecha;
+  // los filtros (Calendario, Estado, etc.) son propios de cada contexto y no viajan. Solo staff: el portal Client
+  // User no recibe opciones. Global → solo clientes activos; Planner → los que arma su página (activos + el actual).
+  const spaceOptions: SpaceOption[] | undefined = readOnly
+    ? undefined
+    : global
+      ? global.clients.filter((c) => c.active)
+      : allClients;
+  const navigateToSpace = (clientId: string | null) => {
+    const params = new URLSearchParams();
+    params.set("view", view);
+    const anchorKey = format(anchorDate, "yyyy-MM-dd");
+    if (anchorKey !== format(new Date(), "yyyy-MM-dd")) params.set("date", anchorKey);
+    const base = clientId ? `/admin/clients/${clientId}/planner` : "/admin/publications";
+    router.push(`${base}?${params.toString()}`);
+  };
+
+  // ---- Archivados (v1.6, solo staff) ----
+  // Lista de archivadas del contexto (un cliente o, en "Ver todos", los que gestiona el usuario). Se carga al montar
+  // para mostrar "Publicaciones archivadas (N)"; `archiveAvailable` es false si la migración no está aplicada (la
+  // acción no se ofrece). Archivar / restaurar / eliminar desde esta sesión actualizan las dos listas al instante;
+  // lo de otras sesiones llega por los avisos en vivo (abajo).
+  const [archivedList, setArchivedList] = useState<Publication[] | null>(null);
+  const [archiveAvailable, setArchiveAvailable] = useState(false);
+  const [archivedOpen, setArchivedOpen] = useState(false);
+  const selfArchivedIds = useRef<Set<string>>(new Set());
+  // Publicación abierta en la Vista de Publicación (para cerrarla si se archiva/elimina).
+  const openPublicationIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    openPublicationIdRef.current = viewState?.publication?.id ?? null;
+  });
+  useEffect(() => {
+    if (!canManage) return;
+    let cancelled = false;
+    fetchArchivedPublications(global ? null : client.id)
+      .then((result) => {
+        if (cancelled) return;
+        setArchiveAvailable(result.available);
+        setArchivedList(result.publications);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+    // Una vez por contexto (cliente o global).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canManage, global ? "global" : client.id]);
+
+  const upsertArchived = useCallback(
+    (publication: Publication) =>
+      setArchivedList((prev) => [publication, ...(prev ?? []).filter((p) => p.id !== publication.id)]),
+    []
+  );
+  const removeArchived = useCallback(
+    (publicationId: string) => setArchivedList((prev) => (prev ? prev.filter((p) => p.id !== publicationId) : prev)),
+    []
+  );
+
+  const restoreArchived = useCallback(
+    async (publication: Publication) => {
+      const result = await restorePublication(publication.id);
+      if (result.error) {
+        toast.error("No se pudo restaurar", result.error);
+        return;
+      }
+      removeArchived(publication.id);
+      upsertLivePublication(result.publication ?? { ...publication, archivedAt: null });
+      toast.success("Publicación restaurada");
+    },
+    [removeArchived, upsertLivePublication]
+  );
+
+  /** Archivar (tarjeta o editor): sin confirmación, con "Deshacer". No toca el estado editorial ni ningún dato. */
+  const archiveFromPlanner = useCallback(
+    async (publication: Publication): Promise<boolean> => {
+      selfArchivedIds.current.add(publication.id);
+      let result: { error: string | null };
+      try {
+        result = await archivePublication(publication.id);
+      } catch {
+        result = { error: "No se pudo conectar con el servidor. Probá de nuevo." };
+      }
+      if (result.error) {
+        selfArchivedIds.current.delete(publication.id);
+        toast.error("No se pudo archivar", result.error);
+        return false;
+      }
+      window.setTimeout(() => selfArchivedIds.current.delete(publication.id), 30_000);
+      removeLivePublication(publication.id);
+      upsertArchived({ ...publication, archivedAt: new Date().toISOString() });
+      if (openPublicationIdRef.current === publication.id) setViewState(null);
+      toast.successWithAction("Publicación archivada", {
+        label: "Deshacer",
+        onClick: () => void restoreArchived(publication),
+      });
+      return true;
+    },
+    [removeLivePublication, upsertArchived, restoreArchived]
+  );
+
+  const deleteArchivedPermanently = useCallback(
+    async (publication: Publication): Promise<boolean> => {
+      selfDeletedIds.current.add(publication.id);
+      window.setTimeout(() => selfDeletedIds.current.delete(publication.id), 30_000);
+      const result = await deletePublication(publication.id, publication.clientId);
+      if (result.error) {
+        toast.error("No se pudo eliminar", result.error);
+        return false;
+      }
+      removeArchived(publication.id);
+      toast.success("Publicación eliminada definitivamente");
+      if (result.storageError) toast.error("Algunos archivos no se pudieron eliminar", result.storageError);
+      return true;
+    },
+    [removeArchived]
+  );
+
+  // ---- Publicaciones en vivo (v1.6) ----
+  // Avisos por cliente (usePublicationsLive): otra sesión crea, edita, mueve, archiva, restaura o elimina → se relee la
+  // publicación (bajo RLS) y se actualizan la lista del Planner y la de archivadas. Si la que está abierta acá se
+  // eliminó, se archivó o dejó de estar disponible por acción de OTRA sesión, se cierra la vista con un aviso. Una
+  // edición ajena NO reemplaza la publicación abierta: eso lo resuelve el control de versión al guardar.
+  const closeIfOpen = (publicationId: string, message: string) => {
+    if (openPublicationIdRef.current !== publicationId) return;
+    setViewState(null);
+    toast.info(message);
+  };
+  usePublicationsLive({
+    clientId: global ? null : client.id,
+    onChanged: (publicationId) => {
+      fetchPublicationForView(publicationId)
+        .then((fresh) => {
+          const outOfScope = fresh && !global && fresh.clientId !== client.id;
+          if (!fresh || outOfScope) {
+            // Ya no visible (p. ej. el Client User, cuando la archivan): se quita.
+            removeLivePublication(publicationId);
+            removeArchived(publicationId);
+            if (!fresh) closeIfOpen(publicationId, "Esta publicación ya no está disponible");
+            return;
+          }
+          if (fresh.archivedAt) {
+            removeLivePublication(publicationId);
+            if (canManage) upsertArchived(fresh);
+            if (!selfArchivedIds.current.has(publicationId)) closeIfOpen(publicationId, "Esta publicación fue archivada por otro usuario");
+            return;
+          }
+          removeArchived(publicationId);
+          upsertLivePublication(fresh);
+        })
+        .catch(() => undefined);
+    },
+    onDeleted: (publicationId) => {
+      removeLivePublication(publicationId);
+      removeArchived(publicationId);
+      if (selfDeletedIds.current.delete(publicationId)) return;
+      closeIfOpen(publicationId, "Esta publicación fue eliminada por otro usuario");
+    },
+  });
 
   usePlannerShortcuts({
     overlayOpen: viewState !== null || clientPickerOpen,
     onNewPublication: canCreatePublication ? () => openCreateForm() : undefined,
-    onPrevWeek: () => setAnchorDate((d) => (view === "month" ? addMonths(d, -1) : addWeeks(d, -1))),
-    onNextWeek: () => setAnchorDate((d) => (view === "month" ? addMonths(d, 1) : addWeeks(d, 1))),
+    onPrevWeek: () => stepPeriod(-1),
+    onNextWeek: () => stepPeriod(1),
   });
 
   // Cada card resuelve su propio cliente: en el Planner de un cliente es siempre el mismo; en Publicaciones
   // (global) cada publicación puede ser de uno distinto. Misma función para Semana/Mes/Lista y mobile.
   const getClientId = global ? (p: Publication) => p.clientId : () => client.id;
 
+  // v1.6: paleta de fondos del calendario. Publicaciones global → celestes suaves; Planner de un cliente (y su
+  // portal) → derivada del color principal del cliente (ver lib/calendar-surface.ts).
+  const calendarTheme = calendarThemeStyle(isGlobal ? GLOBAL_CALENDAR_THEME : calendarThemeFromColor(client.color));
+  // Cambiar de vista o de período cierra los desplegables de filtros que hayan quedado abiertos (se remontan).
+  const filtersCloseKey = `${view}|${format(anchorDate, "yyyy-MM-dd")}`;
+
   if (calendars.length === 0) {
     return (
       <LookupsProvider {...lookups} calendars={calendars} clientAccounts={clientAccounts} campaigns={campaigns} clients={global?.clients ?? [client]}>
-        <div className="flex h-full flex-col">
+        <div className={cn("flex h-full flex-col", CAL_WORKSPACE_BG)} style={calendarTheme}>
           <CalendarHeader
             client={client}
-            calendarLabel={isGlobal ? "Publicaciones" : "Sin calendarios"}
+            isGlobal={isGlobal}
             driveFolderUrl={client.driveFolderUrl}
             periodLabel=""
+            anchorDate={anchorDate}
+            onDateSelect={setAnchorDate}
             view={view}
             onViewChange={setView}
+            defaultCalendarView={defaultCalendarView}
             onPrev={() => {}}
             onNext={() => {}}
             onToday={() => {}}
-            allClients={allClients}
-            onSwitchClient={allClients ? handleSwitchClient : undefined}
+            spaces={spaceOptions}
+            onSelectSpace={spaceOptions ? navigateToSpace : undefined}
             members={!isGlobal ? members : undefined}
-            hideAvatar={isGlobal}
           />
           <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
             <CalendarDays className="size-8 text-muted-foreground/40" />
@@ -584,63 +912,78 @@ export function CalendarScreen({
   }
 
   return (
-    <LookupsProvider {...lookups} calendars={calendars} clientAccounts={clientAccounts} campaigns={campaigns} clients={global?.clients ?? [client]}><PublicationPatchProvider value={isGlobal ? patchGlobalPublication : null}>
-      <div className="flex h-full flex-col">
+    <LookupsProvider {...lookups} calendars={calendars} clientAccounts={clientAccounts} campaigns={campaigns} clients={global?.clients ?? [client]}><PublicationPatchProvider value={isGlobal ? patchGlobalPublication : null}><PublicationArchiveProvider value={canManage && archiveAvailable ? archiveFromPlanner : null}>
+      <div className={cn("flex h-full flex-col", CAL_WORKSPACE_BG)} style={calendarTheme}>
         <CalendarHeader
           client={client}
-          calendarLabel={isGlobal ? "Publicaciones" : calendarLabel}
+          isGlobal={isGlobal}
           calendarDescription={isGlobal ? null : calendarDescription}
           driveFolderUrl={driveFolderUrl}
           periodLabel={periodLabel}
+          anchorDate={anchorDate}
+          onDateSelect={setAnchorDate}
           view={view}
           onViewChange={setView}
-          onPrev={() => setAnchorDate((d) => (view === "month" ? addMonths(d, -1) : addWeeks(d, -1)))}
-          onNext={() => setAnchorDate((d) => (view === "month" ? addMonths(d, 1) : addWeeks(d, 1)))}
+          defaultCalendarView={defaultCalendarView}
+          onPrev={() => stepPeriod(-1)}
+          onNext={() => stepPeriod(1)}
           onToday={handleToday}
           onCreate={canCreatePublication ? () => openCreateForm() : undefined}
           onExport={canExport ? handleExportCsv : undefined}
-          allClients={allClients}
-          onSwitchClient={allClients ? handleSwitchClient : undefined}
+          onOpenArchived={canManage && archiveAvailable ? () => setArchivedOpen(true) : undefined}
+          archivedCount={archivedList?.length ?? 0}
+          spaces={spaceOptions}
+          onSelectSpace={spaceOptions ? navigateToSpace : undefined}
           members={!isGlobal ? members : undefined}
-          hideAvatar={isGlobal}
-          dateRange={view === "list" ? { from: dateFrom, to: dateTo } : undefined}
-          onDateRangeChange={view === "list" ? setDateRange : undefined}
-          mobileFilters={
-            showMobileViews ? (
-              <MobileFilters
-                value={activeFilters}
-                onChange={setFilters}
-                options={filterOptions}
-                calendarIds={calendarIds}
-                onCalendarIdsChange={setCalendarIds}
-                clientIds={global ? clientIds : undefined}
-                onClientIdsChange={global ? setClientIds : undefined}
-              />
-            ) : undefined
+          dateRange={LIST_CUSTOM_RANGE_ENABLED && view === "list" ? { from: dateFrom, to: dateTo } : undefined}
+          onDateRangeChange={LIST_CUSTOM_RANGE_ENABLED && view === "list" ? setDateRange : undefined}
+          toolbarEnd={
+            <>
+              {isLoadingRange && (
+                <Loader2 className="size-4 animate-spin text-muted-foreground" aria-label="Cargando más publicaciones" />
+              )}
+              {/* Filtros unificados: desplegable en desktop/tablet; en mobile, el sheet de siempre (solo ícono). Se
+                  remontan con la vista y el período para cerrarse si quedaron abiertos. */}
+              {showDesktopViews && (
+                <div className="max-md:hidden">
+                  <FiltersMenu
+                    key={`filters|${filtersCloseKey}`}
+                    value={activeFilters}
+                    onChange={setFilters}
+                    options={filterOptions}
+                    calendarIds={calendarIds}
+                    onCalendarIdsChange={setCalendarIds}
+                    clientIds={global ? clientIds : undefined}
+                  />
+                </div>
+              )}
+              {showMobileViews && (
+                <div className="md:hidden">
+                  <MobileFilters
+                    iconOnly
+                    value={activeFilters}
+                    onChange={setFilters}
+                    options={filterOptions}
+                    calendarIds={calendarIds}
+                    onCalendarIdsChange={setCalendarIds}
+                    clientIds={global ? clientIds : undefined}
+                  />
+                </div>
+              )}
+              <SearchButton onClick={() => setSearchOpen(true)} />
+            </>
           }
         />
-        {/* Mobile únicamente: el buscador vive en su propia fila, siempre visible (no forzarlo dentro del sheet
-            de Filtros). En desktop es el primer control de CalendarFiltersBar — ver más abajo. */}
-        <div className="flex items-center gap-2 border-b border-border bg-background px-4 py-2 md:hidden">
-          <PublicationSearchBox value={search} onChange={setSearch} />
-          {isLoadingRange && <span className="text-xs text-muted-foreground">Cargando más publicaciones…</span>}
-        </div>
-        {/* Desktop: barra de filtros inline (con el buscador como primer control). Mobile: botón "Filtros" en la
-            cabecera (sin fila propia). */}
-        {showDesktopViews && (
-          <CalendarFiltersBar
-            value={activeFilters}
-            onChange={setFilters}
-            options={filterOptions}
-            calendarIds={calendarIds}
-            onCalendarIdsChange={setCalendarIds}
-            clientIds={global ? clientIds : undefined}
-            onClientIdsChange={global ? setClientIds : undefined}
-            search={search}
-            onSearchChange={setSearch}
-            searchLoading={isLoadingRange}
-          />
-        )}
+        {/* v1.6: chips de filtros activos (desktop y mobile); sin filtros no se renderiza. */}
+        <ActiveFilterChips
+          value={activeFilters}
+          onChange={setFilters}
+          options={filterOptions}
+          calendarIds={calendarIds}
+          onCalendarIdsChange={setCalendarIds}
+          clientIds={global ? clientIds : undefined}
+          onClientIdsChange={global ? setClientIds : undefined}
+        />
         {hasActiveFilters && filteredPublications.length === 0 && (
           <div className="flex items-center justify-between gap-3 border-b border-border bg-muted/40 px-6 py-2 text-sm text-muted-foreground">
             No hay publicaciones que coincidan con los filtros actuales.
@@ -655,10 +998,14 @@ export function CalendarScreen({
           // contenido y termina desbordando `main` (scroll de página) — es lo que MonthView necesita para
           // ajustarse al alto disponible y manejar el sobrante con scroll interno por día. Semana y Lista se
           // dejan con su comportamiento actual (pueden crecer más que el viewport y scrollear la página).
-          <div className={cn("hidden flex-1 flex-col md:flex", view === "month" && "min-h-0")}>
-            {view === "week" ? (
-              <WeekView
-                weekDays={weekDays}
+          // v1.6: sin franja de color alrededor; márgenes alineados con el encabezado. El contorno redondeado lo
+          // lleva cada vista (grilla de Mes/Semana, tablero de Día); Lista lo recibe acá.
+          <div className={cn("hidden flex-1 flex-col md:flex md:px-6 md:pt-1 md:pb-4", view === "month" && "min-h-0")}>
+            <div className={cn("flex flex-1 flex-col", view === "list" && CAL_GRID_FRAME, view === "month" && "min-h-0")}>
+            {view === "day" ? (
+              // v1.6: Día = tablero de publicaciones (grilla responsive), no una sola columna de Semana.
+              <DayView
+                day={anchorDate}
                 publications={filteredPublications}
                 onOpenPublication={handleOpenPublication}
                 onEditPublication={canManage ? openEditForm : undefined}
@@ -667,7 +1014,19 @@ export function CalendarScreen({
                 getClientId={getClientId}
                 showClient={isGlobal}
                 onCreateForDay={canCreatePublication ? openCreateForm : undefined}
-                clientColor={client.color}
+                showCalendarLabel={showCalendarLabel}
+              />
+            ) : view === "week" ? (
+              <WeekView
+                weekDays={agendaDays}
+                publications={filteredPublications}
+                onOpenPublication={handleOpenPublication}
+                onEditPublication={canManage ? openEditForm : undefined}
+                onDuplicatePublication={canManage ? openDuplicateForm : undefined}
+                onDeletePublication={isGlobal ? removeGlobalPublication : undefined}
+                getClientId={getClientId}
+                showClient={isGlobal}
+                onCreateForDay={canCreatePublication ? openCreateForm : undefined}
                 showCalendarLabel={showCalendarLabel}
               />
             ) : view === "month" ? (
@@ -681,7 +1040,17 @@ export function CalendarScreen({
                 getClientId={getClientId}
                 showClient={isGlobal}
                 onCreateForDay={canCreatePublication ? openCreateForm : undefined}
-                clientColor={client.color}
+                showCalendarLabel={showCalendarLabel}
+              />
+            ) : view === "board" ? (
+              <BoardView
+                publications={boardPublications}
+                onOpenPublication={handleOpenPublication}
+                onEditPublication={canManage ? openEditForm : undefined}
+                onDuplicatePublication={canManage ? openDuplicateForm : undefined}
+                onDeletePublication={isGlobal ? removeGlobalPublication : undefined}
+                getClientId={getClientId}
+                showClient={isGlobal}
                 showCalendarLabel={showCalendarLabel}
               />
             ) : (
@@ -696,11 +1065,25 @@ export function CalendarScreen({
                 showCalendarLabel={showCalendarLabel}
               />
             )}
+            </div>
           </div>
         )}
         {showMobileViews && (
-          <div className="flex flex-1 flex-col md:hidden">
-            {view === "month" ? (
+          <div className="flex flex-1 flex-col bg-background md:hidden">
+            {view === "board" ? (
+              <div className="flex flex-1 flex-col px-3 pt-2 pb-4">
+                <BoardView
+                  publications={boardPublications}
+                  onOpenPublication={handleOpenPublication}
+                  onEditPublication={canManage ? openEditForm : undefined}
+                  onDuplicatePublication={canManage ? openDuplicateForm : undefined}
+                  onDeletePublication={isGlobal ? removeGlobalPublication : undefined}
+                  getClientId={getClientId}
+                  showClient={isGlobal}
+                  showCalendarLabel={showCalendarLabel}
+                />
+              </div>
+            ) : view === "month" ? (
               <MobileMonthView
                 anchorDate={anchorDate}
                 publications={filteredPublications}
@@ -730,9 +1113,20 @@ export function CalendarScreen({
             )}
           </div>
         )}
+        <PublicationSearchDialog
+          open={searchOpen}
+          onOpenChange={setSearchOpen}
+          initialSpaceId={isGlobal || readOnly ? null : client.id}
+        />
         {viewState && (
           <PublicationView
             key={viewKey}
+            onArchive={canManage && archiveAvailable ? archiveFromPlanner : undefined}
+            onDeleteStart={(publicationId) => {
+              // Vence sola: si el borrado falla, un borrado ajeno posterior vuelve a avisar.
+              selfDeletedIds.current.add(publicationId);
+              window.setTimeout(() => selfDeletedIds.current.delete(publicationId), 30_000);
+            }}
             clientId={viewState.clientId}
             publication={viewState.publication}
             duplicateFrom={viewState.duplicateFrom}
@@ -745,6 +1139,22 @@ export function CalendarScreen({
             onSaved={isGlobal ? upsertGlobalPublication : undefined}
             onDeleted={isGlobal ? removeGlobalPublication : undefined}
             readOnly={readOnly}
+            initialTab={viewState.tab}
+            onPublicationReloaded={(fresh, tab) => {
+              // Remonta la vista con la versión vigente (misma vía que abrir una publicación), en la misma pestaña.
+              openPublicationView(fresh, tab);
+              if (isGlobal) upsertGlobalPublication(fresh);
+            }}
+          />
+        )}
+        {canManage && archiveAvailable && (
+          <ArchivedPublicationsSheet
+            open={archivedOpen}
+            onOpenChange={setArchivedOpen}
+            publications={archivedList}
+            showClient={isGlobal}
+            onRestore={restoreArchived}
+            onDeletePermanently={deleteArchivedPermanently}
           />
         )}
         {global && (
@@ -756,6 +1166,6 @@ export function CalendarScreen({
           />
         )}
       </div>
-    </PublicationPatchProvider></LookupsProvider>
+    </PublicationArchiveProvider></PublicationPatchProvider></LookupsProvider>
   );
 }

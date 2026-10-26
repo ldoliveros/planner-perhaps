@@ -1,9 +1,10 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useActionState, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { ArrowUpRight, Check, ExternalLink, FolderOpen, ImageIcon, Plus, Share2, Trash2, X } from "lucide-react";
+import { Archive, ArrowUpRight, Bell, Check, ChevronDown, ExternalLink, FolderOpen, ImageIcon, Plus, RefreshCcw, Share2, Trash2, X } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,19 +24,25 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { CampaignSelect } from "@/components/publication/campaign-select";
 import { CopyBlock } from "@/components/publication/copy-block";
 import { CopyEditor } from "@/components/publication/copy-editor";
-import { ClientNotificationSection } from "@/components/publication/client-notification-section";
+import { ReviewRequestDialog } from "@/components/publication/review-request-dialog";
+import { ApprovalRecord, ClientApproveButton } from "@/components/publication/approval-section";
 import { renderPublicationPreview, isPreviewSupported } from "@/components/publication/previews/registry";
 import { StatusPill } from "@/components/shared/status-pill";
 import { PlatformIcon } from "@/components/icons/brand-icons";
 import { accountLabel, accountSecondaryName } from "@/lib/account-label";
 import { useLookups } from "@/components/providers/lookups-provider";
-import { hasNotifiableClientUsers, notifyClientPublicationApproved } from "@/lib/actions/publication-notifications";
 import { deletePublication, savePublication, type PublicationFormState } from "@/lib/actions/publications";
+import { fetchPublicationForView } from "@/lib/actions/editorial-flow";
+import { PublicationComments } from "@/components/publication/comments/publication-comments";
+import { useOptionalNotifications } from "@/components/notifications/notifications-provider";
+import { describeNotification } from "@/lib/notification-text";
+import { isValidTrelloUrl, TRELLO_URL_ERROR } from "@/lib/trello-url";
+import { canClientApprove, requiresReviewConfirmation } from "@/lib/editorial-transitions";
 import { formatFullDate, formatTime } from "@/lib/date-utils";
 import { toast } from "@/lib/toast";
 import { useCopyToClipboard } from "@/lib/use-copy-to-clipboard";
 import { cn } from "cn";
-import type { Calendar, Campaign, ClientAccount, Publication, PublicationDestination } from "@/types";
+import type { AppNotification, Calendar, Campaign, ClientAccount, Publication, PublicationDestination } from "@/types";
 
 const INITIAL_STATE: PublicationFormState = { error: null, savedAt: null };
 const MAX_CAROUSEL_IMAGES = 10;
@@ -71,10 +78,24 @@ interface PublicationViewProps {
    * (globalPublications), sin esperar a que router.refresh() la re-sincronice — ver CalendarScreen. */
   onSaved?: (publication: Publication) => void;
   onDeleted?: (publicationId: string) => void;
+  /** Justo antes de eliminar desde esta vista (v1.6): la pantalla no confunde su propio borrado con uno ajeno. */
+  onDeleteStart?: (publicationId: string) => void;
+  /** v1.6: archivar desde el editor (CalendarScreen: server action + listas + toast "Deshacer"). Sin esta prop (Client
+   * User, o archivado no disponible en la base) solo se ofrece Eliminar. */
+  onArchive?: (publication: Publication) => Promise<boolean>;
   /** Client User: misma vista y mismos previews, pero la columna derecha es una presentación de solo
    * lectura (sin form) y se ocultan todas las acciones de staff. Solo tiene sentido con `publication`. */
   readOnly?: boolean;
+  /** v1.6: la vista necesita mostrar la versión vigente (aprobación del cliente, versión desactualizada o un
+   * cambio de estado recibido en vivo). El caller reemplaza la publicación y remonta la vista con ella. */
+  onPublicationReloaded?: (publication: Publication, tab: PublicationViewTab) => void;
+  /** v1.6: pestaña inicial (solo con `publication`). Desde el calendario: la primera; desde una notificación:
+   * Comentarios. */
+  initialTab?: PublicationViewTab;
 }
+
+/** Pestañas de la Vista de Publicación existente: "main" = Edición (staff) / Publicación (Client User). */
+export type PublicationViewTab = "main" | "comments";
 
 /** Snapshot comparable de los campos editables — usado para el chequeo de "cambios sin guardar". */
 interface FieldSnapshot {
@@ -86,9 +107,8 @@ interface FieldSnapshot {
   publicationTime: string;
   title: string;
   copy: string;
-  cta: string;
-  externalUrl: string;
   driveFolderUrl: string;
+  trelloUrl: string;
   destinationIds: string;
 }
 
@@ -126,11 +146,35 @@ export function PublicationView({
   defaultDate,
   onSaved,
   onDeleted,
+  onDeleteStart,
+  onArchive,
   readOnly = false,
+  onPublicationReloaded,
+  initialTab = "main",
 }: PublicationViewProps) {
   const { statuses, contentTypes, platforms, getPlatform, getClient } = useLookups();
+  // Pestañas (v1.6, solo con una publicación existente). Ambos paneles quedan montados y el inactivo solo se
+  // oculta: así se conservan los cambios sin guardar del form, el borrador del comentario y la suscripción Realtime.
+  const [tab, setTab] = useState<PublicationViewTab>(publication ? initialTab : "main");
+  const [commentCount, setCommentCount] = useState<number | null>(null);
+  // Mobile (<md): el cuerpo entero es un solo scroll y la barra de pestañas queda fija arriba. Al cambiar de
+  // pestaña con la barra ya fija, el contenido nuevo arranca justo debajo de ella (sin saltos ni quedar a mitad
+  // de un panel más corto). En md+ cada panel tiene su propio scroll y no hace falta ajustar nada.
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const previewRef = useRef<HTMLDivElement>(null);
+  const lastTabRef = useRef(tab);
+  useLayoutEffect(() => {
+    if (lastTabRef.current === tab) return;
+    lastTabRef.current = tab;
+    const body = bodyRef.current;
+    const preview = previewRef.current;
+    if (!body || !preview || getComputedStyle(body).overflowY === "hidden") return;
+    const barTop = preview.offsetHeight;
+    if (body.scrollTop > barTop) body.scrollTop = barTop;
+  }, [tab]);
   const router = useRouter();
   const { copy: copyToClipboard } = useCopyToClipboard();
+  const notifications = useOptionalNotifications();
   const [state, formAction, isPending] = useActionState(savePublication, INITIAL_STATE);
   const lastSavedAt = useRef<number | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
@@ -155,9 +199,9 @@ export function PublicationView({
   const initialPublicationTime = formatTime(publication?.publicationTime ?? null);
   const initialTitle = publication?.title ?? (duplicateFrom ? `${duplicateFrom.title} (copia)` : "");
   const initialCopy = publication?.copy ?? duplicateFrom?.copy ?? "";
-  const initialCta = publication?.cta ?? duplicateFrom?.cta ?? "";
-  const initialExternalUrl = publication?.externalUrl ?? duplicateFrom?.externalUrl ?? "";
   const initialDriveFolderUrl = publication?.driveFolderUrl ?? "";
+  // v1.6: Duplicar también copia el link a Trello (CTA/URL ya no se muestran ni se escriben).
+  const initialTrelloUrl = publication?.trelloUrl ?? duplicateFrom?.trelloUrl ?? "";
   const initialDestinations = publication?.destinations ?? duplicateFrom?.destinations ?? [];
 
   const [calendarId, setCalendarId] = useState(initialCalendarId);
@@ -168,9 +212,8 @@ export function PublicationView({
   const [publicationTime, setPublicationTime] = useState(initialPublicationTime);
   const [title, setTitle] = useState(initialTitle);
   const [copyText, setCopyText] = useState(initialCopy);
-  const [cta, setCta] = useState(initialCta);
-  const [externalUrl, setExternalUrl] = useState(initialExternalUrl);
   const [driveFolderUrl, setDriveFolderUrl] = useState(initialDriveFolderUrl);
+  const [trelloUrl, setTrelloUrl] = useState(initialTrelloUrl);
   const [destinations, setDestinations] = useState<PublicationDestination[]>(initialDestinations);
   const [localCampaigns, setLocalCampaigns] = useState<Campaign[]>(campaigns);
   const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
@@ -181,22 +224,14 @@ export function PublicationView({
   const [originalCarouselSignature, setOriginalCarouselSignature] = useState(() => carouselSignatureOf(carouselImages));
 
   const [confirmCloseOpen, setConfirmCloseOpen] = useState(false);
-  const [approveNotifyOpen, setApproveNotifyOpen] = useState(false);
-  const [hasNotifiable, setHasNotifiable] = useState(false);
-  const notifyAfterSaveRef = useRef(false);
-  // Aviso disparado desde "¡Lista para publicar!" (post-guardado): se refleja al instante en
-  // ClientNotificationSection — sin esto la sección seguía mostrando "Todavía no se envió el aviso" (y
-  // ofreciendo un segundo envío) hasta reabrir la vista.
-  const [approveNotifySending, setApproveNotifySending] = useState(false);
-  const [approveNotifySentAt, setApproveNotifySentAt] = useState<string | null>(null);
-  // Confirmado "Sí, aprobar y avisar" pero el guardado todavía está en curso: la sección ya se muestra
-  // como "Enviando aviso..." para no ofrecer un envío manual en esa ventana.
-  const [approveNotifyQueued, setApproveNotifyQueued] = useState(false);
-  const skipApproveCheckRef = useRef(false);
+  // v1.6 — "Enviar a revisión": confirmación al pasar a En revisión (Editar desde otro estado, o Crear/
+  // Duplicar directamente En revisión). El aviso por email al cliente quedó postergado (F5): no se encola nada.
+  const [reviewDialogOpen, setReviewDialogOpen] = useState(false);
 
   // Eliminar — misma action/confirmación que el menú "..." de la card (ver
   // deletePublication), sin lógica de borrado nueva. Solo aplica a edit (publication existente).
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [archiving, setArchiving] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -214,9 +249,8 @@ export function PublicationView({
     publicationTime: initialPublicationTime,
     title: initialTitle,
     copy: initialCopy,
-    cta: initialCta,
-    externalUrl: initialExternalUrl,
     driveFolderUrl: initialDriveFolderUrl,
+    trelloUrl: initialTrelloUrl,
     destinationIds: JSON.stringify([...initialDestinations.map((d) => d.clientAccountId)].sort()),
   }));
 
@@ -271,9 +305,8 @@ export function PublicationView({
     publicationTime,
     title,
     copy: copyText,
-    cta,
-    externalUrl,
     driveFolderUrl,
+    trelloUrl,
     destinationIds: JSON.stringify([...selectedAccountIds].sort()),
   };
   const carouselDirty = isCarouselMode && carouselSignatureOf(carouselImages) !== originalCarouselSignature;
@@ -284,24 +317,185 @@ export function PublicationView({
   const canSubmit = publication ? isDirty : true;
 
   const approvedStatus = statuses.find((s) => s.key === "approved");
-  const isCurrentlyApproved = Boolean(approvedStatus && statusId === approvedStatus.id);
+  const inReviewStatus = statuses.find((s) => s.key === "in_review");
+  // Registro de aprobación: solo si lo GUARDADO es Aprobado (no mientras se elige Aprobado en el select).
+  const isSavedApproved = Boolean(publication && approvedStatus && original.statusId === approvedStatus.id);
 
-  // "Aviso al cliente" solo debe existir cuando el estado elegido AHORA es Aprobado y además hay
-  // Client Users a quienes avisar — reutiliza hasNotifiableClientUsers (misma función que ya usa
-  // handleSaveClick, sin duplicar la regla de destinatarios). El guard `isCurrentlyApproved &&` en el
-  // render ya oculta la sección al instante si se sale de Aprobado, así que acá no hace falta resetear
-  // hasNotifiable sincrónicamente (evita setState fuera de un callback async dentro del efecto). Solo
-  // aplica a Editar: en Crear/Duplicar no hay publicación persistida todavía a la cual avisar sobre.
+  // Bloqueo optimista (v1.6): versión (updated_at) con la que se abrió el editor. Viaja junto al estado
+  // original en cada guardado; savePublication rechaza el guardado entero si la publicación cambió desde
+  // entonces. Tras cada guardado exitoso pasa a ser la versión recién guardada — ajuste durante el render
+  // (patrón "derivar del último resultado" de React), no en un efecto, para no encadenar renders.
+  const [baseUpdatedAt, setBaseUpdatedAt] = useState(publication?.updatedAt ?? "");
+  const [versionSyncedState, setVersionSyncedState] = useState<PublicationFormState | null>(null);
+  if (state.updatedAt && state !== versionSyncedState) {
+    // Éxito o guardado PARCIAL: en ambos la fila ya cambió, así que el próximo intento parte de esa versión
+    // (si no, el propio guardado anterior se confundiría con un conflicto de "otra persona").
+    setVersionSyncedState(state);
+    setBaseUpdatedAt(state.updatedAt);
+  }
+
   useEffect(() => {
-    if (readOnly || !publication || !isCurrentlyApproved) return;
-    let cancelled = false;
-    hasNotifiableClientUsers(clientId).then((result) => {
-      if (!cancelled) setHasNotifiable(result);
-    });
-    return () => {
-      cancelled = true;
+    if (!state.error) return;
+    // Conflicto de versión: lo muestra el diálogo de recuperación (conflictOpen), sin toast duplicado.
+    // Publicación inexistente (otro la eliminó mientras se guardaba): error visible, no solo al pie del formulario.
+    if (state.notFound) toast.error("No se pudo guardar", state.error);
+    if (state.partial) {
+      // Nunca se presenta como éxito. Crear/Duplicar: la fila YA existe — se cierra la vista para que un
+      // reintento no cree un duplicado; la publicación aparece en el Planner para revisarla y completarla.
+      toast.error(publication ? "Guardado incompleto" : "La publicación se creó con errores", state.error);
+      router.refresh();
+      if (!publication && state.createdPublicationId) onOpenChange(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
+
+  // v1.6 — Lectura de notificaciones al abrir una publicación:
+  //  * Cambios de estado (revisión/aprobación): se dan por leídos al abrirla, como antes.
+  //  * Comentarios y menciones: recién cuando la pestaña Comentarios está a la vista (y la ventana visible); ahí se
+  //    marcan todas las de la publicación en la base (RPC). Mientras tanto siguen sin leer en la campanita y en el
+  //    contador de la pestaña.
+  const publicationIdForNotifications = publication?.id ?? null;
+  const unreadForPublication = useMemo(
+    () =>
+      (notifications?.items ?? []).filter(
+        (n) => !n.readAt && publicationIdForNotifications !== null && n.publicationId === publicationIdForNotifications
+      ),
+    [notifications?.items, publicationIdForNotifications]
+  );
+  const unreadCommentCount = unreadForPublication.filter((n) => n.type === "comment" || n.type === "mention").length;
+  const unreadStatusIds = unreadForPublication
+    .filter((n) => n.type !== "comment" && n.type !== "mention")
+    .map((n) => n.id)
+    .join(",");
+  useEffect(() => {
+    if (!notifications || notifications.loadState !== "ready" || !unreadStatusIds) return;
+    void notifications.markRead(unreadStatusIds.split(","));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [unreadStatusIds, notifications?.loadState]);
+
+  const showingComments = tab === "comments" && publicationIdForNotifications !== null;
+  const showingCommentsRef = useRef(showingComments);
+  useEffect(() => {
+    showingCommentsRef.current = showingComments;
+  });
+  useEffect(() => {
+    if (!showingComments || !notifications || notifications.loadState !== "ready" || !publicationIdForNotifications) return;
+    const markIfVisible = () => {
+      if (document.visibilityState === "visible" && unreadCommentCount > 0) {
+        void notifications.markPublicationRead(publicationIdForNotifications);
+      }
     };
-  }, [readOnly, publication, isCurrentlyApproved, clientId]);
+    markIfVisible();
+    document.addEventListener("visibilitychange", markIfVisible);
+    return () => document.removeEventListener("visibilitychange", markIfVisible);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showingComments, unreadCommentCount, notifications?.loadState, publicationIdForNotifications]);
+
+  // v1.6 — la vista se registra en el provider de notificaciones mientras está abierta:
+  //  * Notificación nueva de ESTA publicación (ya marcada leída por el provider): un cambio de estado recarga la
+  //    vista si no hay cambios sin guardar; si los hay, se muestra un aviso y el usuario decide (nunca se pisan).
+  //    Comentarios/menciones no necesitan nada: el panel de comentarios ya se actualiza en vivo.
+  //  * Pedido de abrir OTRA publicación (campanita / toast): se muestra un aviso dentro de la vista. Sin cambios
+  //    sin guardar ofrece abrirla; con cambios, pide guardarlos primero — nunca los descarta.
+  const [remoteStatusNotice, setRemoteStatusNotice] = useState<AppNotification | null>(null);
+  const [switchRequest, setSwitchRequest] = useState<AppNotification | null>(null);
+  const viewDirtyRef = useRef(false);
+  const reloadRef = useRef<() => void>(() => undefined);
+  useEffect(() => {
+    viewDirtyRef.current = !readOnly && isDirty;
+  });
+  const registerOpenPublication = notifications?.registerOpenPublication;
+  useEffect(() => {
+    if (!registerOpenPublication) return;
+    return registerOpenPublication({
+      publicationId: publicationIdForNotifications,
+      isShowingComments: () => showingCommentsRef.current && document.visibilityState === "visible",
+      onRelatedNotification: (notification) => {
+        const isStatusChange = notification.type !== "comment" && notification.type !== "mention";
+        if (!isStatusChange) return;
+        if (viewDirtyRef.current) {
+          setRemoteStatusNotice(notification);
+          return;
+        }
+        toast.info("La publicación se actualizó", describeNotification(notification));
+        reloadRef.current();
+      },
+      onOpenRequest: (notification) => {
+        // Misma publicación: ya está abierta; se muestra la conversación (los cambios del form se conservan).
+        if (notification.publicationId && notification.publicationId === publicationIdForNotifications) {
+          setTab("comments");
+          return;
+        }
+        setSwitchRequest(notification);
+      },
+    });
+  }, [registerOpenPublication, publicationIdForNotifications]);
+
+  /** Recarga la versión vigente (scopeada por RLS) y le pide al caller remontar la vista con ella. */
+  useEffect(() => {
+    reloadRef.current = () => void reloadPublication();
+  });
+
+  // ---- Recuperación ante un conflicto de versión (v1.6). La protección (guardado condicional) no cambia: acá solo se
+  // ofrece copiar lo escrito y recargar la versión guardada, sin sobrescribir nada automáticamente.
+  const [dismissedConflict, setDismissedConflict] = useState<PublicationFormState | null>(null);
+  const conflictOpen = Boolean(state.conflict) && dismissedConflict !== state;
+  const [confirmReload, setConfirmReload] = useState(false);
+
+  /** Contenido editable del formulario, con etiquetas, tal como está en pantalla (no la versión guardada). */
+  function buildLocalChangesText(): string {
+    const form = formRef.current;
+    if (!form) return "";
+    const data = new FormData(form);
+    const value = (name: string) => String(data.get(name) ?? "").trim();
+    const nameOf = <T extends { id: string }>(list: T[], id: string, label: (item: T) => string) => {
+      const item = list.find((x) => x.id === id);
+      return item ? label(item) : "";
+    };
+    const accounts = destinations
+      .map((d) => clientAccounts.find((a) => a.id === d.clientAccountId))
+      .filter((a): a is ClientAccount => Boolean(a))
+      .map((a) => `${getPlatform(a.platformId)?.name ?? ""} ${accountLabel(a)}`.trim());
+    const lines: [string, string][] = [
+      ["Título", value("title")],
+      ["Calendario", nameOf(calendars, value("calendarId"), (c) => c.name)],
+      ["Tipo de contenido", nameOf(contentTypes, value("contentTypeId"), (c) => c.label)],
+      ["Fecha", value("publicationDate")],
+      ["Hora", value("publicationTime")],
+      ["Estado", nameOf(statuses, value("statusId"), (st) => st.label)],
+      ["Campaña", nameOf(campaigns, value("campaignId"), (c) => c.name)],
+      ["Cuentas", accounts.join(", ")],
+      ["Carpeta de Drive", value("driveFolderUrl")],
+      ["Link a Trello", value("trelloUrl")],
+    ];
+    const header = `Cambios sin guardar — ${publication?.title ?? "publicación"}`;
+    const fields = lines.filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`);
+    const copyText = value("copy");
+    return [header, "", ...fields, ...(copyText ? ["", "Copy:", copyText] : [])].join("\n");
+  }
+
+  async function handleCopyLocalChanges() {
+    const ok = await copyToClipboard(buildLocalChangesText());
+    if (ok) toast.success("Cambios copiados", "Pegalos donde quieras antes de recargar.");
+    else toast.error("No se pudo copiar", "Seleccioná y copiá el contenido del formulario a mano.");
+  }
+
+  function closeConflict() {
+    setDismissedConflict(state);
+    setConfirmReload(false);
+  }
+
+  async function reloadPublication() {
+    if (!publication) return;
+    router.refresh();
+    try {
+      const fresh = await fetchPublicationForView(publication.id);
+      // La vista se remonta con la versión vigente: conserva la pestaña en la que estaba el usuario.
+      if (fresh) onPublicationReloaded?.(fresh, tab);
+    } catch {
+      toast.error("No se pudo actualizar la publicación", "Cerrala y volvé a abrirla.");
+    }
+  }
 
   // Reconciliación de imágenes del carrusel: el server devuelve los assetId/URLs reales recién
   // asignados a las imágenes nuevas — sin esto, un segundo guardado volvería a subirlas como "nuevas"
@@ -331,22 +525,6 @@ export function PublicationView({
     router.refresh();
     toast.success("Publicación guardada");
     if (state.publication) onSaved?.(state.publication);
-    if (notifyAfterSaveRef.current) {
-      notifyAfterSaveRef.current = false;
-      setApproveNotifyQueued(false);
-      setApproveNotifySending(true);
-      notifyClientPublicationApproved(publication.id).then((result) => {
-        setApproveNotifySending(false);
-        if (!result.error) setApproveNotifySentAt(new Date().toISOString());
-        if (result.error) {
-          toast.error("No se pudo avisar al cliente", result.error);
-        } else if (result.failedCount > 0) {
-          toast.error("Aviso enviado parcialmente", `${result.sentCount} enviado(s), ${result.failedCount} fallaron.`);
-        } else {
-          toast.success("Aviso enviado al cliente");
-        }
-      });
-    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.savedAt]);
 
@@ -373,22 +551,24 @@ export function PublicationView({
 
   // Ctrl/Cmd+S — disparando un click real sobre el botón de submit
   // (en vez de formRef.current?.requestSubmit(), que en Form salta directo al submit nativo) para que pase
-  // por el mismo handleSaveClick de abajo y respete la interceptación "¡Lista para publicar!" también acá.
+  // por el mismo handleSaveClick de abajo y respete la interceptación "Enviar a revisión" también acá.
   // Bloqueado mientras haya cualquier AlertDialog abierto, para no competir con esos flujos.
   // En readOnly no hay nada que guardar: no se registra el listener, así Ctrl/Cmd+S conserva su
   // comportamiento nativo del navegador.
+  // Guardar pertenece solo a la pestaña Edición: en Comentarios el atajo no guarda (ni abre el diálogo del navegador).
   useEffect(() => {
     if (readOnly) return;
     function handleKeyDown(e: KeyboardEvent) {
       if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== "s") return;
       e.preventDefault();
+      if (tab !== "main") return;
       if (isPending || !canSubmit) return;
-      if (confirmCloseOpen || approveNotifyOpen || deleteOpen) return;
+      if (confirmCloseOpen || deleteOpen || reviewDialogOpen || conflictOpen) return;
       submitButtonRef.current?.click();
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [readOnly, isPending, canSubmit, confirmCloseOpen, approveNotifyOpen, deleteOpen]);
+  }, [readOnly, tab, isPending, canSubmit, confirmCloseOpen, deleteOpen, reviewDialogOpen, conflictOpen]);
 
   /** Reutiliza deletePublication tal cual (misma action que el menú de la card). Cierra
    * PublicationView llamando a onOpenChange (la prop) directamente, NO a requestClose(): así el dirty
@@ -398,6 +578,8 @@ export function PublicationView({
     if (!publication) return;
     setDeleteError(null);
     setIsDeleting(true);
+    // Aviso a la pantalla ANTES de borrar: el evento en vivo de este borrado no es "de otro usuario".
+    onDeleteStart?.(publication.id);
     const result = await deletePublication(publication.id, publication.clientId);
     setIsDeleting(false);
     if (result.error) {
@@ -411,6 +593,21 @@ export function PublicationView({
     toast.success("Publicación eliminada");
     if (result.storageError) toast.error("Algunos archivos no se pudieron eliminar", result.storageError);
     onDeleted?.(publication.id);
+  }
+
+  /** Archivar desde el editor: con cambios sin guardar se pide resolverlos antes (archivar cierra la vista). */
+  async function handleArchive() {
+    if (!publication || !onArchive || archiving) return;
+    if (isDirty) {
+      toast.error("Hay cambios sin guardar", "Guardalos o descartalos antes de archivar la publicación.");
+      return;
+    }
+    setArchiving(true);
+    try {
+      await onArchive(publication);
+    } finally {
+      setArchiving(false);
+    }
   }
 
   /** Archivos nuevos que viajarían en este guardado (solo el input montado para el modo actual se envía). */
@@ -545,27 +742,27 @@ export function PublicationView({
     if (!Number.isNaN(source) && source !== index) moveCarouselImage(source, index);
   }
 
-  /** Misma interceptación "¡Lista para publicar!" que en el menú rápido — acá los
-   * campos ya son controlados, así que no hace falta leer FormData para saber el estado elegido. Solo
-   * aplica a Editar (publication existente): crear directo en Aprobado no es una "transición". */
-  async function handleSaveClick(e: React.MouseEvent) {
+  /** Misma interceptación "Enviar a revisión" que en el menú rápido — acá los campos ya son controlados, así que
+   * no hace falta leer FormData para saber el estado elegido. Pasar a Aprobado se guarda directo: el aviso por email
+   * al cliente ("¡Lista para publicar!") quedó postergado para F5. */
+  // Las confirmaciones se resuelven con formRef.requestSubmit(), que dispara el submit SIN pasar por este
+  // onClick: por eso no hace falta ningún flag para "saltear" la verificación, y cada click real vuelve a
+  // evaluarla desde cero. Las transiciones se comparan contra lo GUARDADO (original.statusId), no contra el
+  // prop `publication`, que puede quedar desactualizado después de un guardado dentro de esta misma vista.
+  function handleSaveClick(e: React.MouseEvent) {
     if (blockIfOverUploadLimit(e)) return;
-    if (skipApproveCheckRef.current) {
-      skipApproveCheckRef.current = false;
-      return;
+    // v1.6: pasar a En revisión siempre pide confirmación (Editar desde otro estado guardado, o Crear/Duplicar
+    // directamente En revisión). Mientras siga En revisión, las ediciones normales no vuelven a preguntar.
+    if (
+      requiresReviewConfirmation({
+        targetStatusId: statusId,
+        savedStatusId: publication ? original.statusId : null,
+        inReviewStatusId: inReviewStatus?.id,
+      })
+    ) {
+      e.preventDefault();
+      setReviewDialogOpen(true);
     }
-    const isNewlyApproved =
-      publication && approvedStatus && statusId === approvedStatus.id && publication.statusId !== approvedStatus.id;
-    if (!isNewlyApproved) return;
-
-    e.preventDefault();
-    const hasRecipients = await hasNotifiableClientUsers(clientId);
-    if (!hasRecipients) {
-      skipApproveCheckRef.current = true;
-      formRef.current?.requestSubmit();
-      return;
-    }
-    setApproveNotifyOpen(true);
   }
 
   function handleCampaignCreated(campaign: Campaign) {
@@ -629,7 +826,12 @@ export function PublicationView({
     <Dialog open onOpenChange={(next) => !next && requestClose()}>
       <DialogContent
         showCloseButton
-        className="grid max-h-[calc(100dvh-2rem)] w-full max-w-5xl grid-rows-[auto_1fr] gap-0 overflow-hidden p-0 sm:max-w-5xl max-md:h-[100dvh] max-md:max-h-[100dvh] max-md:max-w-full max-md:rounded-none"
+        className={cn(
+          "grid max-h-[calc(100dvh-2rem)] w-full max-w-5xl grid-rows-[auto_auto_1fr] gap-0 overflow-hidden p-0 sm:max-w-5xl max-md:h-[100dvh] max-md:max-h-[100dvh] max-md:max-w-full max-md:rounded-none",
+          // Con pestañas: alto fijo (el de Edición, acotado al viewport) — alternar pestañas no cambia el tamaño del
+          // modal; cada pestaña scrollea adentro. Crear/Duplicar (sin pestañas) conservan el alto según contenido.
+          publication && "md:h-[min(calc(100dvh-2rem),900px)]"
+        )}
       >
         <div className="flex items-center justify-between gap-2 border-b border-border py-3 pr-14 pl-5">
           <DialogTitle className="text-sm font-medium text-muted-foreground">{headerTitle}</DialogTitle>
@@ -641,12 +843,78 @@ export function PublicationView({
           )}
         </div>
 
-        <div className="min-h-0 scroll-pb-24 overflow-y-auto md:grid md:grid-cols-[minmax(0,380px)_1fr] md:overflow-hidden md:scroll-pb-0">
+        {/* Fila de avisos de v1.6: siempre presente (vacía = alto 0) para no alterar la grilla header/cuerpo. */}
+        <div aria-live="polite">
+        {(switchRequest || remoteStatusNotice) && (
+          <div className="flex flex-col gap-2 border-b border-border bg-muted/40 px-5 py-2.5 text-sm">
+            {remoteStatusNotice && (
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                  <RefreshCcw className="size-3.5 shrink-0 text-muted-foreground" />
+                  <span className="min-w-0">
+                    {describeNotification(remoteStatusNotice)}. Tenés cambios sin guardar: si guardás ahora se va a
+                    rechazar por conflicto. Copiá lo que necesites y volvé a abrir la publicación para ver la versión
+                    actual.
+                  </span>
+                </span>
+                <span className="flex shrink-0 gap-2">
+                  <Button size="sm" variant="outline" type="button" onClick={() => setRemoteStatusNotice(null)}>
+                    Seguir acá
+                  </Button>
+                  <Button size="sm" type="button" onClick={() => setConfirmCloseOpen(true)}>
+                    Descartar cambios y cerrar
+                  </Button>
+                </span>
+              </div>
+            )}
+            {switchRequest && (
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                  <Bell className="size-3.5 shrink-0 text-muted-foreground" />
+                  <span className="min-w-0">
+                    {describeNotification(switchRequest)}.{" "}
+                    {!readOnly && isDirty
+                      ? "Guardá o descartá los cambios de esta publicación para poder abrirla."
+                      : "¿Querés abrirla ahora?"}
+                  </span>
+                </span>
+                <span className="flex shrink-0 gap-2">
+                  <Button size="sm" variant="outline" type="button" onClick={() => setSwitchRequest(null)}>
+                    Quedarme acá
+                  </Button>
+                  {(readOnly || !isDirty) && (
+                    <Button
+                      size="sm"
+                      type="button"
+                      onClick={() => {
+                        const target = switchRequest;
+                        setSwitchRequest(null);
+                        onOpenChange(false);
+                        notifications?.navigateTo(target);
+                      }}
+                    >
+                      Abrir
+                    </Button>
+                  )}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+        </div>
+
+        <div
+          ref={bodyRef}
+          className="min-h-0 scroll-pb-24 overflow-y-auto md:grid md:grid-cols-[minmax(0,380px)_1fr] md:overflow-hidden md:scroll-pb-0"
+        >
           {/* Izquierda: preview — sin scroll propio, centrado verticalmente cuando sobra alto; se mantiene
               visible mientras la columna derecha scrollea (esa es la única con overflow-y-auto). En mobile
               (<md) no hay columnas: el cuerpo entero es el ÚNICO scroll (preview + form, sin scrolls
               anidados) y el footer es sticky bottom-0 dentro de ese scroll. */}
-          <div className="flex flex-col items-center justify-center gap-3 border-b border-border bg-muted/30 p-4 md:h-full md:p-6 md:overflow-hidden md:border-b-0 md:border-r">
+          <div
+            ref={previewRef}
+            className="flex flex-col items-center justify-center gap-3 border-b border-border bg-muted/30 p-4 md:h-full md:p-6 md:overflow-hidden md:border-b-0 md:border-r"
+          >
             {previewNode ? (
               <>
                 <div className="flex flex-col items-center gap-1.5">
@@ -713,17 +981,50 @@ export function PublicationView({
               pasando por debajo del botón de guardar. En readOnly: solo la presentación de lectura, sin form
               ni footer. */}
           {readOnly && publication ? (
-            <div className="flex flex-col gap-5 p-5 md:overflow-y-auto">
-              <PublicationReadOnlyDetails
-                publication={publication}
-                calendars={calendars}
-                clientAccounts={clientAccounts}
-                campaigns={campaigns}
-              />
+            <div className="contents md:grid md:grid-rows-[auto_1fr] md:overflow-hidden">
+              <PublicationTabsBar mainLabel="Publicación" tab={tab} onTabChange={setTab} commentCount={commentCount} />
+              <div className={tabPanelClass(tab === "main")}>
+                <PublicationReadOnlyDetails
+                  publication={publication}
+                  calendars={calendars}
+                  clientAccounts={clientAccounts}
+                  campaigns={campaigns}
+                  onApproved={() => void reloadPublication()}
+                  onStale={() => void reloadPublication()}
+                />
+              </div>
+              <div className={tabPanelClass(tab === "comments")}>
+                <PublicationComments
+                  publicationId={publication.id}
+                  clientId={clientId}
+                  statusId={publication.statusId}
+                  embedded
+                  active={tab === "comments"}
+                  onUnreadCountChange={setCommentCount}
+                  // Cliente: un cambio de estado de la agencia recarga la vista (botón Aprobar, versión, registro).
+                  onRemoteStatusChange={(remoteStatusId) => {
+                    if (remoteStatusId !== publication.statusId) void reloadPublication();
+                  }}
+                />
+              </div>
             </div>
           ) : (
-          <div className="contents md:grid md:grid-rows-[1fr_auto] md:overflow-hidden">
-            <div className="flex flex-col gap-5 p-5 md:overflow-y-auto">
+          <div
+            className={cn(
+              "contents md:grid md:overflow-hidden",
+              publication ? "md:grid-rows-[auto_1fr_auto]" : "md:grid-rows-[1fr_auto]"
+            )}
+          >
+            {publication && (
+              <PublicationTabsBar
+                mainLabel="Edición"
+                tab={tab}
+                onTabChange={setTab}
+                commentCount={commentCount}
+                mainHasUnsavedChanges={isDirty}
+              />
+            )}
+            <div className={publication ? tabPanelClass(tab === "main") : "flex flex-col gap-5 p-5 md:overflow-y-auto"}>
               <form
                 ref={formRef}
                 id="pv-form"
@@ -734,6 +1035,8 @@ export function PublicationView({
                 }}
                 className="flex flex-col gap-5">
                 {publication && <input type="hidden" name="id" value={publication.id} />}
+                {publication && <input type="hidden" name="originalStatusId" value={original.statusId} readOnly />}
+                {publication && <input type="hidden" name="originalUpdatedAt" value={baseUpdatedAt} readOnly />}
                 <input type="hidden" name="campaignId" value={campaignId} readOnly />
               <input type="hidden" name="destinations" value={JSON.stringify(destinations)} readOnly />
 
@@ -882,6 +1185,7 @@ export function PublicationView({
                     ))}
                   </SelectContent>
                 </Select>
+                {publication && isSavedApproved && <ApprovalRecord publicationId={publication.id} refreshKey={state.savedAt ?? 0} />}
               </div>
 
               {isCarouselMode ? (
@@ -970,23 +1274,6 @@ export function PublicationView({
                 <CopyEditor id="pv-copy" name="copy" defaultValue={initialCopy} onChange={setCopyText} />
               </div>
 
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="pv-cta">CTA</Label>
-                  <Input id="pv-cta" name="cta" value={cta} onChange={(e) => setCta(e.target.value)} />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="pv-externalUrl">URL</Label>
-                  <Input
-                    id="pv-externalUrl"
-                    name="externalUrl"
-                    type="url"
-                    value={externalUrl}
-                    onChange={(e) => setExternalUrl(e.target.value)}
-                  />
-                </div>
-              </div>
-
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="pv-driveFolderUrl">Carpeta de Google Drive</Label>
                 <Input
@@ -1010,43 +1297,98 @@ export function PublicationView({
                 )}
               </div>
 
-              {publication && publication.internalNotes && (
-                <div className="rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground">
-                  <div className="mb-1 text-xs font-medium uppercase tracking-wide">Notas internas</div>
-                  {publication.internalNotes}
-                </div>
-              )}
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="pv-trelloUrl">Link a Trello</Label>
+                <Input
+                  id="pv-trelloUrl"
+                  name="trelloUrl"
+                  type="url"
+                  placeholder="https://trello.com/c/..."
+                  value={trelloUrl}
+                  aria-invalid={trelloUrl.trim() !== "" && !isValidTrelloUrl(trelloUrl.trim())}
+                  onChange={(e) => setTrelloUrl(e.target.value)}
+                />
+                {trelloUrl.trim() !== "" &&
+                  (isValidTrelloUrl(trelloUrl.trim()) ? (
+                    <a
+                      href={trelloUrl.trim()}
+                      target="_blank"
+                      rel="noreferrer"
+                      className={cn(buttonVariants({ variant: "outline", size: "sm" }), "w-fit gap-1.5")}
+                    >
+                      <ExternalLink className="size-3.5" />
+                      Abrir tarjeta en Trello
+                    </a>
+                  ) : (
+                    <p className="text-xs text-destructive">{TRELLO_URL_ERROR}</p>
+                  ))}
+              </div>
 
               {uploadError && <p className="text-sm text-destructive">{uploadError}</p>}
               {state.error && <p className="text-sm text-destructive">{state.error}</p>}
               </form>
 
-              {publication && isCurrentlyApproved && hasNotifiable && (
-                <ClientNotificationSection
-                  publicationId={publication.id}
-                  clientId={clientId}
-                  externalSending={approveNotifySending || (approveNotifyQueued && isPending)}
-                  externalSentAt={approveNotifySentAt}
-                />
-              )}
-
-              {/* Acción destructiva discreta, separada a propósito del botón principal de guardar. Solo
-                  Editar: en Crear/Duplicar todavía no hay nada persistido que eliminar. */}
+              {/* Archivar / Eliminar (v1.6): menú discreto, separado a propósito del botón principal de guardar. Solo
+                  Editar: en Crear/Duplicar todavía no hay nada persistido. Archivar no pide confirmación (se puede
+                  deshacer); Eliminar abre la confirmación de siempre. */}
               {publication && (
                 <div className="flex justify-start border-t border-border pt-4">
-                  <button
-                    type="button"
-                    onClick={() => setDeleteOpen(true)}
-                    className="flex items-center gap-1.5 text-xs font-medium text-destructive/70 transition-colors hover:text-destructive"
-                  >
-                    <Trash2 className="size-3.5" />
-                    Eliminar publicación
-                  </button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger
+                      render={
+                        <button
+                          type="button"
+                          disabled={archiving}
+                          className="flex items-center gap-1.5 rounded-md text-xs font-medium text-muted-foreground transition-colors hover:text-foreground disabled:opacity-60"
+                        />
+                      }
+                    >
+                      <Archive className="size-3.5" />
+                      {onArchive ? "Archivar o eliminar" : "Eliminar"}
+                      <ChevronDown className="size-3" />
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start">
+                      {onArchive && (
+                        <DropdownMenuItem onClick={() => void handleArchive()}>
+                          <Archive />
+                          Archivar
+                        </DropdownMenuItem>
+                      )}
+                      <DropdownMenuItem variant="destructive" onClick={() => setDeleteOpen(true)}>
+                        <Trash2 />
+                        Eliminar publicación
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
               )}
             </div>
 
-            <div className="sticky bottom-0 z-10 flex shrink-0 justify-end border-t border-border bg-white px-5 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:static md:pb-3">
+            {/* Comentarios: según el estado GUARDADO (no el elegido sin guardar en el selector). Un cambio de
+                estado recibido en vivo no recarga el editor (perdería lo que se está editando): el guardado
+                igual lo detecta y lo rechaza como conflicto. En Comentarios el footer está oculto (su fila mide 0),
+                así que la conversación ya usa todo el alto. */}
+            {publication && (
+              <div className={tabPanelClass(tab === "comments")}>
+                <PublicationComments
+                  publicationId={publication.id}
+                  clientId={clientId}
+                  statusId={original.statusId}
+                  embedded
+                  active={tab === "comments"}
+                  onUnreadCountChange={setCommentCount}
+                />
+              </div>
+            )}
+
+            {/* Guardar pertenece solo a Edición: en Comentarios se oculta (los cambios del form se conservan). */}
+            <div
+              className={cn(
+                "sticky bottom-0 z-10 flex shrink-0 justify-end border-t border-border bg-white px-5 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:static md:pb-3",
+                publication && "md:row-start-3",
+                tab !== "main" && "hidden"
+              )}
+            >
               <Button ref={submitButtonRef} type="submit" form="pv-form" disabled={isPending || !canSubmit} onClick={handleSaveClick}>
                 {submitLabel}
               </Button>
@@ -1059,6 +1401,51 @@ export function PublicationView({
       {/* Dialogs de staff (cerrar sin guardar, aprobar y avisar, eliminar): inalcanzables en readOnly. */}
       {!readOnly && (
       <>
+      {/* Conflicto de versión: nada se guardó y nada se sobrescribe; el usuario elige copiar lo suyo y/o recargar. */}
+      <AlertDialog open={conflictOpen} onOpenChange={(open) => !open && closeConflict()}>
+        {/* Más ancho que el AlertDialog por defecto (384 px no alcanza para tres acciones): mismo variant data-size para
+            que el override aplique. Mobile: botones apilados a todo el ancho; desktop: en fila, envolviendo si hace falta. */}
+        <AlertDialogContent className="data-[size=default]:max-w-[calc(100vw-2rem)] data-[size=default]:sm:max-w-xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Otra persona modificó esta publicación</AlertDialogTitle>
+            <AlertDialogDescription className="break-words">
+              {state.error} Tus cambios siguen en el formulario y no se guardaron.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {confirmReload ? (
+            <p className="rounded-lg bg-amber-50 p-2.5 text-sm break-words text-amber-900">
+              Recargar reemplaza tus cambios no guardados por la versión guardada. Si los necesitás, copialos antes.
+            </p>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Podés copiar tus cambios al portapapeles y después recargar la versión actual para volver a aplicarlos.
+            </p>
+          )}
+          <AlertDialogFooter className="sm:flex-wrap">
+            <AlertDialogCancel onClick={closeConflict}>Seguir editando</AlertDialogCancel>
+            <Button type="button" variant="outline" onClick={() => void handleCopyLocalChanges()}>
+              Copiar mis cambios
+            </Button>
+            {confirmReload ? (
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={() => {
+                  closeConflict();
+                  void reloadPublication();
+                }}
+              >
+                Reemplazar y recargar
+              </Button>
+            ) : (
+              <Button type="button" onClick={() => setConfirmReload(true)}>
+                Recargar versión actual
+              </Button>
+            )}
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <AlertDialog open={confirmCloseOpen} onOpenChange={setConfirmCloseOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -1074,39 +1461,18 @@ export function PublicationView({
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={approveNotifyOpen} onOpenChange={setApproveNotifyOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>¡Lista para publicar!</AlertDialogTitle>
-            <AlertDialogDescription>
-              ¿Querés avisarle al cliente que esta publicación está aprobada y lista?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel
-              onClick={() => {
-                notifyAfterSaveRef.current = false;
-                setApproveNotifyQueued(false);
-                skipApproveCheckRef.current = true;
-                formRef.current?.requestSubmit();
-              }}
-            >
-              No, solo aprobar
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                setApproveNotifyOpen(false);
-                notifyAfterSaveRef.current = true;
-                setApproveNotifyQueued(true);
-                skipApproveCheckRef.current = true;
-                formRef.current?.requestSubmit();
-              }}
-            >
-              Sí, aprobar y avisar
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ReviewRequestDialog
+        open={reviewDialogOpen}
+        onCancel={() => {
+          // Cancelar no guarda nada y vuelve el selector al estado guardado (Crear: al estado inicial).
+          setReviewDialogOpen(false);
+          setStatusId(original.statusId);
+        }}
+        onConfirm={() => {
+          setReviewDialogOpen(false);
+          formRef.current?.requestSubmit();
+        }}
+      />
 
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>
@@ -1131,18 +1497,106 @@ export function PublicationView({
   );
 }
 
+/**
+ * Panel de una pestaña (v1.6). En md+ los paneles comparten la celda bajo la barra y cada uno scrollea por su
+ * cuenta; el inactivo queda `invisible` (no `hidden`) para conservar su posición de scroll y no alterar el alto.
+ * En mobile el inactivo sale del flujo y el activo vive en el único scroll del cuerpo.
+ */
+function tabPanelClass(active: boolean): string {
+  return cn(
+    "flex flex-col gap-5 p-5 md:col-start-1 md:row-start-2 md:min-h-0 md:overflow-y-auto",
+    // `visibility` se hereda y es animable: los descendientes con `transition-all` (p. ej. Button) la animarían
+    // y seguirían visibles ~150 ms sobre el otro panel. Sin transiciones en el inactivo, se oculta al instante.
+    !active && "max-md:hidden md:invisible md:[&_*]:transition-none!"
+  );
+}
+
+/**
+ * Pestañas de la columna derecha (v1.6), compartidas por staff ("Edición") y Client User ("Publicación").
+ * En mobile queda fija arriba dentro del único scroll del cuerpo; en md+ es la primera fila de la columna.
+ */
+function PublicationTabsBar({
+  mainLabel,
+  tab,
+  onTabChange,
+  commentCount,
+  mainHasUnsavedChanges = false,
+}: {
+  mainLabel: string;
+  tab: PublicationViewTab;
+  onTabChange: (tab: PublicationViewTab) => void;
+  commentCount: number | null;
+  mainHasUnsavedChanges?: boolean;
+}) {
+  const tabs: { value: PublicationViewTab; label: string }[] = [
+    { value: "main", label: mainLabel },
+    { value: "comments", label: "Comentarios" },
+  ];
+  return (
+    <div className="sticky top-0 z-10 shrink-0 border-b border-border bg-white px-5 py-3 md:static">
+      {/* Control segmentado: 100 % del ancho disponible, dos columnas iguales en todos los tamaños. */}
+      <div
+        role="tablist"
+        aria-label="Secciones de la publicación"
+        className="grid w-full grid-cols-2 gap-1 rounded-xl bg-neutral-100 p-1"
+      >
+        {tabs.map((option) => {
+          const active = tab === option.value;
+          return (
+            <button
+              key={option.value}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              onClick={() => onTabChange(option.value)}
+              className={cn(
+                "flex min-w-0 items-center justify-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:outline-none",
+                active ? "bg-neutral-900 text-white shadow-sm" : "text-neutral-700 hover:bg-neutral-200 hover:text-neutral-900"
+              )}
+            >
+              <span className="truncate">{option.label}</span>
+              {option.value === "main" && mainHasUnsavedChanges && (
+                <span
+                  aria-label="Cambios sin guardar"
+                  title="Cambios sin guardar"
+                  className="size-2 shrink-0 rounded-full bg-amber-500 ring-2 ring-white/70"
+                />
+              )}
+              {option.value === "comments" && commentCount !== null && commentCount > 0 && (
+                <span
+                  className={cn(
+                    "min-w-5 shrink-0 rounded-full bg-[#000000] px-1.5 text-center text-xs leading-5 font-semibold text-[#FFFFFF]",
+                    // Sobre la pestaña activa (fondo casi negro) un filo claro mantiene el contorno visible.
+                    active && "ring-1 ring-white/40"
+                  )}
+                >
+                  {commentCount > 99 ? "99+" : commentCount}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /** Columna derecha de PublicationView en readOnly (Client User): mismos datos y componentes que la vista
- * de staff (badges de destinos, StatusPill, CopyBlock, CTA/URL, Drive), sin notas internas. */
+ * de staff (badges de destinos, StatusPill, CopyBlock, CTA/URL, Drive). */
 function PublicationReadOnlyDetails({
   publication,
   calendars,
   clientAccounts,
   campaigns,
+  onApproved,
+  onStale,
 }: {
   publication: Publication;
   calendars: Calendar[];
   clientAccounts: ClientAccount[];
   campaigns: Campaign[];
+  onApproved: () => void;
+  onStale: () => void;
 }) {
   const { getContentType, getPlatform, getStatus } = useLookups();
   const calendar = calendars.find((c) => c.id === publication.calendarId);
@@ -1186,29 +1640,18 @@ function PublicationReadOnlyDetails({
         {campaign && <Badge variant="outline">{campaign.name}</Badge>}
       </div>
 
-      <CopyBlock copy={publication.copy} />
-
-      {(publication.cta || publication.externalUrl) && (
-        <div className="flex flex-col gap-1.5 text-sm">
-          {publication.cta && (
-            <div>
-              <span className="text-muted-foreground">CTA: </span>
-              {publication.cta}
-            </div>
-          )}
-          {publication.externalUrl && (
-            <a
-              href={publication.externalUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex w-fit items-center gap-1 break-all text-primary hover:underline"
-            >
-              <ExternalLink className="size-3.5 shrink-0" />
-              {publication.externalUrl}
-            </a>
-          )}
-        </div>
+      {/* v1.6 — el cliente aprueba solo desde En revisión; una vez Aprobada, se muestra quién y cuándo. */}
+      {canClientApprove(status?.key) && (
+        <ClientApproveButton
+          publicationId={publication.id}
+          expectedUpdatedAt={publication.updatedAt}
+          onApproved={onApproved}
+          onStale={onStale}
+        />
       )}
+      {status?.key === "approved" && <ApprovalRecord publicationId={publication.id} refreshKey={publication.statusId} />}
+
+      <CopyBlock copy={publication.copy} />
 
       {publication.driveFolderUrl && (
         <div>
@@ -1221,6 +1664,21 @@ function PublicationReadOnlyDetails({
           >
             <FolderOpen className="size-3.5" />
             Abrir carpeta en Drive
+          </a>
+        </div>
+      )}
+
+      {publication.trelloUrl && isValidTrelloUrl(publication.trelloUrl) && (
+        <div>
+          <span className="mb-2 block text-xs font-medium uppercase tracking-wide text-muted-foreground">Trello</span>
+          <a
+            href={publication.trelloUrl}
+            target="_blank"
+            rel="noreferrer"
+            className={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1.5")}
+          >
+            <ExternalLink className="size-3.5" />
+            Abrir tarjeta en Trello
           </a>
         </div>
       )}

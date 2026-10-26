@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { CalendarDays, Copy, MoreHorizontal, Pencil, RefreshCcw, Share2, Trash2 } from "lucide-react";
+import { Archive, CalendarDays, Copy, MoreHorizontal, Pencil, RefreshCcw, Share2, Trash2 } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -30,9 +30,10 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { useLookups } from "@/components/providers/lookups-provider";
 import { StatusPill } from "@/components/shared/status-pill";
-import { deletePublication, movePublicationToDate, setPublicationStatus } from "@/lib/actions/publications";
+import { deletePublication, movePublicationToDate } from "@/lib/actions/publications";
 import { usePublicationPatch } from "@/components/calendar/publication-patch-context";
-import { hasNotifiableClientUsers, notifyClientPublicationApproved } from "@/lib/actions/publication-notifications";
+import { usePublicationArchive } from "@/components/calendar/publication-archive-context";
+import { useStatusChangeFlow } from "@/components/calendar/use-status-change-flow";
 import { formatFullDateFromDate } from "@/lib/date-utils";
 import { toast } from "@/lib/toast";
 import { useCopyToClipboard } from "@/lib/use-copy-to-clipboard";
@@ -65,13 +66,11 @@ export function PublicationQuickActions({ publication, clientId, onEdit, onDupli
   const router = useRouter();
   const { copy } = useCopyToClipboard();
   const patchPublication = usePublicationPatch();
+  // v1.6: Archivar (null si no corresponde: Client User o archivado no disponible en la base).
+  const archivePublication = usePublicationArchive();
   const canManage = Boolean(onEdit && onDuplicate && clientId);
-  const [statusPending, setStatusPending] = useState(false);
-  // "¡Lista para publicar!" — se muestra al pasar a Aprobado solo si el cliente tiene Client Users
-  // confirmados a quién avisar (ver handleStatusChange). pendingApprovedStatusId guarda cuál de los
-  // status ids es "approved" mientras el modal está abierto, para poder confirmarlo desde los botones.
-  const [approveNotifyOpen, setApproveNotifyOpen] = useState(false);
-  const [pendingApprovedStatusId, setPendingApprovedStatusId] = useState<string | null>(null);
+  // Cambiar estado: mismo flujo que el Tablero ("Enviar a revisión", UPDATE condicional).
+  const statusFlow = useStatusChangeFlow();
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [isDeleting, startDeleteTransition] = useTransition();
@@ -83,7 +82,7 @@ export function PublicationQuickActions({ publication, clientId, onEdit, onDupli
   // Mientras el cambio de estado se guarda Y el Planner termina de refrescar,
   // el menú queda deshabilitado: si no, "Editar" podría abrir el formulario con
   // el estado viejo de la publicación y pisar el cambio al guardar.
-  const busy = statusPending || isRefreshing || movingDate;
+  const busy = statusFlow.pending || isRefreshing || movingDate;
 
   // Link universal (mismo formato para todos los roles, no depende de la pantalla desde la que se comparte):
   // /p/<id> (app/p/[id]/page.tsx) resuelve el destino según quién lo abra — Admin/Account Manager a su Planner,
@@ -126,53 +125,9 @@ export function PublicationQuickActions({ publication, clientId, onEdit, onDupli
     toast.success(`Publicación movida al ${formatFullDateFromDate(new Date(`${dateValue}T00:00:00`)).toLowerCase()}`);
   }
 
-  /** Aplica el cambio de estado y, si corresponde, dispara el aviso al cliente después de guardar
-   * (nunca antes, y su falla nunca revierte ni oculta que la aprobación sí funcionó). */
-  async function applyStatusChange(statusId: string, notify: boolean) {
-    setStatusPending(true);
-    const result = await setPublicationStatus(publication.id, statusId);
-    setStatusPending(false);
-    if (result.error) {
-      toast.error("No se pudo actualizar el estado", result.error);
-      return;
-    }
-    // Publicaciones (global): la lista local no se resincroniza con router.refresh() — se parchea acá.
-    patchPublication?.(publication.id, { statusId });
-    startRefresh(() => {
-      router.refresh();
-    });
-    const label = statuses.find((s) => s.id === statusId)?.label ?? "";
-    toast.success(`Estado actualizado a ${label}`);
-
-    if (notify) {
-      const notifyResult = await notifyClientPublicationApproved(publication.id);
-      if (notifyResult.error) {
-        toast.error("No se pudo avisar al cliente", notifyResult.error);
-      } else if (notifyResult.failedCount > 0) {
-        toast.error(
-          "Aviso enviado parcialmente",
-          `${notifyResult.sentCount} enviado(s), ${notifyResult.failedCount} fallaron.`
-        );
-      } else {
-        toast.success("Aviso enviado al cliente");
-      }
-    }
-  }
-
-  async function handleStatusChange(statusId: string) {
+  function handleStatusChange(statusId: string) {
     if (statusId === publication.statusId || busy) return;
-    const targetStatus = statuses.find((s) => s.id === statusId);
-    if (targetStatus?.key === "approved" && clientId) {
-      setStatusPending(true);
-      const hasRecipients = await hasNotifiableClientUsers(clientId);
-      setStatusPending(false);
-      if (hasRecipients) {
-        setPendingApprovedStatusId(statusId);
-        setApproveNotifyOpen(true);
-        return;
-      }
-    }
-    await applyStatusChange(statusId, false);
+    void statusFlow.request(publication, statusId);
   }
 
   function handleConfirmDelete() {
@@ -252,7 +207,7 @@ export function PublicationQuickActions({ publication, clientId, onEdit, onDupli
                     onValueChange={(value) => handleStatusChange(value as string)}
                   >
                     {statuses.map((status) => (
-                      <DropdownMenuRadioItem key={status.id} value={status.id} disabled={statusPending} closeOnClick>
+                      <DropdownMenuRadioItem key={status.id} value={status.id} disabled={statusFlow.pending} closeOnClick>
                         <StatusPill status={status} />
                       </DropdownMenuRadioItem>
                     ))}
@@ -260,6 +215,12 @@ export function PublicationQuickActions({ publication, clientId, onEdit, onDupli
                 </DropdownMenuSubContent>
               </DropdownMenuSub>
               <DropdownMenuSeparator />
+              {archivePublication && (
+                <DropdownMenuItem onClick={() => void archivePublication(publication)}>
+                  <Archive />
+                  Archivar
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem variant="destructive" onClick={() => setDeleteOpen(true)}>
                 <Trash2 />
                 Eliminar
@@ -298,33 +259,7 @@ export function PublicationQuickActions({ publication, clientId, onEdit, onDupli
             </DialogContent>
           </Dialog>
 
-          <AlertDialog open={approveNotifyOpen} onOpenChange={setApproveNotifyOpen}>
-            <AlertDialogContent onClick={(e) => e.stopPropagation()}>
-              <AlertDialogHeader>
-                <AlertDialogTitle>¡Lista para publicar!</AlertDialogTitle>
-                <AlertDialogDescription>
-                  ¿Querés avisarle al cliente que esta publicación está aprobada y lista?
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel
-                  onClick={() => {
-                    if (pendingApprovedStatusId) applyStatusChange(pendingApprovedStatusId, false);
-                  }}
-                >
-                  No, solo aprobar
-                </AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={() => {
-                    setApproveNotifyOpen(false);
-                    if (pendingApprovedStatusId) applyStatusChange(pendingApprovedStatusId, true);
-                  }}
-                >
-                  Sí, aprobar y avisar
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+          {statusFlow.dialogs}
 
           <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
             <AlertDialogContent onClick={(e) => e.stopPropagation()}>

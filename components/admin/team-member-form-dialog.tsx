@@ -18,7 +18,6 @@ import {
 import { ResendInvitationButton } from "@/components/admin/resend-invitation-button";
 import { UserAccessBadge } from "@/components/admin/user-access-badge";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -27,54 +26,25 @@ import {
   changeTeamMemberRole,
   deleteTeamMember,
   inviteTeamMember,
-  saveTeamMemberAssignments,
   sendTeamMemberPasswordReset,
   setTeamMemberActive,
   updateTeamMemberName,
   type TeamActionState,
 } from "@/lib/actions/team";
+import { FIRST_NAME_REQUIRED_ERROR, joinPersonName } from "@/lib/person-name";
 import { ROLE_LABELS } from "@/lib/role-labels";
 import { toast } from "@/lib/toast";
-import type { Client, TeamMember } from "@/types";
+import type { TeamMember } from "@/types";
 
 const INITIAL_STATE: TeamActionState = { error: null, savedAt: null };
 type TeamRole = "super_admin" | "account_manager";
 const ROLE_OPTIONS: TeamRole[] = ["account_manager", "super_admin"];
 
-function ClientChecklist({
-  clients,
-  selectedIds,
-  onToggle,
-}: {
-  clients: Client[];
-  selectedIds: string[];
-  onToggle: (clientId: string) => void;
-}) {
-  const selected = new Set(selectedIds);
-  // Clientes archivados no se ofrecen para nuevas asignaciones, salvo que el
-  // usuario ya estuviera asignado (para no "perder" esa asignación en silencio).
-  const selectableClients = clients.filter((c) => c.active || selected.has(c.id));
-  return (
-    <div className="flex max-h-48 flex-col gap-1 overflow-y-auto rounded-lg border border-border px-3 py-2">
-      {selectableClients.length === 0 ? (
-        <p className="py-1 text-sm text-muted-foreground">No hay clientes creados todavía.</p>
-      ) : (
-        selectableClients.map((client) => (
-          <label key={client.id} className="flex items-center gap-2 text-sm text-foreground">
-            <Checkbox checked={selected.has(client.id)} onCheckedChange={() => onToggle(client.id)} />
-            {client.name}
-          </label>
-        ))
-      )}
-    </div>
-  );
-}
-
-interface TeamMemberCreateDialogProps {
-  clients: Client[];
-}
-
-export function TeamMemberCreateDialog({ clients }: TeamMemberCreateDialogProps) {
+/**
+ * Nuevo miembro. Las asignaciones a clientes ya no se eligen acá (v1.6): se gestionan desde la ficha de cada
+ * cliente (sección "Equipo asignado"), con el mismo mecanismo (saveTeamMemberAssignments).
+ */
+export function TeamMemberCreateDialog() {
   const [open, setOpen] = useState(false);
   const [sessionKey, setSessionKey] = useState(0);
 
@@ -89,26 +59,25 @@ export function TeamMemberCreateDialog({ clients }: TeamMemberCreateDialogProps)
         render={
           <Button size="sm" className="gap-1.5">
             <Plus />
-            Nuevo usuario
+            Nuevo miembro
           </Button>
         }
       />
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Nuevo usuario interno</DialogTitle>
+          <DialogTitle>Nuevo miembro</DialogTitle>
         </DialogHeader>
-        <CreateBody key={sessionKey} clients={clients} onDone={() => setOpen(false)} />
+        <CreateBody key={sessionKey} onDone={() => setOpen(false)} />
       </DialogContent>
     </Dialog>
   );
 }
 
-function CreateBody({ clients, onDone }: { clients: Client[]; onDone: () => void }) {
+function CreateBody({ onDone }: { onDone: () => void }) {
   const [state, formAction, isPending] = useActionState(inviteTeamMember, INITIAL_STATE);
   const lastSavedAt = useRef<number | null>(null);
   const router = useRouter();
   const [role, setRole] = useState<TeamRole>("account_manager");
-  const [selectedClientIds, setSelectedClientIds] = useState<string[]>([]);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
 
@@ -121,10 +90,6 @@ function CreateBody({ clients, onDone }: { clients: Client[]; onDone: () => void
     }
   }, [state.savedAt, onDone, router]);
 
-  function toggleClient(clientId: string) {
-    setSelectedClientIds((prev) => (prev.includes(clientId) ? prev.filter((id) => id !== clientId) : [...prev, clientId]));
-  }
-
   function handleSubmitClick(e: React.MouseEvent) {
     if (role === "super_admin") {
       e.preventDefault();
@@ -135,11 +100,17 @@ function CreateBody({ clients, onDone }: { clients: Client[]; onDone: () => void
   return (
     <form ref={formRef} action={formAction} className="flex flex-col gap-4">
       <input type="hidden" name="role" value={role} readOnly />
-      <input type="hidden" name="clientIds" value={JSON.stringify(selectedClientIds)} readOnly />
 
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="tm-fullName">Nombre completo</Label>
-        <Input id="tm-fullName" name="fullName" required autoFocus />
+      {/* Nombre y Apellido en una fila (dos columnas iguales); en mobile, apilados. Mismo patrón que Invitar cliente. */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="tm-firstName">Nombre</Label>
+          <Input id="tm-firstName" name="firstName" required autoFocus autoComplete="given-name" />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="tm-lastName">Apellido (opcional)</Label>
+          <Input id="tm-lastName" name="lastName" autoComplete="family-name" />
+        </div>
       </div>
 
       <div className="flex flex-col gap-1.5">
@@ -163,16 +134,6 @@ function CreateBody({ clients, onDone }: { clients: Client[]; onDone: () => void
         </Select>
       </div>
 
-      <div className="flex flex-col gap-1.5">
-        <Label>{role === "super_admin" ? "Clientes en los que participa" : "Clientes asignados"}</Label>
-        {role === "super_admin" && (
-          <p className="text-xs text-muted-foreground">
-            Esto solo define en qué clientes aparecés como integrante. Tu acceso como Super Admin sigue siendo
-            global.
-          </p>
-        )}
-        <ClientChecklist clients={clients} selectedIds={selectedClientIds} onToggle={toggleClient} />
-      </div>
 
       {state.error && <p className="text-sm text-destructive">{state.error}</p>}
 
@@ -209,10 +170,9 @@ function CreateBody({ clients, onDone }: { clients: Client[]; onDone: () => void
 
 interface TeamMemberEditDialogProps {
   member: TeamMember;
-  clients: Client[];
 }
 
-export function TeamMemberEditDialog({ member, clients }: TeamMemberEditDialogProps) {
+export function TeamMemberEditDialog({ member }: TeamMemberEditDialogProps) {
   const [open, setOpen] = useState(false);
   const [sessionKey, setSessionKey] = useState(0);
 
@@ -228,16 +188,20 @@ export function TeamMemberEditDialog({ member, clients }: TeamMemberEditDialogPr
         <DialogHeader>
           <DialogTitle>{member.fullName ?? member.email}</DialogTitle>
         </DialogHeader>
-        <EditBody key={sessionKey} member={member} clients={clients} onDone={() => setOpen(false)} />
+        <EditBody key={sessionKey} member={member} onDone={() => setOpen(false)} />
       </DialogContent>
     </Dialog>
   );
 }
 
-function EditBody({ member, clients, onDone }: { member: TeamMember; clients: Client[]; onDone: () => void }) {
+function EditBody({ member, onDone }: { member: TeamMember; onDone: () => void }) {
   const router = useRouter();
-  const [fullName, setFullName] = useState(member.fullName ?? "");
-  const [selectedClientIds, setSelectedClientIds] = useState<string[]>(member.assignedClients.map((c) => c.id));
+  // Usuario existente: el full_name completo va en Nombre y Apellido arranca vacío (no se separa automáticamente).
+  const [firstName, setFirstName] = useState(member.fullName ?? "");
+  const [lastName, setLastName] = useState("");
+  // Asignaciones actuales (se gestionan desde la ficha de cada cliente). El cambio de rol las conserva tal cual:
+  // changeTeamMemberRole las vuelve a escribir y, para degradar a Account Manager, exige al menos una.
+  const assignedClientIds = member.assignedClients.map((c) => c.id);
   const [pendingRole, setPendingRole] = useState<TeamRole>(member.role);
   const [error, setError] = useState<string | null>(null);
   const [roleConfirmOpen, setRoleConfirmOpen] = useState(false);
@@ -251,22 +215,18 @@ function EditBody({ member, clients, onDone }: { member: TeamMember; clients: Cl
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const roleChanged = pendingRole !== member.role;
-  const roleChangeNeedsClients = pendingRole === "account_manager" && selectedClientIds.length === 0;
-
-  function toggleClient(clientId: string) {
-    setSelectedClientIds((prev) => (prev.includes(clientId) ? prev.filter((id) => id !== clientId) : [...prev, clientId]));
-  }
+  const roleChangeNeedsClients = pendingRole === "account_manager" && assignedClientIds.length === 0;
 
   function handleSave() {
     setError(null);
+    if (!firstName.trim()) {
+      setError(FIRST_NAME_REQUIRED_ERROR);
+      return;
+    }
     startSaveTransition(async () => {
-      const results = await Promise.all([
-        updateTeamMemberName(member.id, fullName),
-        saveTeamMemberAssignments(member.id, selectedClientIds),
-      ]);
-      const failure = results.find((r) => r.error)?.error;
-      if (failure) {
-        setError(failure);
+      const result = await updateTeamMemberName(member.id, joinPersonName(firstName, lastName));
+      if (result.error) {
+        setError(result.error);
         return;
       }
       router.refresh();
@@ -278,7 +238,7 @@ function EditBody({ member, clients, onDone }: { member: TeamMember; clients: Cl
   function handleConfirmRoleChange() {
     setError(null);
     startRoleTransition(async () => {
-      const result = await changeTeamMemberRole(member.id, pendingRole, selectedClientIds);
+      const result = await changeTeamMemberRole(member.id, pendingRole, assignedClientIds);
       if (result.error) {
         setError(result.error);
         setRoleConfirmOpen(false);
@@ -336,9 +296,22 @@ function EditBody({ member, clients, onDone }: { member: TeamMember; clients: Cl
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="tm-edit-fullName">Nombre completo</Label>
-        <Input id="tm-edit-fullName" value={fullName} onChange={(e) => setFullName(e.target.value)} autoFocus />
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="tm-edit-firstName">Nombre</Label>
+          <Input
+            id="tm-edit-firstName"
+            value={firstName}
+            onChange={(e) => setFirstName(e.target.value)}
+            required
+            autoFocus
+            autoComplete="given-name"
+          />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="tm-edit-lastName">Apellido (opcional)</Label>
+          <Input id="tm-edit-lastName" value={lastName} onChange={(e) => setLastName(e.target.value)} autoComplete="family-name" />
+        </div>
       </div>
 
       <div className="flex flex-col gap-1.5">
@@ -426,7 +399,7 @@ function EditBody({ member, clients, onDone }: { member: TeamMember; clients: Cl
                   <AlertDialogDescription>
                     {pendingRole === "super_admin"
                       ? "Va a tener acceso global a todos los clientes, calendarios y publicaciones."
-                      : "Va a perder el acceso global y quedar limitado a los clientes asignados abajo."}
+                      : "Va a perder el acceso global y quedar limitado a los clientes que tiene asignados."}
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
@@ -440,19 +413,11 @@ function EditBody({ member, clients, onDone }: { member: TeamMember; clients: Cl
           )}
         </div>
         {roleChanged && roleChangeNeedsClients && (
-          <p className="text-xs text-destructive">Elegí al menos un cliente para poder degradar a Account Manager.</p>
-        )}
-      </div>
-
-      <div className="flex flex-col gap-1.5">
-        <Label>{pendingRole === "super_admin" ? "Clientes en los que participa" : "Clientes asignados"}</Label>
-        {pendingRole === "super_admin" && (
-          <p className="text-xs text-muted-foreground">
-            Esto solo define en qué clientes aparecés como integrante. Tu acceso como Super Admin sigue siendo
-            global.
+          <p className="text-xs text-destructive">
+            Para degradarlo a Account Manager, primero asignalo al menos a un cliente desde la ficha del cliente
+            (Equipo asignado).
           </p>
         )}
-        <ClientChecklist clients={clients} selectedIds={selectedClientIds} onToggle={toggleClient} />
       </div>
 
       {error && <p className="text-sm text-destructive">{error}</p>}

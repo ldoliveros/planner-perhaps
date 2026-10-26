@@ -1,14 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, ListFilter, X } from "lucide-react";
+import { ChevronDown, ListFilter, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { PublicationSearchBox } from "@/components/calendar/publication-search-box";
 import { useLookups } from "@/components/providers/lookups-provider";
 import type { FilterOption, RelevantFilterOptions } from "@/lib/planner-filter-options";
+import { CAL_HEADER_BG, CAL_LINE_BORDER } from "@/lib/calendar-surface";
+import { cn } from "cn";
 
 /** Desde/Hasta de Lista vive en el header (CalendarHeader), no acá — ver `HeaderDateRangeValue`. Se mantiene
  * este tipo exportado porque `CalendarScreen` lo sigue usando para el estado de ese rango. */
@@ -43,80 +44,12 @@ function getSelectableCalendars<T extends { id: string; status: string }>(calend
   return calendars.filter((c) => c.status !== "archived" || calendarIds.includes(c.id));
 }
 
-// Mismo criterio que los calendarios: clientes archivados/inactivos no se ofrecen salvo que ya estén seleccionados.
-function getSelectableClients<T extends { id: string; active: boolean }>(clients: T[], clientIds: string[]): T[] {
-  return clients.filter((c) => c.active || clientIds.includes(c.id));
-}
-
 // Publicaciones (global): con Cliente activo, "Calendario" ofrece solo los de esos clientes — misma dependencia
 // que ya tenía el buscador anterior de Publicaciones. Sin Cliente elegido (o fuera del contexto global,
 // `clientIds` en `undefined`), no restringe nada.
 function scopeCalendarsToClients<T extends { clientId: string }>(calendars: T[], clientIds?: string[]): T[] {
   if (!clientIds || clientIds.length === 0) return calendars;
   return calendars.filter((c) => clientIds.includes(c.clientId));
-}
-
-function FilterPopover({
-  label,
-  options,
-  selected,
-  onChange,
-}: {
-  label: string;
-  options: FilterOption[];
-  selected: string[];
-  onChange: (ids: string[]) => void;
-}) {
-  return (
-    <Popover>
-      <PopoverTrigger
-        disabled={options.length === 0}
-        render={<Button variant="outline" size="sm" className="gap-1.5" />}
-      >
-        {label}
-        {selected.length > 0 && (
-          <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground">
-            {selected.length}
-          </span>
-        )}
-        <ChevronDown className="text-muted-foreground" />
-      </PopoverTrigger>
-      <PopoverContent align="start" className="w-56">
-        <div className="flex flex-col gap-1">
-          {options.length > 1 && (
-            <>
-              <label className="flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1.5 text-sm font-medium hover:bg-muted">
-                <Checkbox
-                  checked={selected.length === options.length}
-                  indeterminate={selected.length > 0 && selected.length < options.length}
-                  onCheckedChange={() =>
-                    onChange(selected.length === options.length ? [] : options.map((o) => o.id))
-                  }
-                />
-                Seleccionar todos
-              </label>
-              <div className="my-1 h-px bg-border" />
-            </>
-          )}
-          {options.map((option) => {
-            const checked = selected.includes(option.id);
-            return (
-              <label
-                key={option.id}
-                className="flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1.5 text-sm hover:bg-muted"
-              >
-                <Checkbox
-                  checked={checked}
-                  onCheckedChange={() => onChange(toggle(selected, option.id))}
-                />
-                {option.label}
-              </label>
-            );
-          })}
-        </div>
-      </PopoverContent>
-    </Popover>
-  );
 }
 
 interface CalendarFiltersProps {
@@ -126,20 +59,134 @@ interface CalendarFiltersProps {
   options: RelevantFilterOptions;
   calendarIds: string[];
   onCalendarIdsChange: (ids: string[]) => void;
-  /** Solo Publicaciones (contexto "global"): filtro Cliente, exclusivo de ese contexto. */
+  /** Solo calendario global: filtro Espacio (en el código, "clientes"), exclusivo de ese contexto. */
   clientIds?: string[];
   onClientIdsChange?: (ids: string[]) => void;
-  /**
-   * Buscador compacto, como primer control de la barra — solo en `CalendarFiltersBar` (desktop). El mobile lo
-   * mantiene en su propia fila (siempre visible, fuera del sheet de Filtros), así que `MobileFilters` no lo usa.
-   */
-  search?: string;
-  onSearchChange?: (value: string) => void;
-  /** Solo Publicaciones (contexto "global"): true mientras `ensureRange` trae un rango nuevo en segundo plano. */
-  searchLoading?: boolean;
 }
 
-export function CalendarFiltersBar({
+/**
+ * Filtros unificados (v1.6, desktop/tablet): un solo botón de ícono que abre un desplegable con Calendario, Estado,
+ * Canal, Cuenta, Tipo y Campaña — mismas opciones, multiselección y estado que antes. Espacio no está acá: lo maneja
+ * el selector de espacios del encabezado (sus chips siguen en la fila de chips). Punto discreto cuando hay filtros
+ * activos. Se remonta con la vista y el período (key en CalendarScreen) para cerrarse si quedó abierto.
+ */
+export function FiltersMenu({
+  value,
+  onChange,
+  options,
+  calendarIds,
+  onCalendarIdsChange,
+  clientIds,
+}: CalendarFiltersProps) {
+  const { calendars, clientAccounts } = useLookups();
+  const selectableCalendars = getSelectableCalendars(scopeCalendarsToClients(calendars, clientIds), calendarIds);
+  const count = countActiveFilters(value, calendarIds);
+
+  return (
+    <Popover>
+      <PopoverTrigger
+        render={
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="relative size-[26px]"
+            aria-label={count > 0 ? `Filtros (${count} activos)` : "Filtros"}
+          />
+        }
+      >
+        <ListFilter />
+        {count > 0 && <span aria-hidden className="absolute top-1 right-1 size-1.5 rounded-full bg-[var(--cal-accent)]" />}
+      </PopoverTrigger>
+      {/* Elegir varias opciones no cierra el desplegable: los checkboxes viven dentro del popover. */}
+      <PopoverContent align="end" className="max-h-[min(30rem,70dvh)] w-[min(20rem,calc(100vw-2rem))] gap-1 overflow-y-auto p-1.5">
+        {selectableCalendars.length > 1 && (
+          <FilterSection
+            variant="popover"
+            label="Calendario"
+            options={selectableCalendars.map((c) => ({ id: c.id, label: c.name }))}
+            selected={calendarIds}
+            onChange={onCalendarIdsChange}
+          />
+        )}
+        <FilterSection
+          variant="popover"
+          label="Estado"
+          options={options.statuses}
+          selected={value.statusIds}
+          onChange={(statusIds) => onChange({ ...value, statusIds })}
+        />
+        <FilterSection
+          variant="popover"
+          label="Canal"
+          options={options.platforms}
+          selected={value.platformIds}
+          onChange={(platformIds) => onChange({ ...value, platformIds })}
+        />
+        {clientAccounts.length > 0 && (
+          <FilterSection
+            variant="popover"
+            label="Cuenta"
+            options={options.accounts}
+            selected={value.accountIds}
+            onChange={(accountIds) => onChange({ ...value, accountIds })}
+          />
+        )}
+        <FilterSection
+          variant="popover"
+          label="Tipo"
+          options={options.contentTypes}
+          selected={value.contentTypeIds}
+          onChange={(contentTypeIds) => onChange({ ...value, contentTypeIds })}
+        />
+        <FilterSection
+          variant="popover"
+          label="Campaña"
+          options={options.campaigns}
+          selected={value.campaigns}
+          onChange={(campaigns) => onChange({ ...value, campaigns })}
+        />
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/**
+ * Búsqueda (v1.6): solo la lupa, que abre el modal de búsqueda global por título (PublicationSearchDialog) sin cambiar
+ * de ruta. Sin campo desplegable en el encabezado (no se superpone con otros controles) ni filtrado local.
+ */
+export function SearchButton({ onClick }: { onClick: () => void }) {
+  return (
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      className="size-[26px]"
+      aria-label="Buscar publicaciones"
+      title="Buscar publicaciones"
+      aria-haspopup="dialog"
+      onClick={onClick}
+    >
+      <Search />
+    </Button>
+  );
+}
+
+interface ActiveFilterChipsProps {
+  value: CalendarFiltersState;
+  onChange: (value: CalendarFiltersState) => void;
+  options: RelevantFilterOptions;
+  calendarIds: string[];
+  onCalendarIdsChange: (ids: string[]) => void;
+  clientIds?: string[];
+  onClientIdsChange?: (ids: string[]) => void;
+}
+
+/**
+ * Chips de filtros activos (v1.6): un chip por valor elegido (principales y de "Más filtros"), con su categoría
+ * para que se reconozca aunque el filtro esté oculto ("Canal: Instagram"). La X quita solo ese valor; "Limpiar
+ * todo" deja todos los filtros sin restricción (no toca la vista, el período ni el buscador). Sin filtros
+ * activos no se renderiza (no reserva espacio).
+ */
+export function ActiveFilterChips({
   value,
   onChange,
   options,
@@ -147,80 +194,86 @@ export function CalendarFiltersBar({
   onCalendarIdsChange,
   clientIds,
   onClientIdsChange,
-  search,
-  onSearchChange,
-  searchLoading,
-}: CalendarFiltersProps) {
-  const { calendars, clientAccounts, clients } = useLookups();
-  const selectableCalendars = getSelectableCalendars(scopeCalendarsToClients(calendars, clientIds), calendarIds);
-  const selectableClients = clientIds ? getSelectableClients(clients, clientIds) : [];
-  const hasActiveFilters =
-    value.platformIds.length > 0 ||
-    value.accountIds.length > 0 ||
-    value.contentTypeIds.length > 0 ||
-    value.statusIds.length > 0 ||
-    value.campaigns.length > 0;
+}: ActiveFilterChipsProps) {
+  const { calendars, clients } = useLookups();
+  const nameOf = (list: { id: string; label: string }[], id: string) => list.find((o) => o.id === id)?.label ?? "Sin nombre";
+  const chips: { key: string; category: string; label: string; remove: () => void }[] = [
+    ...(clientIds ?? []).map((id) => ({
+      key: `client:${id}`,
+      category: "Espacio",
+      label: clients.find((c) => c.id === id)?.name ?? "Sin nombre",
+      remove: () => onClientIdsChange?.((clientIds ?? []).filter((v) => v !== id)),
+    })),
+    ...calendarIds.map((id) => ({
+      key: `calendar:${id}`,
+      category: "Calendario",
+      label: calendars.find((c) => c.id === id)?.name ?? "Sin nombre",
+      remove: () => onCalendarIdsChange(calendarIds.filter((v) => v !== id)),
+    })),
+    ...value.statusIds.map((id) => ({
+      key: `status:${id}`,
+      category: "Estado",
+      label: nameOf(options.statuses, id),
+      remove: () => onChange({ ...value, statusIds: value.statusIds.filter((v) => v !== id) }),
+    })),
+    ...value.platformIds.map((id) => ({
+      key: `platform:${id}`,
+      category: "Canal",
+      label: nameOf(options.platforms, id),
+      remove: () => onChange({ ...value, platformIds: value.platformIds.filter((v) => v !== id) }),
+    })),
+    ...value.accountIds.map((id) => ({
+      key: `account:${id}`,
+      category: "Cuenta",
+      label: nameOf(options.accounts, id),
+      remove: () => onChange({ ...value, accountIds: value.accountIds.filter((v) => v !== id) }),
+    })),
+    ...value.contentTypeIds.map((id) => ({
+      key: `type:${id}`,
+      category: "Tipo",
+      label: nameOf(options.contentTypes, id),
+      remove: () => onChange({ ...value, contentTypeIds: value.contentTypeIds.filter((v) => v !== id) }),
+    })),
+    ...value.campaigns.map((id) => ({
+      key: `campaign:${id}`,
+      category: "Campaña",
+      label: nameOf(options.campaigns, id),
+      remove: () => onChange({ ...value, campaigns: value.campaigns.filter((v) => v !== id) }),
+    })),
+  ];
+  if (chips.length === 0) return null;
+
+  function clearAll() {
+    onChange(EMPTY_FILTERS);
+    if (calendarIds.length > 0) onCalendarIdsChange([]);
+    if (onClientIdsChange && clientIds && clientIds.length > 0) onClientIdsChange([]);
+  }
 
   return (
-    <div className="flex flex-wrap items-center gap-2 border-b border-border bg-background px-6 py-3 max-md:hidden">
-      {onSearchChange && <PublicationSearchBox value={search ?? ""} onChange={onSearchChange} />}
-      {searchLoading && <span className="text-xs text-muted-foreground">Cargando más publicaciones…</span>}
-
-      {onClientIdsChange && selectableClients.length > 1 && (
-        <FilterPopover
-          label="Cliente"
-          options={selectableClients.map((c) => ({ id: c.id, label: c.name }))}
-          selected={clientIds ?? []}
-          onChange={onClientIdsChange}
-        />
-      )}
-      {selectableCalendars.length > 1 && (
-        <FilterPopover
-          label="Calendario"
-          options={selectableCalendars.map((c) => ({ id: c.id, label: c.name }))}
-          selected={calendarIds}
-          onChange={onCalendarIdsChange}
-        />
-      )}
-      <FilterPopover
-        label="Canal"
-        options={options.platforms}
-        selected={value.platformIds}
-        onChange={(platformIds) => onChange({ ...value, platformIds })}
-      />
-      {clientAccounts.length > 0 && (
-        <FilterPopover
-          label="Cuenta"
-          options={options.accounts}
-          selected={value.accountIds}
-          onChange={(accountIds) => onChange({ ...value, accountIds })}
-        />
-      )}
-      <FilterPopover
-        label="Tipo"
-        options={options.contentTypes}
-        selected={value.contentTypeIds}
-        onChange={(contentTypeIds) => onChange({ ...value, contentTypeIds })}
-      />
-      <FilterPopover
-        label="Estado"
-        options={options.statuses}
-        selected={value.statusIds}
-        onChange={(statusIds) => onChange({ ...value, statusIds })}
-      />
-      <FilterPopover
-        label="Campaña"
-        options={options.campaigns}
-        selected={value.campaigns}
-        onChange={(campaigns) => onChange({ ...value, campaigns })}
-      />
-
-      {hasActiveFilters && (
-        <Button variant="ghost" size="sm" className="gap-1 text-muted-foreground" onClick={() => onChange(EMPTY_FILTERS)}>
-          <X />
-          Limpiar filtros
-        </Button>
-      )}
+    <div
+      className={cn("flex flex-wrap items-center gap-1.5 border-b px-6 py-2 max-md:px-4", CAL_HEADER_BG, CAL_LINE_BORDER)}
+      aria-label="Filtros activos"
+    >
+      {chips.map((chip) => (
+        <span
+          key={chip.key}
+          className="inline-flex max-w-full items-center gap-1 rounded-full border border-border bg-muted/50 py-0.5 pr-0.5 pl-2.5 text-xs text-foreground"
+        >
+          <span className="text-muted-foreground">{chip.category}:</span>
+          <span className="min-w-0 truncate font-medium">{chip.label}</span>
+          <button
+            type="button"
+            onClick={chip.remove}
+            aria-label={`Quitar filtro ${chip.category}: ${chip.label}`}
+            className="flex size-5 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none pointer-coarse:size-7"
+          >
+            <X className="size-3" />
+          </button>
+        </span>
+      ))}
+      <Button variant="ghost" size="xs" className="text-muted-foreground" onClick={clearAll}>
+        Limpiar todo
+      </Button>
     </div>
   );
 }
@@ -238,29 +291,48 @@ function countActiveFilters(value: CalendarFiltersState, calendarIds: string[], 
   ].filter((list) => list.length > 0).length;
 }
 
+/**
+ * Sección multiselección plegable. "sheet" (default): filas a todo el ancho con separadores, para el sheet mobile.
+ * "popover" (v1.6, Más filtros): sin líneas — grupos con esquinas redondeadas y un fondo neutro suave al abrirse.
+ */
 function FilterSection({
   label,
   options,
   selected,
   onChange,
+  variant = "sheet",
 }: {
   label: string;
   options: FilterOption[];
   selected: string[];
   onChange: (ids: string[]) => void;
+  variant?: "sheet" | "popover";
 }) {
+  const popover = variant === "popover";
   if (options.length === 0) {
     return (
-      <div className="flex min-h-12 items-center justify-between gap-2 border-b border-border px-4 text-sm text-muted-foreground">
+      <div
+        className={cn(
+          "flex items-center justify-between gap-2 text-sm text-muted-foreground",
+          popover ? "min-h-9 rounded-lg px-2.5" : "min-h-12 border-b border-border px-4"
+        )}
+      >
         <span>{label}</span>
         <span className="text-xs">Sin opciones</span>
       </div>
     );
   }
-  const rowClass = "flex min-h-11 cursor-pointer items-center gap-3 px-4 text-sm active:bg-muted";
+  const rowClass = popover
+    ? "flex min-h-8 cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-sm hover:bg-background"
+    : "flex min-h-11 cursor-pointer items-center gap-3 px-4 text-sm active:bg-muted";
   return (
-    <details className="group border-b border-border">
-      <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-2 px-4 text-sm font-medium [&::-webkit-details-marker]:hidden">
+    <details className={cn("group", popover ? "rounded-lg open:bg-muted/50" : "border-b border-border")}>
+      <summary
+        className={cn(
+          "flex cursor-pointer list-none items-center justify-between gap-2 text-sm font-medium [&::-webkit-details-marker]:hidden",
+          popover ? "min-h-9 rounded-lg px-2.5 hover:bg-muted/60 group-open:hover:bg-transparent" : "min-h-12 px-4"
+        )}
+      >
         <span>{label}</span>
         <span className="flex items-center gap-2">
           {selected.length > 0 && (
@@ -271,20 +343,7 @@ function FilterSection({
           <ChevronDown className="size-4 text-muted-foreground transition-transform group-open:rotate-180" />
         </span>
       </summary>
-      <div className="flex flex-col pb-2">
-        {options.length > 1 && (
-          <>
-            <label className={`${rowClass} font-medium`}>
-              <Checkbox
-                checked={selected.length === options.length}
-                indeterminate={selected.length > 0 && selected.length < options.length}
-                onCheckedChange={() => onChange(selected.length === options.length ? [] : options.map((o) => o.id))}
-              />
-              Seleccionar todos
-            </label>
-            <div className="mx-4 my-1 h-px bg-border" />
-          </>
-        )}
+      <div className={cn("flex flex-col", popover ? "px-1 pb-1.5" : "pb-2")}>
         {options.map((option) => (
           <label key={option.id} className={rowClass}>
             <Checkbox checked={selected.includes(option.id)} onCheckedChange={() => onChange(toggle(selected, option.id))} />
@@ -308,45 +367,49 @@ export function MobileFilters({
   calendarIds,
   onCalendarIdsChange,
   clientIds,
-  onClientIdsChange,
-}: CalendarFiltersProps) {
-  const { calendars, clientAccounts, clients } = useLookups();
+  iconOnly = false,
+}: CalendarFiltersProps & { iconOnly?: boolean }) {
+  const { calendars, clientAccounts } = useLookups();
   const [open, setOpen] = useState(false);
   const selectableCalendars = getSelectableCalendars(scopeCalendarsToClients(calendars, clientIds), calendarIds);
-  const selectableClients = clientIds ? getSelectableClients(clients, clientIds) : [];
-  const count = countActiveFilters(value, calendarIds, clientIds);
+  // Espacio no está en este panel (lo maneja el selector del encabezado): ni cuenta ni se limpia acá.
+  const count = countActiveFilters(value, calendarIds);
 
   function clearAll() {
     onChange(EMPTY_FILTERS);
     if (calendarIds.length > 0) onCalendarIdsChange([]);
-    if (onClientIdsChange && clientIds && clientIds.length > 0) onClientIdsChange([]);
   }
 
   return (
     <>
-      <Button variant="outline" className="gap-1.5" onClick={() => setOpen(true)}>
-        <ListFilter />
-        Filtros
-        {count > 0 && (
-          <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground">
-            {count}
-          </span>
-        )}
-      </Button>
+      {iconOnly ? (
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="relative size-[26px]"
+          onClick={() => setOpen(true)}
+          aria-label={count > 0 ? `Filtros (${count} activos)` : "Filtros"}
+        >
+          <ListFilter />
+          {count > 0 && <span aria-hidden className="absolute top-1 right-1 size-1.5 rounded-full bg-[var(--cal-accent,currentColor)]" />}
+        </Button>
+      ) : (
+        <Button variant="outline" className="gap-1.5" onClick={() => setOpen(true)}>
+          <ListFilter />
+          Filtros
+          {count > 0 && (
+            <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground">
+              {count}
+            </span>
+          )}
+        </Button>
+      )}
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent side="right" mobile="bottom" className="gap-0 p-0 max-md:max-h-[85dvh]">
           <SheetHeader className="border-b border-border p-4 pr-16">
             <SheetTitle>Filtros{count > 0 ? ` · ${count}` : ""}</SheetTitle>
           </SheetHeader>
           <div className="min-h-0 flex-1 overflow-y-auto">
-            {onClientIdsChange && selectableClients.length > 1 && (
-              <FilterSection
-                label="Cliente"
-                options={selectableClients.map((c) => ({ id: c.id, label: c.name }))}
-                selected={clientIds ?? []}
-                onChange={onClientIdsChange}
-              />
-            )}
             {selectableCalendars.length > 1 && (
               <FilterSection
                 label="Calendarios"
@@ -355,6 +418,12 @@ export function MobileFilters({
                 onChange={onCalendarIdsChange}
               />
             )}
+            <FilterSection
+              label="Estado"
+              options={options.statuses}
+              selected={value.statusIds}
+              onChange={(statusIds) => onChange({ ...value, statusIds })}
+            />
             <FilterSection
               label="Canal"
               options={options.platforms}
@@ -374,12 +443,6 @@ export function MobileFilters({
               options={options.contentTypes}
               selected={value.contentTypeIds}
               onChange={(contentTypeIds) => onChange({ ...value, contentTypeIds })}
-            />
-            <FilterSection
-              label="Estado"
-              options={options.statuses}
-              selected={value.statusIds}
-              onChange={(statusIds) => onChange({ ...value, statusIds })}
             />
             <FilterSection
               label="Campaña"

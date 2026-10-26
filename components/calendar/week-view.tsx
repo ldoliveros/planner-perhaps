@@ -6,7 +6,15 @@ import { Plus } from "lucide-react";
 import { isWeekend } from "date-fns";
 import { cn } from "cn";
 import { formatDayAbbr, formatDayNumber, formatWeekdayAndDay, isSameDayAs, isToday } from "@/lib/date-utils";
-import { hexToRgba } from "@/lib/color-contrast";
+import {
+  CAL_DAY_ADD_BUTTON,
+  CAL_DAY_BG,
+  CAL_DAY_NAMES,
+  CAL_GRID_FRAME,
+  CAL_LINE_BORDER,
+  CAL_LINE_DIVIDE,
+  CAL_WEEKEND_BG,
+} from "@/lib/calendar-surface";
 import { PublicationCard } from "@/components/calendar/publication-card";
 import { DayDropZone, toDateKey, usePublicationDnd } from "@/components/calendar/publication-dnd";
 import type { Publication } from "@/types";
@@ -54,7 +62,6 @@ interface WeekViewProps {
   /** Solo Publicaciones (contexto "global"): logo + nombre del cliente debajo del título. */
   showClient?: boolean;
   onCreateForDay?: (day: Date) => void;
-  clientColor: string;
   showCalendarLabel: boolean;
 }
 
@@ -68,7 +75,6 @@ export function WeekView({
   getClientId,
   showClient,
   onCreateForDay,
-  clientColor,
   showCalendarLabel,
 }: WeekViewProps) {
   // Mismo criterio que el `•••` (Bloque C): solo quien puede editar recibe los callbacks.
@@ -82,7 +88,17 @@ export function WeekView({
 
   return (
     <DndContext id="week-view-dnd" {...contextProps}>
-      <div className="grid flex-1 grid-cols-7 divide-x divide-border">
+      {/* Admite un solo día (una columna), pero desde v1.6 la vista Día usa su propio tablero (DayView). */}
+      <div className="flex flex-1 flex-col">
+      {/* Franja de nombres de los días: una fila propia y continua (sin los divisores de las columnas). */}
+      <div className={cn("grid shrink-0", CAL_DAY_NAMES, weekDays.length === 1 ? "grid-cols-1" : "grid-cols-7")}>
+        {weekDays.map((day) => (
+          <span key={toDateKey(day)} className="py-2 text-center text-[11px] font-medium tracking-wide">
+            {formatDayAbbr(day)}
+          </span>
+        ))}
+      </div>
+      <div className={cn("grid flex-1 divide-x", CAL_LINE_DIVIDE, CAL_GRID_FRAME, weekDays.length === 1 ? "grid-cols-1" : "grid-cols-7")}>
         {weekDays.map((day) => {
           const dateKey = toDateKey(day);
           const dayPublications = displayedPublications
@@ -97,11 +113,12 @@ export function WeekView({
               dateKey={dateKey}
               dragSourceKey={activePublication?.publicationDate ?? null}
               disabled={!canMove}
-              className={cn("group/day flex min-h-0 flex-col", today && "bg-primary/[0.03]")}
-              style={!today && weekend ? { backgroundColor: hexToRgba(clientColor, 0.05) } : undefined}
+              // Fondo del día (paleta del calendario: derivada del color del cliente, o celeste en Publicaciones):
+              // hábil casi blanco, sábado y domingo el mismo tinte de fin de semana. Hoy conserva el fondo de su día;
+              // su indicador es el círculo del número.
+              className={cn("group/day flex min-h-0 flex-col", weekend ? CAL_WEEKEND_BG : CAL_DAY_BG)}
             >
-              <div className="relative flex flex-col items-center gap-1 border-b border-border py-2.5">
-                <span className="text-[11px] font-medium tracking-wide text-muted-foreground">{formatDayAbbr(day)}</span>
+              <div className={cn("relative flex flex-col items-center border-b py-2.5", CAL_LINE_BORDER)}>
                 <span
                   className={cn(
                     "flex size-6 items-center justify-center rounded-full text-sm font-semibold",
@@ -114,11 +131,11 @@ export function WeekView({
                   <button
                     type="button"
                     onClick={() => onCreateForDay(day)}
-                    className="absolute right-1.5 top-1.5 flex size-6 items-center justify-center rounded-md text-muted-foreground opacity-0 transition hover:bg-muted hover:text-foreground group-hover/day:opacity-100"
+                    className={cn("absolute top-1.5 right-1.5", CAL_DAY_ADD_BUTTON)}
                     aria-label="Nuevo contenido este día"
                     title="Nuevo contenido este día"
                   >
-                    <Plus className="size-4" />
+                    <Plus className="size-4" strokeWidth={2.5} />
                   </button>
                 )}
               </div>
@@ -142,6 +159,7 @@ export function WeekView({
             </DayDropZone>
           );
         })}
+      </div>
       </div>
 
       <DragOverlay dropAnimation={null}>

@@ -71,14 +71,20 @@ function ClientUserFormBody({ clientId, onDone }: { clientId: string; onDone: ()
     <form action={formAction} className="flex flex-col gap-4">
       <input type="hidden" name="clientId" value={clientId} />
 
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="email">Email</Label>
-        <Input id="email" name="email" type="email" required autoFocus />
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="cu-firstName">Nombre</Label>
+          <Input id="cu-firstName" name="firstName" required autoFocus autoComplete="given-name" />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="cu-lastName">Apellido (opcional)</Label>
+          <Input id="cu-lastName" name="lastName" autoComplete="family-name" />
+        </div>
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="fullName">Nombre (opcional)</Label>
-        <Input id="fullName" name="fullName" />
+        <Label htmlFor="email">Email</Label>
+        <Input id="email" name="email" type="email" required autoComplete="email" />
       </div>
 
       {state.error && <p className="text-sm text-destructive">{state.error}</p>}

@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Archive, ArchiveRestore, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, Pencil, Trash2 } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -16,12 +16,8 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { RowActionsMenu } from "@/components/admin/row-actions-menu";
 import { CalendarFormDialog } from "@/components/admin/calendar-form-dialog";
 import { deleteCalendar, setCalendarArchived } from "@/lib/actions/calendars";
 import { toast } from "@/lib/toast";
@@ -34,7 +30,7 @@ interface CalendarRowActionsProps {
   publicationCount: number;
   clients?: Client[];
   className?: string;
-  /** Fila compacta del acordeón de Clientes: "Ver" + un único menú "⋯" con Editar/Archivar/Eliminar. */
+  /** Fila compacta (Clientes y ficha del cliente): "Ver" + el menú "•••" con Editar/Archivar/Eliminar. */
   compact?: boolean;
 }
 
@@ -87,13 +83,7 @@ export function CalendarRowActions({ client, calendar, publicationCount, clients
         <Button size="sm" nativeButton={false} render={<Link href={`/admin/clients/${client.id}/planner?calendars=${calendar.id}`} />}>
           Ver
         </Button>
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={<Button variant="ghost" size="sm" className="px-2" aria-label="Acciones de calendario" />}
-          >
-            <MoreHorizontal className="size-3.5" />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
+        <RowActionsMenu label={`Más acciones de ${calendar.name}`}>
             <DropdownMenuItem onClick={() => setEditOpen(true)}>
               <Pencil />
               Editar
@@ -108,8 +98,7 @@ export function CalendarRowActions({ client, calendar, publicationCount, clients
                 Eliminar definitivamente
               </DropdownMenuItem>
             )}
-          </DropdownMenuContent>
-        </DropdownMenu>
+        </RowActionsMenu>
         {editDialog}
         <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
           <AlertDialogContent>
