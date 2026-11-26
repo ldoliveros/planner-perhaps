@@ -17,6 +17,7 @@
 //   node supabase/qa/v1.6/qa-db.mjs agenda-deploy --confirm <ref QA> | agenda-functions | agenda-secrets | agenda-status
 //        Edge Function daily-agenda en QA (ref fijo): desplegar, listar, nombres de secretos, cron/daily_agenda_log
 //   node supabase/qa/v1.6/qa-db.mjs agenda-disable-sends --confirm <ref QA>  quita RESEND_API_KEY de QA (sin envíos)
+//   node supabase/qa/v1.6/qa-db.mjs select --file <consulta.sql>          un SELECT/WITH de solo lectura (inspección)
 //   node supabase/qa/v1.6/qa-db.mjs flag-status | notifications-recent      consultas fijas de solo lectura
 //   node supabase/qa/v1.6/qa-db.mjs realtime-subscriptions | realtime-filter-check  Realtime: suscripciones vivas por rol
 //        y privilegios de columna que valida el trigger de filtros (solo lectura)
@@ -27,7 +28,7 @@
 //   node supabase/qa/v1.6/qa-db.mjs dry-run-archive --confirm <ref QA>  dry-run (ROLLBACK) de pending 20261017000001/2 + security_checks_archive.sql
 //   node supabase/qa/v1.6/qa-db.mjs dry-run-replies-reactions --confirm <ref QA>  dry-run (ROLLBACK) de pending 20261014000001/2
 //   node supabase/qa/v1.6/qa-db.mjs dry-run-collab-emails --confirm <ref QA>  dry-run (ROLLBACK) de pending 20261018000001 + security_checks_collab_emails.sql
-//   node supabase/qa/v1.6/qa-db.mjs security-checks --suite core|comment-reads|replies-reactions|archive|collab-emails|collab-integration|comments-status --confirm <ref QA>  pruebas (revertidas)
+//   node supabase/qa/v1.6/qa-db.mjs security-checks --suite core|comment-reads|replies-reactions|archive|collab-emails|collab-integration|comments-status|client-editors --confirm <ref QA>  pruebas (revertidas)
 //
 // La URL de la base NUNCA va en el repo ni en el chat: se lee de la variable de entorno QA_DB_URL o del archivo
 // `.env.qa.local` en la raíz del repo (gitignoreado por `.env*`; Next no lo carga). Nunca se imprime completa.
@@ -657,6 +658,7 @@ switch (command) {
       "collab-emails": "security_checks_collab_emails.sql",
       "collab-integration": "integration_collab_emails_paused.sql",
       "comments-status": "security_checks_comments_status.sql",
+      "client-editors": "security_checks_client_editors.sql",
     };
     const suite = arg("--suite");
     if (!suites[suite]) fail(`security-checks exige --suite ${Object.keys(suites).join(" | ")}.`);
@@ -771,6 +773,19 @@ switch (command) {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+    break;
+  }
+  case "select": {
+    // Consulta de SOLO LECTURA ad hoc (inspección de esquema/políticas en QA): un único SELECT/WITH, sin escrituras.
+    const file = arg("--file");
+    if (!file) fail("select exige --file <archivo.sql> con UNA consulta SELECT/WITH.");
+    const sqlText = readFileSync(resolve(file), "utf8").trim().replace(/;\s*$/, "");
+    if (!/^(select|with)\b/i.test(sqlText)) fail("select solo admite consultas que empiezan con SELECT o WITH.");
+    if (sqlText.includes(";")) fail("select admite una sola sentencia (sin ';' intermedios).");
+    if (/\b(insert|update|delete|truncate|alter|drop|create|grant|revoke|call|do|copy|execute|set_config|pg_terminate_backend)\b/i.test(sqlText.replace(/'[^']*'/g, "''"))) {
+      fail("select rechaza palabras de escritura (insert/update/delete/ddl/grant…).");
+    }
+    runCli(["db", "query", sqlText, "--db-url", url, "-o", "json"], workdir);
     break;
   }
   case "push": {
