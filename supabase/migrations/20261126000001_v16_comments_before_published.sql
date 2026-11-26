@@ -1,10 +1,10 @@
--- v1.6 — Comentarios en todos los estados previos a Publicado (Borrador, En revisión, Aprobada).
+-- v1.6 — Comentarios abiertos en todos los estados salvo Publicada (Borrador, En revisión, Aprobada y Descartada).
 --
--- Antes: escribir / editar / eliminar comentarios solo En revisión. Ahora: Borrador, En revisión y Aprobada. Publicada y
--- Descartada: historial visible (lectura sin cambios: RLS de publication_comments por can_view_client, sin estado) y sin
--- comentarios nuevos, ediciones ni eliminaciones. Si la publicación vuelve a un estado anterior, se habilitan de nuevo
--- (el chequeo es sobre el estado vigente, en cada RPC). Reacciones: se suma Borrador (antes En revisión, Aprobada o
--- Publicada), para no ofrecer comentarios en Borrador sin reacciones.
+-- Antes: escribir / editar / eliminar comentarios solo En revisión. Ahora: en todos los estados salvo Publicada. Publicada:
+-- historial visible (lectura sin cambios: RLS de publication_comments por can_view_client, sin estado) y sin comentarios
+-- nuevos, respuestas, ediciones ni eliminaciones. Si la publicación deja de estar Publicada, se habilitan de nuevo (el
+-- chequeo es sobre el estado vigente, en cada RPC). Reacciones: en todos los estados (antes En revisión, Aprobada o
+-- Publicada), para no ofrecer comentarios sin reacciones.
 --
 -- Solo reemplaza el chequeo de estado (create or replace, misma firma: conserva grants). Acceso, autor, largo,
 -- menciones, auditoría y notificaciones quedan idénticos. Sin cambios de tablas, RLS ni grants a anon.
@@ -17,7 +17,7 @@ language sql
 immutable
 set search_path = public, pg_temp
 as $fn$
-  select coalesce(p_status_key in ('draft', 'in_review', 'approved'), false);
+  select coalesce(p_status_key in ('draft', 'in_review', 'approved', 'discarded'), false);
 $fn$;
 
 revoke execute on function public.comments_open_for_status(text) from public, anon, authenticated;
@@ -70,7 +70,7 @@ begin
     raise exception 'Publicación no encontrada o sin permisos.' using errcode = '42501';
   end if;
   if public.comments_open_for_status(v_status_key) is not true then
-    raise exception 'Los comentarios están habilitados en Borrador, En revisión y Aprobada.' using errcode = 'P0001';
+    raise exception 'No se pueden agregar comentarios: la publicación está Publicada.' using errcode = 'P0001';
   end if;
   if char_length(v_body) = 0 or char_length(v_body) > 5000 then
     raise exception 'El comentario debe tener entre 1 y 5000 caracteres.' using errcode = '22023';
@@ -145,7 +145,7 @@ begin
   where p.id = v_comment.publication_id
   for share of p;
   if public.comments_open_for_status(v_status_key) is not true then
-    raise exception 'Los comentarios solo se pueden editar en Borrador, En revisión y Aprobada.' using errcode = 'P0001';
+    raise exception 'No se pueden editar comentarios: la publicación está Publicada.' using errcode = 'P0001';
   end if;
   if char_length(v_body) = 0 or char_length(v_body) > 5000 then
     raise exception 'El comentario debe tener entre 1 y 5000 caracteres.' using errcode = '22023';
@@ -211,7 +211,7 @@ begin
   where p.id = v_comment.publication_id
   for share of p;
   if public.comments_open_for_status(v_status_key) is not true then
-    raise exception 'Los comentarios solo se pueden eliminar en Borrador, En revisión y Aprobada.' using errcode = 'P0001';
+    raise exception 'No se pueden eliminar comentarios: la publicación está Publicada.' using errcode = 'P0001';
   end if;
 
   insert into public.publication_comment_revisions (comment_id, publication_id, client_id, action, previous_body, actor_id)
@@ -269,8 +269,8 @@ begin
   if v_deleted_at is not null then
     raise exception 'No se puede reaccionar a un comentario eliminado.' using errcode = 'P0001';
   end if;
-  if coalesce(v_status_key, '') not in ('draft', 'in_review', 'approved', 'published') then
-    raise exception 'Las reacciones están disponibles con la publicación en Borrador, En revisión, Aprobada o Publicada.' using errcode = 'P0001';
+  if coalesce(v_status_key, '') not in ('draft', 'in_review', 'approved', 'published', 'discarded') then
+    raise exception 'Reacción no disponible para el estado de la publicación.' using errcode = 'P0001';
   end if;
 
   -- publication_id / client_id los completa el trigger BEFORE desde el comentario (NOT NULL se verifica después

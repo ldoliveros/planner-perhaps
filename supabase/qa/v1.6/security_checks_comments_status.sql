@@ -1,5 +1,5 @@
--- v1.6 — Pruebas de 20261126000001_v16_comments_before_published.sql (comentarios en todos los estados previos a
--- Publicado).
+-- v1.6 — Pruebas de 20261126000001_v16_comments_before_published.sql (comentarios abiertos en todos los estados salvo
+-- Publicada: Borrador, En revisión, Aprobada y Descartada).
 --
 -- NO EJECUTAR sin autorización. Requiere la migración aplicada. Rol postgres. Se corre con el guard:
 --   node supabase/qa/v1.6/qa-db.mjs security-checks --suite comments-status --confirm wxkbkdoaohywqabmyqjk
@@ -41,6 +41,12 @@ begin
   end loop;
 
   insert into public.publications (calendar_id, client_id, title, publication_date, content_type_id, status_id)
+  values (v_calendar, v_client, 'QA v1.6 CS published 2 (temporal)', current_date, v_ct,
+          (select id from public.statuses where key = 'published'))
+  returning id into v_pub;
+  perform set_config('cs.pub_published2', v_pub::text, true);
+
+  insert into public.publications (calendar_id, client_id, title, publication_date, content_type_id, status_id)
   values (v_foreign_calendar, v_foreign_client, 'QA v1.6 CS ajena (temporal)', current_date, v_ct,
           (select id from public.statuses where key = 'draft'))
   returning id into v_pub;
@@ -58,8 +64,8 @@ do $$
 declare
   v_key text;
 begin
-  -- CS01: comentar y responder en Borrador, En revisión y Aprobada.
-  foreach v_key in array array['draft', 'in_review', 'approved'] loop
+  -- CS01: comentar y responder en Borrador, En revisión, Aprobada y Descartada.
+  foreach v_key in array array['draft', 'in_review', 'approved', 'discarded'] loop
     begin
       perform public.add_publication_comment(current_setting('cs.pub_' || v_key)::uuid, 'nuevo ' || v_key, '{}', gen_random_uuid());
       perform public.add_publication_comment(current_setting('cs.pub_' || v_key)::uuid, 'respuesta ' || v_key, '{}',
@@ -69,19 +75,25 @@ begin
     end;
   end loop;
 
-  -- CS02: Publicada y Descartada rechazan comentarios nuevos.
-  foreach v_key in array array['published', 'discarded'] loop
-    begin
-      perform public.add_publication_comment(current_setting('cs.pub_' || v_key)::uuid, 'tarde', '{}', gen_random_uuid());
-      raise exception 'FAIL CS02: comentario aceptado en %', v_key;
-    exception when raise_exception then
-      if sqlerrm like 'FAIL%' then raise; end if;
-    end;
-  end loop;
+  -- CS02: Publicada rechaza comentarios nuevos y respuestas.
+  begin
+    perform public.add_publication_comment(current_setting('cs.pub_published')::uuid, 'tarde', '{}', gen_random_uuid());
+    raise exception 'FAIL CS02: comentario aceptado en Publicada';
+  exception when raise_exception then
+    if sqlerrm like 'FAIL%' then raise; end if;
+  end;
+  begin
+    perform public.add_publication_comment(current_setting('cs.pub_published')::uuid, 'respuesta tarde', '{}',
+                                           gen_random_uuid(), current_setting('cs.c_published')::uuid);
+    raise exception 'FAIL CS02b: respuesta aceptada en Publicada';
+  exception when raise_exception then
+    if sqlerrm like 'FAIL%' then raise; end if;
+  end;
 
-  -- CS03: editar / eliminar propios: sí en Borrador y Aprobada; no en Publicada.
+  -- CS03: editar / eliminar propios: sí en Borrador, Aprobada y Descartada; no en Publicada.
   perform public.edit_publication_comment(current_setting('cs.c_draft')::uuid, 'editado en borrador', '{}');
   perform public.delete_publication_comment(current_setting('cs.c_approved')::uuid);
+  perform public.edit_publication_comment(current_setting('cs.c_discarded')::uuid, 'editado en descartada', '{}');
   begin
     perform public.edit_publication_comment(current_setting('cs.c_published')::uuid, 'editado tarde', '{}');
     raise exception 'FAIL CS03: edición aceptada en Publicada';
@@ -95,17 +107,12 @@ begin
     if sqlerrm like 'FAIL%' then raise; end if;
   end;
 
-  -- CS04: reacciones en Borrador y Publicada sí; Descartada no.
+  -- CS04: reacciones en todos los estados (Borrador, Publicada y Descartada incluidas).
   if public.set_comment_reaction(current_setting('cs.c_draft')::uuid, '👍', true) is not true
-     or public.set_comment_reaction(current_setting('cs.c_published')::uuid, '👍', true) is not true then
-    raise exception 'FAIL CS04: no se pudo reaccionar en Borrador o Publicada';
+     or public.set_comment_reaction(current_setting('cs.c_published')::uuid, '👍', true) is not true
+     or public.set_comment_reaction(current_setting('cs.c_discarded')::uuid, '👍', true) is not true then
+    raise exception 'FAIL CS04: no se pudo reaccionar en Borrador, Publicada o Descartada';
   end if;
-  begin
-    perform public.set_comment_reaction(current_setting('cs.c_discarded')::uuid, '👍', true);
-    raise exception 'FAIL CS04b: reaccionó en Descartada';
-  exception when raise_exception then
-    if sqlerrm like 'FAIL%' then raise; end if;
-  end;
 
   -- CS05: el acceso se sigue respetando (Borrador de otro cliente → sin permisos).
   begin
@@ -122,6 +129,7 @@ begin
     raise exception 'FAIL CS06: el historial de Publicada no es visible para el Client User';
   end if;
   if (select body from public.publication_comments where id = current_setting('cs.c_draft')::uuid) <> 'editado en borrador'
+     or (select body from public.publication_comments where id = current_setting('cs.c_discarded')::uuid) <> 'editado en descartada'
      or (select deleted_at from public.publication_comments where id = current_setting('cs.c_approved')::uuid) is null then
     raise exception 'FAIL CS03c: la edición o eliminación permitida no se aplicó';
   end if;
@@ -154,11 +162,13 @@ select set_config('request.jwt.claims', json_build_object('sub', current_setting
 set local role authenticated;
 do $$
 begin
-  -- CS08: staff comenta en Borrador; en Descartada no.
+  -- CS08: staff comenta en Borrador y Descartada; en Publicada no (cs.pub_published volvió a Aprobada en CS07: se usa una
+  -- Publicada nueva).
   perform public.add_publication_comment(current_setting('cs.pub_draft')::uuid, 'staff en borrador', '{}', gen_random_uuid());
+  perform public.add_publication_comment(current_setting('cs.pub_discarded')::uuid, 'staff en descartada', '{}', gen_random_uuid());
   begin
-    perform public.add_publication_comment(current_setting('cs.pub_discarded')::uuid, 'staff tarde', '{}', gen_random_uuid());
-    raise exception 'FAIL CS08: staff comentó en Descartada';
+    perform public.add_publication_comment(current_setting('cs.pub_published2')::uuid, 'staff tarde', '{}', gen_random_uuid());
+    raise exception 'FAIL CS08: staff comentó en Publicada';
   exception when raise_exception then
     if sqlerrm like 'FAIL%' then raise; end if;
   end;
@@ -173,7 +183,7 @@ begin
     raise exception 'FAIL CS09: comments_open_for_status ejecutable por anon/authenticated';
   end if;
   if public.comments_open_for_status(null) or public.comments_open_for_status('published')
-     or not public.comments_open_for_status('approved') then
+     or not public.comments_open_for_status('approved') or not public.comments_open_for_status('discarded') then
     raise exception 'FAIL CS09b: comments_open_for_status no aplica la regla';
   end if;
   if has_function_privilege('anon', 'public.add_publication_comment(uuid, text, uuid[], uuid, uuid)', 'execute')

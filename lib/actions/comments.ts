@@ -9,7 +9,7 @@ import { COMMENT_REACTION_EMOJIS, type CommentReaction, type CommentReactionEmoj
  *   * Lectura: RLS `publication_comments_select` (can_view_client) — un usuario solo recibe comentarios de
  *     clientes que puede ver.
  *   * Escritura: RPCs security definer (add/edit/delete_publication_comment) que validan autor, cliente,
- *     estado (Borrador, En revisión o Aprobada), largo y menciones. No hay policies de INSERT/UPDATE/DELETE: un INSERT directo
+ *     estado (cualquiera salvo Publicada), largo y menciones. No hay policies de INSERT/UPDATE/DELETE: un INSERT directo
  *     falla aunque se salteé la UI.
  * La UI solo oculta acciones que la base igual rechazaría.
  *

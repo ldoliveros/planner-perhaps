@@ -57,7 +57,7 @@ Detalle y registro de avance: `supabase/pending-migrations/v1.6/README.md` (migr
 `supabase/rollback/v1.6/DEPLOY_RUNBOOK.md` (despliegue a producción y decisiones previas D1–D4).
 
 Implementado en la rama (2026-10-09):
-- Colaboración: comentarios con menciones (Borrador, En revisión y Aprobada; Publicada y Descartada en solo lectura), aprobación del cliente con versión, historial
+- Colaboración: comentarios con menciones (todos los estados salvo Publicada, que queda en solo lectura), aprobación del cliente con versión, historial
   de estados, notificaciones en tiempo real (campanita, drawer lateral, historial), bloqueo optimista al guardar.
 - Modal de publicación con pestañas: Edición/Comentarios (staff) y Publicación/Comentarios (Client User);
   altura estable, ambos paneles montados (no se pierden cambios sin guardar) y ocultamiento inmediato.

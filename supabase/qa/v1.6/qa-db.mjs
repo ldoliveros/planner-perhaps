@@ -12,6 +12,8 @@
 //   node supabase/qa/v1.6/qa-db.mjs pg-version                             versión de Postgres (consulta fija, solo lectura)
 //   node supabase/qa/v1.6/qa-db.mjs push-dry [--workdir <repo>]            supabase db push --dry-run
 //   node supabase/qa/v1.6/qa-db.mjs push --workdir <repo> --expect-last <versión> --confirm <ref QA>
+//   node supabase/qa/v1.6/qa-db.mjs reapply-migration --version 20261126000001 --confirm <ref QA>  re-ejecuta una migración
+//        ya registrada cuyo archivo cambió (solo versiones idempotentes de una lista fija; atómico)
 //   node supabase/qa/v1.6/qa-db.mjs flag-status | notifications-recent      consultas fijas de solo lectura
 //   node supabase/qa/v1.6/qa-db.mjs realtime-subscriptions | realtime-filter-check  Realtime: suscripciones vivas por rol
 //        y privilegios de columna que valida el trigger de filtros (solo lectura)
@@ -704,6 +706,35 @@ switch (command) {
     );
     break;
   }
+  case "reapply-migration": {
+    // Vuelve a ejecutar en QA una migración YA registrada cuyo archivo cambió antes de llegar a producción (`db push` no
+    // re-ejecuta versiones registradas). Solo versiones de la lista: idempotentes (create or replace / revoke), sin DDL de
+    // tablas ni datos. Corre atómico (un DO) y no toca el historial de migraciones.
+    const REAPPLICABLE = ["20261126000001"];
+    const version = arg("--version");
+    if (!REAPPLICABLE.includes(version)) fail(`reapply-migration solo admite --version ${REAPPLICABLE.join(" | ")}.`);
+    if (arg("--confirm") !== QA_PROJECT_REF) fail(`reapply-migration exige --confirm ${QA_PROJECT_REF}.`);
+    const name = migrations.find((m) => m.startsWith(`${version}_`));
+    if (!name) fail(`no existe supabase/migrations/${version}_*.sql en ${workdir}.`);
+    const body = readFileSync(join(workdir, "supabase", "migrations", name), "utf8");
+    if (/^\s*(begin|commit|rollback|end\s+(transaction|work))\s*;/im.test(body)) fail("la migración contiene control de transacción.");
+    if (body.includes("$mig$") || body.includes("$reapply$")) fail("la migración contiene un delimitador reservado.");
+    // `db query` admite UNA sentencia: un DO que la ejecuta con EXECUTE (atómico: todo o nada).
+    const dir = mkdtempSync(join(tmpdir(), "qa-reapply-"));
+    const file = join(dir, "reapply.sql");
+    writeFileSync(file, `do $reapply$\nbegin\n  execute $mig$${body}$mig$;\nend\n$reapply$;\n`, "utf8");
+    try {
+      console.log(`\n→ re-aplicando ${name} (atómico): supabase db query --file <temporal> --db-url ${redact(url)}\n`);
+      const run = spawnSync(process.execPath, [cliEntry(), "db", "query", "--file", file, "--db-url", url, "--workdir", workdir], {
+        stdio: "inherit",
+        shell: false,
+      });
+      process.exitCode = run.status ?? 1;
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+    break;
+  }
   case "push": {
     const expectLast = arg("--expect-last");
     const confirm = arg("--confirm");
@@ -716,5 +747,5 @@ switch (command) {
     break;
   }
   default:
-    fail('comando desconocido. Usar: check | app-env | list | pg-version | push-dry | push | flag-status | flag-enable-qa-sandbox | notifications-recent | realtime-subscriptions | realtime-filter-check | dry-run-comment-reads | dry-run-replies-reactions | dry-run-archive | dry-run-collab-emails | security-checks | schema-status | rehearse-rollback (ver encabezado del archivo).');
+    fail('comando desconocido. Usar: check | app-env | list | pg-version | push-dry | push | reapply-migration | flag-status | flag-enable-qa-sandbox | notifications-recent | realtime-subscriptions | realtime-filter-check | dry-run-comment-reads | dry-run-replies-reactions | dry-run-archive | dry-run-collab-emails | security-checks | schema-status | rehearse-rollback (ver encabezado del archivo).');
 }
