@@ -75,6 +75,7 @@ export function mapClientUser(row: ProfileRow): ClientUser {
     role: row.role,
     clientId: row.client_id,
     createdAt: row.created_at,
+    canEditPublications: false,
   };
 }
 

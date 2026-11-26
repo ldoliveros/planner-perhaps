@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { CalendarScreen } from "@/components/calendar/calendar-screen";
 import {
+  currentUserCanEditPublications,
   getClientById,
   getCurrentProfile,
   getLookups,
@@ -18,13 +19,14 @@ export default async function ClientPlannerPage() {
   const client = await getClientById(profile.clientId);
   if (!client) notFound();
 
-  const [calendars, publications, clientAccounts, campaigns, lookups, members] = await Promise.all([
+  const [calendars, publications, clientAccounts, campaigns, lookups, members, canEditPublications] = await Promise.all([
     listCalendarsForClient(client.id),
     listPublicationsForClient(client.id),
     listClientAccountsForClient(client.id),
     listCampaignsForClient(client.id),
     getLookups(),
     listClientMembers(client.id),
+    currentUserCanEditPublications(client.id),
   ]);
 
   return (
@@ -37,6 +39,7 @@ export default async function ClientPlannerPage() {
       lookups={lookups}
       members={members}
       readOnly
+      clientEditor={canEditPublications}
     />
   );
 }

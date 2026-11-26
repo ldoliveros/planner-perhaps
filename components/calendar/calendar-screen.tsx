@@ -92,6 +92,9 @@ interface CalendarScreenProps {
   campaigns: Campaign[];
   lookups: Lookups;
   readOnly?: boolean;
+  /** Portal del Client User con permiso Editor en este cliente: crea y abre sus publicaciones en el editor (sin las
+   * acciones de staff: archivar, eliminar, exportar, acciones rápidas ni arrastrar). Solo junto con `readOnly`. */
+  clientEditor?: boolean;
   /** Solo admin (Planner de un cliente): espacios a los que se puede cambiar desde el selector del encabezado. */
   allClients?: SpaceOption[];
   /** Solo Planner de cliente (nunca se pasa desde Publicaciones global): integrantes con acceso a
@@ -140,6 +143,7 @@ export function CalendarScreen({
   campaigns,
   lookups,
   readOnly = false,
+  clientEditor = false,
   allClients,
   members,
   global,
@@ -153,7 +157,7 @@ export function CalendarScreen({
   // create de PublicationView, con un selector de cliente previo — Publicaciones no tiene uno fijo).
   // Exportar CSV: staff, en el Planner de un cliente y (v1.6) también en el calendario global ("Ver todos"), en el
   // menú ••• del encabezado. Misma función de exportación en los dos contextos.
-  const canCreatePublication = canManage;
+  const canCreatePublication = canManage || (readOnly && clientEditor);
   const canExport = canManage;
 
   const clientAccountMap = useMemo(() => new Map(clientAccounts.map((a) => [a.id, a])), [clientAccounts]);
@@ -1138,7 +1142,8 @@ export function CalendarScreen({
             campaigns={viewCampaigns}
             onSaved={isGlobal ? upsertGlobalPublication : undefined}
             onDeleted={isGlobal ? removeGlobalPublication : undefined}
-            readOnly={readOnly}
+            readOnly={readOnly && !clientEditor}
+            clientEditor={readOnly && clientEditor}
             initialTab={viewState.tab}
             onPublicationReloaded={(fresh, tab) => {
               // Remonta la vista con la versión vigente (misma vía que abrir una publicación), en la misma pestaña.

@@ -15,6 +15,16 @@ import { isValidTrelloUrl, TRELLO_URL_ERROR } from "@/lib/trello-url";
 import type { Publication, PublicationAsset } from "@/types";
 
 const THUMBNAILS_BUCKET = "thumbnails";
+/**
+ * Agrupa en UN evento de actividad todas las escrituras de un mismo guardado (publicación, destinos, archivos): los
+ * triggers de 20261126000003_publication_activity leen este header. Solo agrupa eventos del mismo usuario.
+ */
+const SAVE_ID_HEADER = "x-planner-save-id";
+const NO_PERMISSION_MESSAGE = "No tenés permiso para crear o editar publicaciones de este cliente.";
+
+function isPermissionError(error: { code?: string } | null | undefined): boolean {
+  return error?.code === "42501";
+}
 const SIGNED_URL_TTL_SECONDS = 60 * 60;
 const MAX_CAROUSEL_IMAGES = 10;
 
@@ -123,6 +133,7 @@ export async function savePublication(
   const originalUpdatedAt = String(formData.get("originalUpdatedAt") ?? "").trim() || null;
 
   const supabase = await createClient();
+  const saveId = crypto.randomUUID();
   const publicationPayload = {
     calendar_id: calendarId,
     title,
@@ -141,12 +152,12 @@ export async function savePublication(
   let savedUpdatedAt: string | undefined;
 
   if (publicationId) {
-    let updateQuery = supabase.from("publications").update(publicationPayload).eq("id", publicationId);
+    let updateQuery = supabase.from("publications").update(publicationPayload).eq("id", publicationId).setHeader(SAVE_ID_HEADER, saveId);
     if (originalStatusId && originalUpdatedAt) {
       updateQuery = updateQuery.eq("status_id", originalStatusId).eq("updated_at", originalUpdatedAt);
     }
     const { data: updatedRows, error } = await updateQuery.select("id, updated_at");
-    if (error) return { error: error.message, savedAt: null };
+    if (error) return { error: isPermissionError(error) ? NO_PERMISSION_MESSAGE : error.message, savedAt: null };
     if (!updatedRows || updatedRows.length === 0) {
       if (!originalStatusId || !originalUpdatedAt) {
         return { error: saveConflictMessage("not_found"), savedAt: null, notFound: true };
@@ -174,9 +185,10 @@ export async function savePublication(
     const { data, error } = await supabase
       .from("publications")
       .insert(publicationPayload)
+      .setHeader(SAVE_ID_HEADER, saveId)
       .select("id, updated_at")
       .single();
-    if (error) return { error: error.message, savedAt: null };
+    if (error) return { error: isPermissionError(error) ? NO_PERMISSION_MESSAGE : error.message, savedAt: null };
     publicationId = data.id;
     savedUpdatedAt = data.updated_at;
   }
@@ -206,20 +218,34 @@ export async function savePublication(
   }
   const clientId = pubRow.client_id;
 
-  // Destinos: reemplazo completo. Simple y correcto para un conjunto chico por publicación.
-  const { error: deleteDestError } = await supabase
+  // Destinos: solo la diferencia (quitar los que ya no están, agregar los nuevos). Un guardado que no cambia los
+  // destinos no escribe nada — y no genera actividad.
+  const { data: currentDestinations, error: currentDestError } = await supabase
     .from("publication_destinations")
-    .delete()
+    .select("client_account_id")
     .eq("publication_id", publicationId);
-  if (deleteDestError) return partialFailure(deleteDestError.message);
+  if (currentDestError) return partialFailure(currentDestError.message);
+  const wantedAccountIds = new Set(destinations.map((d) => d.clientAccountId));
+  const currentAccountIds = new Set((currentDestinations ?? []).map((d) => d.client_account_id));
+  const removedAccountIds = [...currentAccountIds].filter((accountId) => !wantedAccountIds.has(accountId));
+  const addedAccountIds = [...wantedAccountIds].filter((accountId) => !currentAccountIds.has(accountId));
 
-  const { error: insertDestError } = await supabase.from("publication_destinations").insert(
-    destinations.map((d) => ({
-      publication_id: publicationId as string,
-      client_account_id: d.clientAccountId,
-    }))
-  );
-  if (insertDestError) return partialFailure(insertDestError.message);
+  if (removedAccountIds.length > 0) {
+    const { error: deleteDestError } = await supabase
+      .from("publication_destinations")
+      .delete()
+      .eq("publication_id", publicationId)
+      .in("client_account_id", removedAccountIds)
+      .setHeader(SAVE_ID_HEADER, saveId);
+    if (deleteDestError) return partialFailure(deleteDestError.message);
+  }
+  if (addedAccountIds.length > 0) {
+    const { error: insertDestError } = await supabase
+      .from("publication_destinations")
+      .insert(addedAccountIds.map((accountId) => ({ publication_id: publicationId as string, client_account_id: accountId })))
+      .setHeader(SAVE_ID_HEADER, saveId);
+    if (insertDestError) return partialFailure(insertDestError.message);
+  }
 
   let responseAssets: PublicationAsset[] | undefined;
 
@@ -246,7 +272,8 @@ export async function savePublication(
         const { error } = await supabase
           .from("publication_assets")
           .update({ sort_order: index, is_primary: isPrimary })
-          .eq("id", slot.assetId);
+          .eq("id", slot.assetId)
+          .setHeader(SAVE_ID_HEADER, saveId);
         if (error) return partialFailure(error.message);
         continue;
       }
@@ -267,15 +294,18 @@ export async function savePublication(
         .upload(path, optimized, { contentType: "image/webp", upsert: true });
       if (uploadError) return partialFailure(uploadError.message);
 
-      const { error: insertError } = await supabase.from("publication_assets").insert({
-        id: assetId,
-        publication_id: publicationId,
-        type: "image",
-        filename: file.name || "imagen.webp",
-        thumbnail_url: path,
-        sort_order: index,
-        is_primary: isPrimary,
-      });
+      const { error: insertError } = await supabase
+        .from("publication_assets")
+        .insert({
+          id: assetId,
+          publication_id: publicationId,
+          type: "image",
+          filename: file.name || "imagen.webp",
+          thumbnail_url: path,
+          sort_order: index,
+          is_primary: isPrimary,
+        })
+        .setHeader(SAVE_ID_HEADER, saveId);
       if (insertError) return partialFailure(insertError.message);
       keptIds.add(assetId);
     }
@@ -297,7 +327,8 @@ export async function savePublication(
       const { error: deleteAssetsError } = await supabase
         .from("publication_assets")
         .delete()
-        .in("id", removed.map((a) => a.id));
+        .in("id", removed.map((a) => a.id))
+        .setHeader(SAVE_ID_HEADER, saveId);
       if (deleteAssetsError) return partialFailure(deleteAssetsError.message);
     }
 
@@ -347,15 +378,22 @@ export async function savePublication(
       .maybeSingle();
 
     if (existingPrimary) {
-      await supabase.from("publication_assets").update({ thumbnail_url: path }).eq("id", existingPrimary.id);
+      await supabase
+        .from("publication_assets")
+        .update({ thumbnail_url: path })
+        .eq("id", existingPrimary.id)
+        .setHeader(SAVE_ID_HEADER, saveId);
     } else {
-      await supabase.from("publication_assets").insert({
-        publication_id: publicationId,
-        type: "image",
-        filename: thumbnail.name || "portada.webp",
-        thumbnail_url: path,
-        is_primary: true,
-      });
+      await supabase
+        .from("publication_assets")
+        .insert({
+          publication_id: publicationId,
+          type: "image",
+          filename: thumbnail.name || "portada.webp",
+          thumbnail_url: path,
+          is_primary: true,
+        })
+        .setHeader(SAVE_ID_HEADER, saveId);
     }
   }
 
@@ -363,6 +401,7 @@ export async function savePublication(
   revalidatePath(`/admin/clients/${clientId}`);
   revalidatePath("/admin/calendars");
   revalidatePath("/admin/publications");
+  revalidatePath("/client/planner");
   // Reutiliza getPublicationById tal cual (misma query que ya usa /p/[id], ya scopeada por RLS y con
   // thumbnails firmados) — evita reconstruir a mano el Publication completo (destinos + assets) acá.
   const publication = await getPublicationById(publicationId);

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createAdminClient, requireSuperAdmin } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
 import { getSiteURL } from "@/lib/site-url";
 import { friendlyInviteError } from "@/lib/friendly-errors";
 import { FIRST_NAME_REQUIRED_ERROR, joinPersonName } from "@/lib/person-name";
@@ -19,6 +20,7 @@ export async function inviteClientUser(
   // Nombre (obligatorio) + Apellido (opcional) → full_name, con espacio solo si hay Apellido.
   const fullName = joinPersonName(String(formData.get("firstName") ?? ""), String(formData.get("lastName") ?? ""));
   const clientId = String(formData.get("clientId") ?? "");
+  const canEditPublications = formData.get("canEditPublications") === "on";
 
   if (!fullName) {
     return { error: FIRST_NAME_REQUIRED_ERROR, savedAt: null };
@@ -62,8 +64,82 @@ export async function inviteClientUser(
     return { error: profileError.message, savedAt: null };
   }
 
+  if (canEditPublications) {
+    const permissionError = await writePublicationPermission(data.user.id, clientId, true);
+    if (permissionError) {
+      revalidatePath(`/admin/clients/${clientId}`);
+      return { error: `La invitación se envió, pero no se pudo guardar el permiso Editor: ${permissionError}`, savedAt: null };
+    }
+  }
+
   revalidatePath(`/admin/clients/${clientId}`);
   return { error: null, savedAt: Date.now() };
+}
+
+/** Tabla nueva (20261126000002), fuera de database.types.ts. */
+interface EditorsAdminTable {
+  from(table: "client_publication_editors"): {
+    upsert(
+      row: { client_id: string; user_id: string; granted_by: string | null },
+      opts: { onConflict: string; ignoreDuplicates: boolean }
+    ): PromiseLike<{ error: { message: string } | null }>;
+    delete(): {
+      eq(column: "client_id", value: string): { eq(column: "user_id", value: string): PromiseLike<{ error: { message: string } | null }> };
+    };
+  };
+}
+
+/** Escribe el permiso con service_role (la tabla no tiene grants de escritura para usuarios). */
+async function writePublicationPermission(userId: string, clientId: string, canEdit: boolean): Promise<string | null> {
+  const admin = createAdminClient() as unknown as EditorsAdminTable;
+  if (canEdit) {
+    const grantedBy = await currentUserId();
+    const { error } = await admin
+      .from("client_publication_editors")
+      .upsert({ client_id: clientId, user_id: userId, granted_by: grantedBy }, { onConflict: "client_id,user_id", ignoreDuplicates: true });
+    return error?.message ?? null;
+  }
+  const { error } = await admin.from("client_publication_editors").delete().eq("client_id", clientId).eq("user_id", userId);
+  return error?.message ?? null;
+}
+
+async function currentUserId(): Promise<string | null> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  return user?.id ?? null;
+}
+
+/**
+ * Permiso Lector / Editor de un Client User en SU cliente. Solo Super Admin (quien administra los usuarios del
+ * cliente). El usuario tiene que ser Client User de ese mismo cliente: un clientId manipulado no habilita nada.
+ */
+export async function setClientUserPublicationPermission(
+  userId: string,
+  clientId: string,
+  canEdit: boolean
+): Promise<{ error: string | null }> {
+  try {
+    await requireSuperAdmin();
+  } catch {
+    return { error: "No autorizado." };
+  }
+  const admin = createAdminClient();
+  const { data: target, error: targetError } = await admin
+    .from("profiles")
+    .select("id, role, client_id")
+    .eq("id", userId)
+    .maybeSingle();
+  if (targetError) return { error: "No se pudo leer el usuario." };
+  if (!target) return { error: "El usuario no existe." };
+  if (target.role !== "client" || target.client_id !== clientId) {
+    return { error: "Este usuario no pertenece al cliente indicado." };
+  }
+  const error = await writePublicationPermission(userId, clientId, canEdit);
+  if (error) return { error: "No se pudo guardar el permiso." };
+  revalidatePath(`/admin/clients/${clientId}`);
+  return { error: null };
 }
 
 export async function deleteClientUser(userId: string, clientId: string): Promise<{ error: string | null }> {

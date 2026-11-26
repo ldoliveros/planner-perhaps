@@ -18,6 +18,8 @@ interface CampaignSelectProps {
   value: string;
   onChange: (campaignId: string) => void;
   onCreated: (campaign: Campaign) => void;
+  /** false (Client User editor): solo campañas existentes, sin "+ Nueva campaña". */
+  allowCreate?: boolean;
 }
 
 /**
@@ -27,7 +29,7 @@ interface CampaignSelectProps {
  * envía vía el hidden input que arma PublicationView — este componente solo
  * expone ids reales a onChange (nunca los sentinels internos del Select).
  */
-export function CampaignSelect({ clientId, campaigns, value, onChange, onCreated }: CampaignSelectProps) {
+export function CampaignSelect({ clientId, campaigns, value, onChange, onCreated, allowCreate = true }: CampaignSelectProps) {
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [isPending, setIsPending] = useState(false);
@@ -36,7 +38,7 @@ export function CampaignSelect({ clientId, campaigns, value, onChange, onCreated
 
   function handleValueChange(next: string) {
     if (next === NEW) {
-      setCreating(true);
+      if (allowCreate) setCreating(true);
       return;
     }
     onChange(next === NONE ? "" : next);
@@ -68,7 +70,7 @@ export function CampaignSelect({ clientId, campaigns, value, onChange, onCreated
         items={{
           [NONE]: "Sin campaña",
           ...Object.fromEntries(options.map((c) => [c.id, c.name])),
-          [NEW]: "+ Nueva campaña",
+          ...(allowCreate ? { [NEW]: "+ Nueva campaña" } : {}),
         }}
       >
         <SelectTrigger id="campaignId" className="w-full">
@@ -82,15 +84,19 @@ export function CampaignSelect({ clientId, campaigns, value, onChange, onCreated
               {c.archivedAt && <span className="text-muted-foreground">(archivada)</span>}
             </SelectItem>
           ))}
-          <SelectSeparator />
-          <SelectItem value={NEW}>
-            <Plus className="size-3.5" />
-            Nueva campaña
-          </SelectItem>
+          {allowCreate && (
+            <>
+              <SelectSeparator />
+              <SelectItem value={NEW}>
+                <Plus className="size-3.5" />
+                Nueva campaña
+              </SelectItem>
+            </>
+          )}
         </SelectContent>
       </Select>
 
-      {creating && (
+      {allowCreate && creating && (
         <div className="flex items-center gap-1.5">
           <Input
             autoFocus

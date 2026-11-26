@@ -326,12 +326,47 @@ export async function getPublicationById(id: string): Promise<Publication | null
 
 export async function listUsersForClient(clientId: string): Promise<ClientUser[]> {
   const supabase = await createClient();
-  const { data } = await supabase
-    .from("profiles")
-    .select("*")
+  const [{ data }, editorIds] = await Promise.all([
+    supabase.from("profiles").select("*").eq("client_id", clientId).order("created_at"),
+    listPublicationEditorIds(clientId),
+  ]);
+  return (data ?? []).map((row) => ({ ...mapClientUser(row), canEditPublications: editorIds.has(row.id) }));
+}
+
+/** Tabla nueva (20261126000002), fuera de database.types.ts: cliente sin tipos para estas lecturas. */
+interface ClientEditorsTable {
+  from(table: "client_publication_editors"): {
+    select(columns: "user_id"): {
+      eq(column: "client_id", value: string): PromiseLike<{ data: { user_id: string }[] | null; error: { message: string } | null }> & {
+        eq(column: "user_id", value: string): PromiseLike<{ data: { user_id: string }[] | null; error: { message: string } | null }>;
+      };
+    };
+  };
+}
+
+/** Client Users con permiso Editor en ese cliente (RLS: staff que gestiona el cliente ve todos; un usuario, el suyo). */
+async function listPublicationEditorIds(clientId: string): Promise<Set<string>> {
+  const supabase = (await createClient()) as unknown as ClientEditorsTable;
+  const { data } = await supabase.from("client_publication_editors").select("user_id").eq("client_id", clientId);
+  return new Set((data ?? []).map((r) => r.user_id));
+}
+
+/**
+ * ¿El usuario actual (Client User) es Editor de publicaciones de su cliente? Solo decide qué ofrece la interfaz: la
+ * base (RLS de 20261126000002) vuelve a verificar el permiso en cada escritura.
+ */
+export async function currentUserCanEditPublications(clientId: string): Promise<boolean> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return false;
+  const { data, error } = await (supabase as unknown as ClientEditorsTable)
+    .from("client_publication_editors")
+    .select("user_id")
     .eq("client_id", clientId)
-    .order("created_at");
-  return (data ?? []).map(mapClientUser);
+    .eq("user_id", user.id);
+  return !error && (data ?? []).length > 0;
 }
 
 /**
