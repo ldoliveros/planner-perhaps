@@ -168,27 +168,56 @@ tabla + 4 de columna (`profiles`), idénticos al dump. Fuera de la prueba: el re
 
 ## 8. Cierre de los ajustes del 2026-11-26 (rama `feature/v1.6-collaboration`, sin push)
 
-Estado de partida (registro del proyecto, no re-verificado contra producción): v1.6.0 publicada (merge `6aa64ea` en
-`main`, 2026-10-26), las 10 migraciones de §1 aplicadas, `daily-agenda` v3 con el cron `daily-agenda-08-00-art` y
-`v16_notifications` activo para todos desde 2026-10-28. Los ajustes posteriores (Realtime con sesión, comentarios salvo
-en Publicada, aviso de notificaciones en la agenda; 7 commits sobre `origin/main`) agregan UNA migración y cambian la
-app y `daily-agenda`. Orden obligatorio, cada paso con autorización explícita 🔒:
+Estado de partida. **Git** confirma que v1.6.0 está mergeada en `main` (merge `6aa64ea`, PR #2), pero **no confirma qué
+versión está efectivamente desplegada**: eso lo dicen Netlify (deploy publicado), Supabase (`migration list`,
+`functions list`) y la base. Según el registro del proyecto (sin re-verificar contra producción): v1.6.0 publicada en
+Netlify desde 2026-10-26, las 10 migraciones de §1 aplicadas, `daily-agenda` v3 con el cron `daily-agenda-08-00-art` y
+`v16_notifications` activo para todos desde 2026-10-28. **Antes del paso 8.1, confirmarlo** en el panel de Netlify
+(deploy publicado = `6aa64ea` o posterior), con `supabase.cmd migration list` (39 aplicadas, la última
+`20261018000001`) y `supabase.cmd functions list --project-ref mglbzsysgsdrsbqlovwd` (versión de `daily-agenda`).
+Los ajustes posteriores (Realtime con sesión, comentarios salvo en Publicada, aviso de notificaciones en la agenda;
+commits sobre `origin/main`) agregan UNA migración y cambian la app y `daily-agenda`. Orden obligatorio, cada paso con
+autorización explícita 🔒:
 
 | Paso | Qué | Verificación | Si falla |
 |---|---|---|---|
 | **8.1 Migración** 🔒 | Backup manual (§6) y `supabase.cmd db push --dry-run` (debe listar SOLO `20261126000001_v16_comments_before_published`); después `supabase.cmd db push`. Solo `create or replace` de 4 funciones + `comments_open_for_status` (sin tablas, RLS ni grants). | `migration list` con 40. Con la v1.6.0 publicada es compatible: su interfaz solo ofrece comentar En revisión, que sigue permitido; la base pasa a aceptar además los demás estados salvo Publicada. | Re-ejecutar las 4 funciones desde 20261014000001 / 20261008000001 / 20261014000002 y `drop function public.comments_open_for_status(text)`. |
 | **8.2 App** 🔒 | Push de la rama, PR a `main` y merge (sin `.claude/launch.json`) → Netlify publica (auto publishing). Va DESPUÉS de 8.1: con la base vieja la interfaz ofrecería comentar fuera de En revisión y la base lo rechazaría. | §4 + comentarios: Borrador/Aprobada/Descartada abiertos, Publicada en solo lectura; sin 401 de `notifications` al cerrar sesión en otra pestaña. | Netlify a la versión anterior (§5). |
-| **8.3 `daily-agenda`** 🔒 | `supabase.cmd functions deploy daily-agenda --project-ref mglbzsysgsdrsbqlovwd`. Independiente de 8.2, pero después de 8.1 (orden recomendado). | `functions list` con versión nueva; la prueba real de 8.4. | La versión anterior sigue activa si el deploy falla; para volver atrás, desplegar `agenda.ts` del commit previo. |
+| **8.3 `daily-agenda`** 🔒 | **Antes:** la verificación de credencial del cron (abajo). Después: `supabase.cmd functions deploy daily-agenda --project-ref mglbzsysgsdrsbqlovwd`. Independiente de 8.2, pero después de 8.1 (orden recomendado). | `functions list` con versión nueva; la prueba de 8.4; al día siguiente, la corrida del cron en `daily_agenda_log` (`sent`, sin `failed`). | La versión anterior sigue activa si el deploy falla; si el cron empieza a fallar (401), volver a desplegar `daily-agenda` del commit previo (`7a3f239`) y revisar. |
 | **8.4 Prueba real del email (PENDIENTE)** 🔒 | Con la configuración EXISTENTE de producción (`RESEND_API_KEY`, `SITE_URL` ya cargados; secret key `sb_secret_…` de producción, que no se guarda en el repo). Ver abajo. | Email recibido con el aviso, HTML y texto, enlace a `<SITE_URL>/admin/notifications`. | No reintentar a ciegas: `daily_agenda_log` registra el intento (`failed` con el error). |
 
-**8.4 — cómo hacerla (solo cuando se autorice producción).** NUNCA invocar la función sin body: sin `testUserId` es la
-corrida general a todos los destinatarios. Siempre `POST https://mglbzsysgsdrsbqlovwd.supabase.co/functions/v1/daily-agenda`
-con header `apikey: <sb_secret_… de producción>` (la `service_role` legacy se rechaza con 401) y:
-1. Un usuario QA de producción con al menos una notificación sin leer (p. ej. una mención en QA Sandbox; con
-   `v16_notifications` activo las genera la app).
-2. `{"testUserId": "<id del usuario QA>", "dryRun": true}` → revisar `unreadNotifications`, `html` y `text`.
-3. `{"testUserId": "<id del usuario QA>", "overrideEmail": "<dirección autorizada>"}` → UN envío real. Queda
-   `daily_agenda_log` = `sent` para ese usuario y día (un segundo intento se saltea).
+**8.3 — verificación previa: credencial del cron vs. autenticación de la función (sin reemplazar ni mostrar secretos).**
+La función nueva autentica igual que la v3 desplegada: `index.ts` no cambia desde `f92f626` (`withSupabase({ auth:
+"secret" })`: solo acepta claves `sb_secret_…` en `apikey`; la `service_role` legacy (JWT) responde 401, comprobado en QA
+con `agenda-invoke-qa.mjs auth`). Riesgo: `npm:@supabase/server@1` no está fijado a una versión exacta, así que un
+redeploy puede resolver otra 1.x. Verificar, solo lectura:
+1. `git diff 7a3f239 HEAD -- supabase/functions/daily-agenda/index.ts` vacío (mismo entry point que la v3).
+2. Definición del job `daily-agenda-08-00-art` (`supabase.cmd db query --linked`; `cron.job` no es visible para el rol
+   del pre-flight): que mande la credencial en el header `apikey` leída de Vault por NOMBRE. Leer solo `jobname`,
+   `schedule` y el texto del comando; NUNCA `vault.decrypted_secrets` ni el valor del secreto.
+3. Formato de la credencial sin mostrarla: `select left(decrypted_secret, 10) = 'sb_secret_' from vault.decrypted_secrets
+   where name = '<nombre del secreto del job>'` → tiene que dar `true` (devuelve solo un booleano).
+4. Últimas corridas: `select status_code, count(*) from net._http_response where created > now() - interval '7 days'
+   group by 1` (solo el código: el cuerpo trae emails y HTML) y `daily_agenda_log` de los últimos días con `sent`.
+Si (3) no da `true` o (4) muestra 401: NO desplegar; la v3 actual depende de esa credencial y hay que revisarla primero.
+
+**8.4 — cómo hacerla (solo cuando se autorice producción).**
+- NUNCA invocar la función sin body ni sin `testUserId`: eso es la corrida general a todos los destinatarios.
+- `testUserId` = el ID de un usuario REAL de producción (Super Admin o Account Manager confirmado), explícito. Nunca un
+  usuario QA: la prueba tiene que reflejar datos y accesos reales.
+- Siempre `POST https://mglbzsysgsdrsbqlovwd.supabase.co/functions/v1/daily-agenda` con header
+  `apikey: <sb_secret_… de producción>` (la clave no se guarda en el repo ni se muestra).
+1. **dryRun primero**, con destinatario explícito: `{"testUserId": "<id del usuario real>", "dryRun": true}` → revisar
+   `unreadNotifications` (debe coincidir con sus notificaciones sin leer de clientes que hoy puede ver), `html`, `text`
+   y el enlace `<SITE_URL>/admin/notifications`. No escribe `daily_agenda_log` ni llama a Resend.
+2. **UN solo envío real**, a la dirección del responsable del proyecto indicada en la autorización (no se escribe en el
+   repo), con el mismo `testUserId` explícito: `{"testUserId": "<id del usuario real>", "overrideEmail": "<esa
+   dirección>"}`. No repetir ni ejecutar la corrida general.
+3. Interacción con el cron (`daily_agenda_log`: una fila por usuario y día). Si el cron YA envió la agenda de ese
+   usuario ese día, el envío de prueba se saltea (`skipped_already_sent`, sin email). Si la prueba va ANTES del cron
+   (08:00 ART), queda `sent` y **ese usuario no recibe la agenda del cron ese día**. Recomendado: hacerla antes de las
+   08:00 ART usando como `testUserId` la cuenta de producción del propio responsable (su agenda de ese día le llega igual,
+   por la prueba, a su dirección); con cualquier otro usuario, avisarle que ese día no recibirá la agenda.
 
 **Efecto en la agenda real al desplegar 8.3:** desde el próximo cron, un Super Admin o Account Manager con notificaciones
 sin leer (de cualquier fecha) recibe la agenda aunque no tenga contenidos ese día (antes no recibía nada). Como
