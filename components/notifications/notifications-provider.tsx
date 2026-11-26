@@ -94,7 +94,7 @@ export function useOptionalNotifications(): NotificationsContextValue | null {
  *   al marcar y al resincronizar), nunca de sumar/restar eventos del socket.
  * - Los eventos Realtime son solo señales: la notificación se relee bajo RLS (getNotification).
  * - Realtime no recupera eventos perdidos: al volver a SUBSCRIBED tras un corte, al recuperar la red y al volver a
- *   la pestaña se resincroniza contra la base.
+ *   la pestaña se resincroniza contra la base (solo con sesión válida del usuario; sin sesión no se consulta).
  * - Sin duplicados: estado indexado por id; toasts deduplicados por pestaña y entre pestañas
  *   (lib/notification-toast-dedupe.ts).
  * - Canal con nombre único por montaje y eliminado en el cleanup.
@@ -279,7 +279,15 @@ export function NotificationsProvider({ userId, children }: { userId: string; ch
           stop();
         };
       },
-      { expectedUserId: userId }
+      {
+        expectedUserId: userId,
+        // Volver a la pestaña / recuperar la conexión: bandeja y contador se resincronizan SOLO si getSession confirma la
+        // sesión de este usuario (sin sesión, esas consultas saldrían con la anon key y responderían 401). Al recuperar la
+        // sesión resincroniza el canal nuevo (resumed → SUBSCRIBED).
+        onRefocus: () => {
+          if (!cancelled) void resync();
+        },
+      }
     );
 
     listNotifications({ limit: PAGE_SIZE, unreadOnly: true })
@@ -293,17 +301,9 @@ export function NotificationsProvider({ userId, children }: { userId: string; ch
         }
       }, applyFailure);
 
-    function handleResync() {
-      if (document.visibilityState === "visible") void resync();
-    }
-    window.addEventListener("online", handleResync);
-    document.addEventListener("visibilitychange", handleResync);
-
     return () => {
       cancelled = true;
       mountedRef.current = false;
-      window.removeEventListener("online", handleResync);
-      document.removeEventListener("visibilitychange", handleResync);
       stopSession();
     };
   }, [userId, applyPage, applyFailure, resync, showToast]);

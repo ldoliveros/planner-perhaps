@@ -36,7 +36,18 @@ function validUserId(session: Session | null): string | null {
   return session.user.id;
 }
 
-export function whileSignedIn(setup: RealtimeSetup, options: { expectedUserId?: string } = {}): () => void {
+export type WhileSignedInOptions = {
+  /** Solo cuenta como sesión válida la de este usuario (p. ej. el del layout). */
+  expectedUserId?: string;
+  /**
+   * Al volver a la pestaña o recuperar la conexión, DESPUÉS de confirmar (getSession) que sigue la misma sesión válida.
+   * Sin sesión no se llama (no hay consultas que vayan a responder 401); si la sesión vuelve, el que resincroniza es
+   * `setup` (con `resumed: true`), así que tampoco se llama en ese caso.
+   */
+  onRefocus?: () => void;
+};
+
+export function whileSignedIn(setup: RealtimeSetup, options: WhileSignedInOptions = {}): () => void {
   const supabase = createClient();
   let disposed = false;
   let activeUserId: string | null = null;
@@ -63,13 +74,17 @@ export function whileSignedIn(setup: RealtimeSetup, options: { expectedUserId?: 
     teardown = setup({ userId, resumed, recheck });
   };
 
-  function recheck() {
+  function recheck(onSameSession?: () => void) {
     if (disposed) return;
     // getSession lee el almacenamiento (cookies): detecta un logout —o un nuevo login— hecho fuera de este cliente
     // (acción de servidor u otra pestaña), que no emite eventos acá. Fuera del callback de auth, así que no compite por
     // el lock de supabase-js.
     supabase.auth.getSession().then(
-      ({ data }) => apply(data.session),
+      ({ data }) => {
+        const before = activeUserId;
+        apply(data.session);
+        if (onSameSession && !disposed && before !== null && activeUserId === before) onSameSession();
+      },
       () => undefined
     );
   }
@@ -82,14 +97,16 @@ export function whileSignedIn(setup: RealtimeSetup, options: { expectedUserId?: 
   });
 
   const onVisible = () => {
-    if (document.visibilityState === "visible") recheck();
+    if (document.visibilityState === "visible") recheck(options.onRefocus);
   };
   document.addEventListener("visibilitychange", onVisible);
+  window.addEventListener("online", onVisible);
 
   return () => {
     disposed = true;
     subscription.unsubscribe();
     document.removeEventListener("visibilitychange", onVisible);
+    window.removeEventListener("online", onVisible);
     stop();
   };
 }
