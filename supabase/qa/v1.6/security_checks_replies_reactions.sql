@@ -117,12 +117,10 @@ begin
     raise exception 'FAIL RX05: reaccionó a un comentario eliminado';
   exception when raise_exception then null;
   end;
-  -- RX06: publicación en Borrador.
-  begin
-    perform public.set_comment_reaction(current_setting('rx.c_draft')::uuid, '👍', true);
-    raise exception 'FAIL RX06: reaccionó en Borrador';
-  exception when raise_exception then null;
-  end;
+  -- RX06 (20261126000001): en Borrador también se reacciona.
+  if public.set_comment_reaction(current_setting('rx.c_draft')::uuid, '👍', true) is not true then
+    raise exception 'FAIL RX06: no se pudo reaccionar en Borrador';
+  end if;
   -- RX07: Aprobada sí.
   if public.set_comment_reaction(current_setting('rx.c_appr')::uuid, '🎉', true) is not true then
     raise exception 'FAIL RX07: no se pudo reaccionar en Aprobada';

@@ -25,12 +25,12 @@ https://planner.perhaps.com.ar. Rollback: `ROLLBACK.md` (mismo directorio). Migr
 - **Excluir del commit:** `.claude/launch.json` (configuraciones locales `dev-v16`/`v151-b11` agregadas para QA;
   restaurar la versión de `main`). Decidir si se versionan `CLAUDE.md` (sección v1.6) y la carpeta `supabase/qa/`
   (herramientas y registro de QA; sin secretos, con los refs de proyecto).
-- **Migraciones de producción (10, en este orden):** `20261008000001_v16_collab_core`,
+- **Migraciones de producción (11, en este orden):** `20261008000001_v16_collab_core`,
   `20261008000002_v16_realtime_publication`, `20261009000001_publications_trello_url`,
   `20261013000001_v16_comment_reads`, `20261014000001_v16_comment_replies`, `20261014000002_v16_comment_reactions`,
   `20261015000001_v16_publications_realtime`, `20261017000001_v16_publication_archive`,
-  `20261017000002_v16_publication_changes`, `20261018000001_v16_pause_collab_emails`. Excluidas (en `pending-migrations/v1.6/`): `20261008000003` (worker),
-  `20261008000004` (cron), `20261016000001` (Notas internas). Ninguna de las 10 depende de las excluidas; las guardas
+  `20261017000002_v16_publication_changes`, `20261018000001_v16_pause_collab_emails`, `20261126000001_v16_comments_before_published` (agregada 2026-11-26, cuando las 10 anteriores ya estaban en producción: aplicarla antes de desplegar la app). Excluidas (en `pending-migrations/v1.6/`): `20261008000003` (worker),
+  `20261008000004` (cron), `20261016000001` (Notas internas). Ninguna de las 11 depende de las excluidas; las guardas
   exigen el orden anterior y que `supabase_realtime` exista sin `FOR ALL TABLES`.
 
 ## 2. Verificaciones previas

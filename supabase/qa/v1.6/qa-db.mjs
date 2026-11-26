@@ -22,7 +22,7 @@
 //   node supabase/qa/v1.6/qa-db.mjs dry-run-archive --confirm <ref QA>  dry-run (ROLLBACK) de pending 20261017000001/2 + security_checks_archive.sql
 //   node supabase/qa/v1.6/qa-db.mjs dry-run-replies-reactions --confirm <ref QA>  dry-run (ROLLBACK) de pending 20261014000001/2
 //   node supabase/qa/v1.6/qa-db.mjs dry-run-collab-emails --confirm <ref QA>  dry-run (ROLLBACK) de pending 20261018000001 + security_checks_collab_emails.sql
-//   node supabase/qa/v1.6/qa-db.mjs security-checks --suite core|comment-reads|replies-reactions|archive|collab-emails|collab-integration --confirm <ref QA>  pruebas (revertidas)
+//   node supabase/qa/v1.6/qa-db.mjs security-checks --suite core|comment-reads|replies-reactions|archive|collab-emails|collab-integration|comments-status --confirm <ref QA>  pruebas (revertidas)
 //
 // La URL de la base NUNCA va en el repo ni en el chat: se lee de la variable de entorno QA_DB_URL o del archivo
 // `.env.qa.local` en la raíz del repo (gitignoreado por `.env*`; Next no lo carga). Nunca se imprime completa.
@@ -651,6 +651,7 @@ switch (command) {
       "replies-reactions": "security_checks_replies_reactions.sql",
       "collab-emails": "security_checks_collab_emails.sql",
       "collab-integration": "integration_collab_emails_paused.sql",
+      "comments-status": "security_checks_comments_status.sql",
     };
     const suite = arg("--suite");
     if (!suites[suite]) fail(`security-checks exige --suite ${Object.keys(suites).join(" | ")}.`);

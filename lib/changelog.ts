@@ -24,7 +24,7 @@ export const CHANGELOG: ChangelogRelease[] = [
     date: "2026-10-26",
     entries: [
       {
-        text: "Comentarios en las publicaciones En revisión: mencioná a otras personas con @, respondé comentarios y reaccioná con emojis.",
+        text: "Comentarios en las publicaciones hasta que se publican (Borrador, En revisión y Aprobada): mencioná a otras personas con @, respondé comentarios y reaccioná con emojis.",
         roles: ["super_admin", "account_manager", "client"],
       },
       {
