@@ -14,6 +14,9 @@
 //   node supabase/qa/v1.6/qa-db.mjs push --workdir <repo> --expect-last <versión> --confirm <ref QA>
 //   node supabase/qa/v1.6/qa-db.mjs reapply-migration --version 20261126000001 --confirm <ref QA>  re-ejecuta una migración
 //        ya registrada cuyo archivo cambió (solo versiones idempotentes de una lista fija; atómico)
+//   node supabase/qa/v1.6/qa-db.mjs agenda-deploy --confirm <ref QA> | agenda-functions | agenda-secrets | agenda-status
+//        Edge Function daily-agenda en QA (ref fijo): desplegar, listar, nombres de secretos, cron/daily_agenda_log
+//   node supabase/qa/v1.6/qa-db.mjs agenda-disable-sends --confirm <ref QA>  quita RESEND_API_KEY de QA (sin envíos)
 //   node supabase/qa/v1.6/qa-db.mjs flag-status | notifications-recent      consultas fijas de solo lectura
 //   node supabase/qa/v1.6/qa-db.mjs realtime-subscriptions | realtime-filter-check  Realtime: suscripciones vivas por rol
 //        y privilegios de columna que valida el trigger de filtros (solo lectura)
@@ -706,6 +709,41 @@ switch (command) {
     );
     break;
   }
+  // ---- Edge Function daily-agenda en QA (ref fijo: nunca producción). Comandos de gestión, no de base. ----
+  case "agenda-deploy": {
+    if (arg("--confirm") !== QA_PROJECT_REF) fail(`agenda-deploy exige --confirm ${QA_PROJECT_REF}.`);
+    // verify_jwt=false sale de supabase/config.toml ([functions.daily-agenda]); la autenticación la hace index.ts.
+    runCli(["functions", "deploy", "daily-agenda", "--project-ref", QA_PROJECT_REF], workdir);
+    break;
+  }
+  case "agenda-functions":
+    runCli(["functions", "list", "--project-ref", QA_PROJECT_REF], workdir);
+    break;
+  case "agenda-secrets":
+    // Solo nombres y digests (el CLI nunca muestra los valores).
+    runCli(["secrets", "list", "--project-ref", QA_PROJECT_REF], workdir);
+    break;
+  case "agenda-disable-sends": {
+    // Apaga los envíos reales de la agenda en QA: sin RESEND_API_KEY, index.ts responde 500 antes de enviar.
+    if (arg("--confirm") !== QA_PROJECT_REF) fail(`agenda-disable-sends exige --confirm ${QA_PROJECT_REF}.`);
+    runCli(["secrets", "unset", "RESEND_API_KEY", "--project-ref", QA_PROJECT_REF, "--yes"], workdir);
+    break;
+  }
+  case "agenda-status":
+    // Solo lectura: cron/pg_net instalados (no deben estarlo) y envíos registrados en daily_agenda_log (últimos 7 días).
+    runCli(
+      [
+        "db",
+        "query",
+        "select (select coalesce(string_agg(extname, ','), '(ninguna)') from pg_extension where extname in ('pg_cron', 'pg_net')) as cron_extensions, " +
+          "(select count(*) from public.daily_agenda_log where agenda_date >= current_date - 7) as log_rows_7d, " +
+          "(select coalesce(string_agg(agenda_date || ' ' || status || ' x' || attempt_count, ' | ' order by agenda_date), '(sin filas)') from public.daily_agenda_log where agenda_date >= current_date - 7) as log_7d",
+        "--db-url",
+        url,
+      ],
+      workdir
+    );
+    break;
   case "reapply-migration": {
     // Vuelve a ejecutar en QA una migración YA registrada cuyo archivo cambió antes de llegar a producción (`db push` no
     // re-ejecuta versiones registradas). Solo versiones de la lista: idempotentes (create or replace / revoke), sin DDL de
@@ -747,5 +785,5 @@ switch (command) {
     break;
   }
   default:
-    fail('comando desconocido. Usar: check | app-env | list | pg-version | push-dry | push | reapply-migration | flag-status | flag-enable-qa-sandbox | notifications-recent | realtime-subscriptions | realtime-filter-check | dry-run-comment-reads | dry-run-replies-reactions | dry-run-archive | dry-run-collab-emails | security-checks | schema-status | rehearse-rollback (ver encabezado del archivo).');
+    fail('comando desconocido. Usar: check | app-env | list | pg-version | push-dry | push | reapply-migration | agenda-deploy | agenda-functions | agenda-secrets | agenda-status | agenda-disable-sends | flag-status | flag-enable-qa-sandbox | notifications-recent | realtime-subscriptions | realtime-filter-check | dry-run-comment-reads | dry-run-replies-reactions | dry-run-archive | dry-run-collab-emails | security-checks | schema-status | rehearse-rollback (ver encabezado del archivo).');
 }

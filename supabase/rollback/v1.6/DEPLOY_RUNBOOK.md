@@ -165,3 +165,36 @@ tabla + 4 de columna (`profiles`), idénticos al dump. Fuera de la prueba: el re
 - **Pestañas abiertas con v1.5.1** fallan en acciones hasta recargar tras el deploy (y al revés en un rollback).
 - **Pre-flight transaccional en producción** (`build-dry-run.mjs`, QA_STRATEGY §A) cubre solo el core y no las 9
   migraciones: no se usa; lo reemplazan B11, las guardas de cada migración, el pre-flight de solo lectura y el backup.
+
+## 8. Cierre de los ajustes del 2026-11-26 (rama `feature/v1.6-collaboration`, sin push)
+
+Estado de partida: producción ya tiene las 10 migraciones de §1 y Netlify sigue en v1.5.1. Los ajustes posteriores
+(Realtime con sesión, comentarios salvo en Publicada, aviso de notificaciones en la agenda) agregan UNA migración y
+cambian la app y `daily-agenda`. Orden obligatorio, cada paso con autorización explícita 🔒:
+
+| Paso | Qué | Verificación | Si falla |
+|---|---|---|---|
+| **8.1 Migración** 🔒 | Backup manual (§6) y `supabase.cmd db push --dry-run` (debe listar SOLO `20261126000001_v16_comments_before_published`); después `supabase.cmd db push`. Solo `create or replace` de 4 funciones + `comments_open_for_status` (sin tablas, RLS ni grants). | `migration list` con 40; con v1.5.1 todavía publicada nada cambia (v1.5.1 no usa comentarios). | Re-ejecutar las 4 funciones desde 20261014000001 / 20261008000001 / 20261014000002 y `drop function public.comments_open_for_status(text)`. |
+| **8.2 App** 🔒 | PR a `main` y merge (sin `.claude/launch.json`) → Netlify publica. Va DESPUÉS de 8.1: con la base vieja la interfaz ofrecería comentar fuera de En revisión y la base lo rechazaría. | §4 + comentarios: Borrador/Aprobada/Descartada abiertos, Publicada en solo lectura; sin 401 de `notifications` al cerrar sesión en otra pestaña. | Netlify a la versión anterior (§5). |
+| **8.3 `daily-agenda`** 🔒 | `supabase.cmd functions deploy daily-agenda --project-ref mglbzsysgsdrsbqlovwd`. Independiente de 8.2, pero después de 8.1 (orden recomendado). | `functions list` con versión nueva; la prueba real de 8.4. | La versión anterior sigue activa si el deploy falla; para volver atrás, desplegar `agenda.ts` del commit previo. |
+| **8.4 Prueba real del email (PENDIENTE)** 🔒 | Con la configuración EXISTENTE de producción (`RESEND_API_KEY`, `SITE_URL` ya cargados; secret key `sb_secret_…` de producción, que no se guarda en el repo). Ver abajo. | Email recibido con el aviso, HTML y texto, enlace a `<SITE_URL>/admin/notifications`. | No reintentar a ciegas: `daily_agenda_log` registra el intento (`failed` con el error). |
+
+**8.4 — cómo hacerla (solo cuando se autorice producción).** NUNCA invocar la función sin body: sin `testUserId` es la
+corrida general a todos los destinatarios. Siempre `POST https://mglbzsysgsdrsbqlovwd.supabase.co/functions/v1/daily-agenda`
+con header `apikey: <sb_secret_… de producción>` (la `service_role` legacy se rechaza con 401) y:
+1. Un usuario QA de producción con notificaciones sin leer: hasta activar `v16_notifications` (paso 6a) producción no
+   genera notificaciones, así que la prueba tiene sentido después de 6a (o con una mención en QA Sandbox ya activado).
+2. `{"testUserId": "<id del usuario QA>", "dryRun": true}` → revisar `unreadNotifications`, `html` y `text`.
+3. `{"testUserId": "<id del usuario QA>", "overrideEmail": "<dirección autorizada>"}` → UN envío real. Queda
+   `daily_agenda_log` = `sent` para ese usuario y día (un segundo intento se saltea).
+
+**Efecto en la agenda real al desplegar 8.3:** un Super Admin o Account Manager con notificaciones sin leer recibe la
+agenda aunque no tenga contenidos ese día (antes no recibía nada). Mientras `v16_notifications` esté apagado no hay
+notificaciones nuevas en producción, así que el cambio se nota recién después del paso 6.
+
+**Ya validado en QA (`wxkbkdoaohywqabmyqjk`):** la función desplegada en QA rechaza sin credencial, con anon key
+(apikey y Bearer), con un JWT inválido y con la `service_role` legacy (todas 401:
+`agenda-invoke-qa.mjs auth`). NO validado en QA por falta de secretos (decisión del 2026-11-26): `dryRun` del entry
+point desplegado y el envío real; la lógica de `agenda.ts` está cubierta por `agenda-checks.mjs` (13 comprobaciones) y
+`agenda-qa-dryrun.mjs` (base QA, dryRun local). La función quedó desplegada en QA sin `RESEND_API_KEY` ni `SITE_URL`:
+cualquier invocación autenticada responde 500 antes de enviar, y QA no tiene `pg_cron`/`pg_net`.

@@ -576,5 +576,7 @@ Editar/Eliminar, reacciones y aviso de solo lectura).
   Resend ni escrituras), con conteo independiente. Resultados: mención real al Account Manager → "Tenés 1 notificación
   pendiente de revisión." con contenido del día y, con la publicación en Publicada, agenda enviada solo con el aviso;
   con 8 notificaciones sin leer de otros destinatarios, Super Admin y Account Manager cuentan 0 (coincide).
-- Pendiente: desplegar la función (`functions deploy daily-agenda`) en un entorno de prueba, invocarla con
-  `testUserId` + `dryRun` en el runtime de Deno y un envío real con `overrideEmail` (Resend), con autorización.
+- Desplegada en QA (`qa-db.mjs agenda-deploy`): autenticación validada con `agenda-invoke-qa.mjs auth` (sin
+  credencial, anon, JWT inválido y service_role legacy → 401; solo acepta `sb_secret_…`). Sin secretos de Resend/SITE_URL
+  en QA (decisión del usuario): el `dryRun` del entry point desplegado y el envío real quedan PENDIENTES para producción
+  con su configuración existente (DEPLOY_RUNBOOK §8.4).
