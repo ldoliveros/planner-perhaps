@@ -92,6 +92,11 @@ interface PublicationViewProps {
   /** v1.6: pestaña inicial (solo con `publication`). Desde el calendario: la primera; desde una notificación:
    * Comentarios. */
   initialTab?: PublicationViewTab;
+  /**
+   * Client User con permiso Editor en este cliente: usa el mismo formulario que el staff (crear y editar), sin
+   * Compartir, Archivar/Eliminar ni crear campañas, y conserva su botón Aprobar. La base vuelve a validar el permiso.
+   */
+  clientEditor?: boolean;
 }
 
 /** Pestañas de la Vista de Publicación existente: "main" = Edición (staff) / Publicación (Client User). */
@@ -151,8 +156,9 @@ export function PublicationView({
   readOnly = false,
   onPublicationReloaded,
   initialTab = "main",
+  clientEditor = false,
 }: PublicationViewProps) {
-  const { statuses, contentTypes, platforms, getPlatform, getClient } = useLookups();
+  const { statuses, contentTypes, platforms, getPlatform, getClient, getStatus } = useLookups();
   // Pestañas (v1.6, solo con una publicación existente). Ambos paneles quedan montados y el inactivo solo se
   // oculta: así se conservan los cambios sin guardar del form, el borrador del comentario y la suscripción Realtime.
   const [tab, setTab] = useState<PublicationViewTab>(publication ? initialTab : "main");
@@ -835,7 +841,7 @@ export function PublicationView({
       >
         <div className="flex items-center justify-between gap-2 border-b border-border py-3 pr-14 pl-5">
           <DialogTitle className="text-sm font-medium text-muted-foreground">{headerTitle}</DialogTitle>
-          {publication && !readOnly && (
+          {publication && !readOnly && !clientEditor && (
             <Button size="sm" variant="outline" className="gap-1.5" type="button" onClick={handleShare}>
               <Share2 className="size-3.5" />
               Compartir
@@ -1113,6 +1119,7 @@ export function PublicationView({
                     value={campaignId}
                     onChange={setCampaignId}
                     onCreated={handleCampaignCreated}
+                    allowCreate={!clientEditor}
                   />
                 </div>
                 <div className="flex flex-col gap-1.5">
@@ -1186,6 +1193,15 @@ export function PublicationView({
                   </SelectContent>
                 </Select>
                 {publication && isSavedApproved && <ApprovalRecord publicationId={publication.id} refreshKey={state.savedAt ?? 0} />}
+                {/* Client User editor: conserva su aprobación de cliente (registro con versión) cuando lo guardado está En revisión. */}
+                {clientEditor && publication && canClientApprove(getStatus(original.statusId)?.key) && !isDirty && (
+                  <ClientApproveButton
+                    publicationId={publication.id}
+                    expectedUpdatedAt={baseUpdatedAt}
+                    onApproved={() => void reloadPublication()}
+                    onStale={() => void reloadPublication()}
+                  />
+                )}
               </div>
 
               {isCarouselMode ? (
@@ -1331,7 +1347,7 @@ export function PublicationView({
               {/* Archivar / Eliminar (v1.6): menú discreto, separado a propósito del botón principal de guardar. Solo
                   Editar: en Crear/Duplicar todavía no hay nada persistido. Archivar no pide confirmación (se puede
                   deshacer); Eliminar abre la confirmación de siempre. */}
-              {publication && (
+              {publication && !clientEditor && (
                 <div className="flex justify-start border-t border-border pt-4">
                   <DropdownMenu>
                     <DropdownMenuTrigger
@@ -1528,9 +1544,10 @@ function PublicationTabsBar({
   commentCount: number | null;
   mainHasUnsavedChanges?: boolean;
 }) {
-  const tabs: { value: PublicationViewTab; label: string }[] = [
+  // En mobile la pestaña usa la etiqueta corta (el encabezado del panel muestra "Comentarios y actividad").
+  const tabs: { value: PublicationViewTab; label: string; shortLabel?: string }[] = [
     { value: "main", label: mainLabel },
-    { value: "comments", label: "Comentarios" },
+    { value: "comments", label: "Comentarios y actividad", shortLabel: "Comentarios" },
   ];
   return (
     <div className="sticky top-0 z-10 shrink-0 border-b border-border bg-white px-5 py-3 md:static">
@@ -1554,7 +1571,14 @@ function PublicationTabsBar({
                 active ? "bg-neutral-900 text-white shadow-sm" : "text-neutral-700 hover:bg-neutral-200 hover:text-neutral-900"
               )}
             >
-              <span className="truncate">{option.label}</span>
+              {option.shortLabel ? (
+                <>
+                  <span className="truncate sm:hidden" aria-hidden>{option.shortLabel}</span>
+                  <span className="truncate max-sm:sr-only">{option.label}</span>
+                </>
+              ) : (
+                <span className="truncate">{option.label}</span>
+              )}
               {option.value === "main" && mainHasUnsavedChanges && (
                 <span
                   aria-label="Cambios sin guardar"

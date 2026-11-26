@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { Archive, ArchiveRestore, ArrowLeft, CalendarDays, Pencil, Plus, Power, PowerOff, Send, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, ArrowLeft, CalendarDays, KeyRound, Pencil, Plus, Power, PowerOff, Send, Trash2 } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -31,7 +31,11 @@ import { deleteClient, setClientActive } from "@/lib/actions/clients";
 import { deleteClientAccount, setClientAccountActive } from "@/lib/actions/client-accounts";
 import { deleteClientUser } from "@/lib/actions/client-users";
 import { toast } from "@/lib/toast";
-import { ClientUserFormDialog } from "@/components/admin/client-user-form-dialog";
+import {
+  ClientUserFormDialog,
+  ClientUserPermissionDialog,
+  publicationPermissionLabel,
+} from "@/components/admin/client-user-form-dialog";
 import { useResendInvitation } from "@/components/admin/resend-invitation-button";
 import { RowActionsMenu } from "@/components/admin/row-actions-menu";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
@@ -261,11 +265,12 @@ export function ClientDetailPageClient({
           table={
             <div className={ADMIN_TABLE_FRAME}>
               <Table className={SECTION_TABLE_CLASS}>
-                <SectionColGroup widths={["w-[40%]", null, "w-[92px]", "w-[96px]", "w-[48px]"]} />
+                <SectionColGroup widths={["w-[26%]", null, "w-[72px]", "w-[88px]", "w-[88px]", "w-[44px]"]} />
                 <TableHeader>
                   <TableRow>
                     <TableHead>Email</TableHead>
                     <TableHead>Nombre</TableHead>
+                    <TableHead>Permiso</TableHead>
                     <TableHead>Fecha de alta</TableHead>
                     <TableHead>Estado</TableHead>
                     <ActionsHead />
@@ -274,13 +279,13 @@ export function ClientDetailPageClient({
                 <TableBody>
                   {clientUsers.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={5} className="py-8 text-center whitespace-normal text-muted-foreground">
+                      <TableCell colSpan={6} className="py-8 text-center whitespace-normal text-muted-foreground">
                         {USERS_EMPTY}
                       </TableCell>
                     </TableRow>
                   )}
                   {clientUsers.map((user) => (
-                    <ClientUserRow key={user.id} layout="table" clientId={client.id} user={user} canResendInvitation={canEditClient} />
+                    <ClientUserRow key={user.id} layout="table" clientId={client.id} user={user} canManageUsers={canEditClient} />
                   ))}
                 </TableBody>
               </Table>
@@ -290,7 +295,7 @@ export function ClientDetailPageClient({
             <>
               {clientUsers.length === 0 && <EmptyCard>{USERS_EMPTY}</EmptyCard>}
               {clientUsers.map((user) => (
-                <ClientUserRow key={user.id} layout="card" clientId={client.id} user={user} canResendInvitation={canEditClient} />
+                <ClientUserRow key={user.id} layout="card" clientId={client.id} user={user} canManageUsers={canEditClient} />
               ))}
             </>
           }
@@ -500,15 +505,17 @@ function ClientUserRow({
   layout,
   clientId,
   user,
-  canResendInvitation,
+  canManageUsers,
 }: {
   layout: "table" | "card";
   clientId: string;
   user: ClientUser;
-  canResendInvitation: boolean;
+  /** Super Admin: reenviar invitación y cambiar el permiso Lector / Editor. */
+  canManageUsers: boolean;
 }) {
   const router = useRouter();
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [permissionOpen, setPermissionOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -533,7 +540,13 @@ function ClientUserRow({
   const actions = (
     <>
       <RowActionsMenu label={`Más acciones de ${user.email ?? "este usuario"}`}>
-        {canResendInvitation && user.accessStatus === "invited" && (
+        {canManageUsers && (
+          <DropdownMenuItem onClick={() => setPermissionOpen(true)}>
+            <KeyRound />
+            Editar permiso
+          </DropdownMenuItem>
+        )}
+        {canManageUsers && user.accessStatus === "invited" && (
           <DropdownMenuItem disabled={isResending} onClick={resend}>
             <Send />
             {isResending ? "Enviando..." : "Reenviar invitación"}
@@ -561,8 +574,19 @@ function ClientUserRow({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      {canManageUsers && (
+        <ClientUserPermissionDialog
+          open={permissionOpen}
+          onOpenChange={setPermissionOpen}
+          clientId={clientId}
+          userId={user.id}
+          userLabel={user.email ?? user.fullName ?? "Usuario"}
+          canEditPublications={user.canEditPublications}
+        />
+      )}
     </>
   );
+  const permissionLabel = publicationPermissionLabel(user.canEditPublications);
 
   if (layout === "card") {
     return (
@@ -571,7 +595,7 @@ function ClientUserRow({
           <div className="flex min-w-0 flex-col gap-0.5">
             <span className="font-medium break-all text-foreground">{user.email}</span>
             <span className="text-xs text-muted-foreground">
-              {user.fullName ?? "Sin nombre"} · Alta {createdAt}
+              {user.fullName ?? "Sin nombre"} · {permissionLabel} · Alta {createdAt}
             </span>
           </div>
           <div className="flex shrink-0 items-center gap-1">
@@ -586,7 +610,10 @@ function ClientUserRow({
   return (
     <TableRow>
       <TableCell className="truncate font-medium text-foreground" title={user.email ?? undefined}>{user.email}</TableCell>
-      <TableCell className="truncate text-muted-foreground">{user.fullName ?? "—"}</TableCell>
+      <TableCell className="truncate text-muted-foreground" title={user.fullName ?? undefined}>{user.fullName ?? "—"}</TableCell>
+      <TableCell className={cn("truncate", user.canEditPublications ? "font-medium text-foreground" : "text-muted-foreground")}>
+        {permissionLabel}
+      </TableCell>
       <TableCell className="truncate text-muted-foreground">{createdAt}</TableCell>
       <TableCell>{statusBadge}</TableCell>
       <TableCell className="text-right">

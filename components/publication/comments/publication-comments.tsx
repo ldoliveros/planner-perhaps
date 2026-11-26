@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { AtSign, CornerUpLeft, Loader2, MessageSquare, Pencil, RefreshCcw, Reply, SmilePlus, Trash2, X } from "lucide-react";
 import {
   AlertDialog,
@@ -18,6 +18,8 @@ import { UserAvatar } from "@/components/shared/user-avatar";
 import { useLookups } from "@/components/providers/lookups-provider";
 import { listMentionableMembers, listUnreadPublicationComments, markPublicationCommentsRead } from "@/lib/actions/comments";
 import { usePublicationComments, type CommentsLiveState } from "@/lib/use-publication-comments";
+import { usePublicationActivity } from "@/lib/use-publication-activity";
+import { activityPhrases, formatActivityTimestamp } from "@/lib/activity-text";
 import { toast } from "@/lib/toast";
 import { cn } from "cn";
 import {
@@ -25,6 +27,7 @@ import {
   type CommentReaction,
   type CommentReactionEmoji,
   type MentionableMember,
+  type PublicationActivity,
   type PublicationComment,
 } from "@/types";
 import { activeMentionIds, type SelectedMention } from "@/lib/mentions";
@@ -120,6 +123,17 @@ export function PublicationComments({
     toggleReaction,
   } = usePublicationComments(publicationId);
   const visibleCount = comments.filter((c) => c.deletedAt === null).length;
+  // Comentarios y actividad en UNA cronología (más reciente arriba). La actividad la registra la base; acá solo se lee.
+  const { activity } = usePublicationActivity(publicationId);
+  const timeline = useMemo(() => {
+    const items: TimelineItem[] = [
+      ...comments.map((comment) => ({ kind: "comment" as const, at: comment.createdAt, comment })),
+      ...activity
+        .filter((event) => activityPhrases(event.changes).length > 0)
+        .map((event) => ({ kind: "activity" as const, at: event.createdAt, event })),
+    ];
+    return items.sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
+  }, [comments, activity]);
 
   // ---- Comentarios no leídos (v1.6, lectura por usuario y comentario: publication_comment_reads) ----
   // Pendientes según la base (lista completa) + lo que llega después de consultarla. `snapshot` = ids que ya estaban
@@ -431,7 +445,7 @@ export function PublicationComments({
       <div className="flex items-center justify-between gap-2">
         <h3 id={`comments-${publicationId}`} className="flex items-center gap-1.5 text-sm font-semibold">
           <MessageSquare className="size-4" />
-          Comentarios
+          Comentarios y actividad
           {loadState === "ready" && visibleCount > 0 && (
             <span className="text-xs font-normal text-muted-foreground">({visibleCount})</span>
           )}
@@ -535,13 +549,15 @@ export function PublicationComments({
             </div>
           )}
 
-          {loadState === "ready" && comments.length === 0 && (
-            <p className="text-xs text-muted-foreground">Todavía no hay comentarios.</p>
+          {loadState === "ready" && timeline.length === 0 && (
+            <p className="text-xs text-muted-foreground">Todavía no hay comentarios ni actividad.</p>
           )}
 
-          {/* Una sola lista cronológica, misma alineación para todos (sin burbujas ni hilos). */}
+          {/* Una sola lista cronológica (comentarios + actividad), misma alineación para todos (sin burbujas ni hilos). */}
           <ol className="flex flex-col gap-5">
-            {comments.map((comment) => {
+            {timeline.map((item) => {
+              if (item.kind === "activity") return <ActivityItem key={`activity-${item.event.id}`} event={item.event} />;
+              const comment = item.comment;
               const isOwn = Boolean(currentUserId && comment.authorId === currentUserId);
               const isDeleted = comment.deletedAt !== null;
               const canModify = isOwn && !isDeleted && commentsOpen;
@@ -838,5 +854,40 @@ function ReactionsBar({
         </Popover>
       )}
     </div>
+  );
+}
+
+type TimelineItem =
+  | { kind: "comment"; at: string; comment: PublicationComment }
+  | { kind: "activity"; at: string; event: PublicationActivity };
+
+/**
+ * Evento de actividad: "**Lucas cambió el estado** a En revisión y **actualizó el texto**." y debajo la fecha/hora
+ * (huso de Planner). Solo valores nuevos; nunca anteriores ni diferencias.
+ */
+function ActivityItem({ event }: { event: PublicationActivity }) {
+  const phrases = activityPhrases(event.changes);
+  return (
+    <li className="flex gap-3" data-activity-id={event.id}>
+      <div className="flex w-8 shrink-0 justify-center pt-0.5">
+        <UserAvatar fullName={event.actorName} email={null} avatarUrl={event.actorAvatarUrl} size={24} />
+      </div>
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <p className="text-sm break-words text-foreground">
+          <span className="font-semibold">{event.actorName}</span>{" "}
+          {phrases.map((phrase, index) => (
+            <Fragment key={index}>
+              {index > 0 && (index === phrases.length - 1 ? " y " : ", ")}
+              <span className="font-semibold">{phrase.action}</span>
+              {phrase.value && <> {phrase.value}</>}
+            </Fragment>
+          ))}
+          .
+        </p>
+        <time dateTime={event.createdAt} className="text-xs text-muted-foreground">
+          {formatActivityTimestamp(event.createdAt)}
+        </time>
+      </div>
+    </li>
   );
 }

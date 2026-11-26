@@ -14,6 +14,8 @@ export interface ClientUser {
   createdAt: string;
   /** Solo lo resuelve un Super Admin (requiere la Auth Admin API); ausente si no se pudo o no corresponde. */
   accessStatus?: UserAccessStatus;
+  /** Permiso por cliente: true = Editor (crea y edita publicaciones de ese cliente); false = Lector. */
+  canEditPublications: boolean;
 }
 
 /** Integrante con acceso a un cliente puntual (header del Planner) — Super Admin + Account Managers
@@ -155,6 +157,40 @@ export interface Publication {
   destinations: PublicationDestination[];
   assets: PublicationAsset[];
   /** publications.updated_at tal cual lo devuelve PostgREST: versión para el bloqueo optimista del editor (v1.6). */
+  updatedAt: string;
+}
+
+/**
+ * Evento de actividad de una publicación (registrado por triggers de la base; ver
+ * supabase/migrations/20261126000003_publication_activity.sql). `changes` trae solo valores NUEVOS.
+ */
+export interface PublicationActivityChanges {
+  created?: boolean;
+  schedule?: { date: string; time: string | null };
+  status?: { key: string; label: string } | null;
+  title?: string;
+  copy?: boolean;
+  content_type?: string | null;
+  calendar?: string | null;
+  campaign?: string | null;
+  drive?: boolean;
+  trello?: boolean;
+  destinations?: { platform: string; handle: string }[];
+  files_added?: number;
+  files_removed?: number;
+  cover?: boolean;
+  files_reordered?: boolean;
+}
+
+export interface PublicationActivity {
+  id: string;
+  publicationId: string;
+  actorId: string | null;
+  actorName: string;
+  actorAvatarUrl: string | null;
+  actorRole: string | null;
+  changes: PublicationActivityChanges;
+  createdAt: string;
   updatedAt: string;
 }
 
