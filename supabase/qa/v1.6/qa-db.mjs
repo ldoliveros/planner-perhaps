@@ -13,6 +13,8 @@
 //   node supabase/qa/v1.6/qa-db.mjs push-dry [--workdir <repo>]            supabase db push --dry-run
 //   node supabase/qa/v1.6/qa-db.mjs push --workdir <repo> --expect-last <versión> --confirm <ref QA>
 //   node supabase/qa/v1.6/qa-db.mjs flag-status | notifications-recent      consultas fijas de solo lectura
+//   node supabase/qa/v1.6/qa-db.mjs realtime-subscriptions | realtime-filter-check  Realtime: suscripciones vivas por rol
+//        y privilegios de columna que valida el trigger de filtros (solo lectura)
 //   node supabase/qa/v1.6/qa-db.mjs flag-enable-qa-sandbox --confirm <ref QA>  v16_notifications solo para QA Sandbox
 //   node supabase/qa/v1.6/qa-db.mjs dry-run-comment-reads --confirm <ref QA>   dry-run transaccional (ROLLBACK) de
 //        migrations/20261013000001 + security_checks_comment_reads.sql (ya aplicada en QA: su guard aborta)
@@ -235,6 +237,34 @@ switch (command) {
         "db",
         "query",
         "select n.created_at, n.type, r.email as recipient, r.role as recipient_role, a.email as actor, n.event_key, n.read_at is not null as read, (n.recipient_id = n.actor_id) as own from public.notifications n join public.clients c on c.id = n.client_id and c.slug = 'qa-sandbox' left join public.profiles r on r.id = n.recipient_id left join public.profiles a on a.id = n.actor_id order by n.created_at desc limit 30",
+        "--db-url",
+        url,
+      ],
+      workdir
+    );
+    break;
+  case "realtime-subscriptions":
+    // Consulta FIJA de solo lectura: suscripciones postgres_changes registradas ahora en Realtime (rol del JWT, usuario,
+    // tabla y columnas filtradas) para verificar que ningún canal de la app quede unido como `anon`.
+    runCli(
+      [
+        "db",
+        "query",
+        "select s.claims_role::text as role, coalesce(s.claims ->> 'email', '(sin email)') as email, s.entity::regclass::text as entity, coalesce((select string_agg((f).column_name, ',') from unnest(s.filters) f), '') as filter_columns, count(*) as subscriptions, max(s.created_at) as last_created from realtime.subscription s group by 1, 2, 3, 4 order by 6 desc",
+        "--db-url",
+        url,
+      ],
+      workdir
+    );
+    break;
+  case "realtime-filter-check":
+    // Consulta FIJA de solo lectura: definición del trigger de Realtime que valida filtros y privilegios de columna
+    // por rol para las columnas filtradas por la app.
+    runCli(
+      [
+        "db",
+        "query",
+        "select r.role, t.tbl, t.col, has_column_privilege(r.role, t.tbl, t.col, 'SELECT') as can_select from (values ('anon'), ('authenticated')) r(role) cross join (values ('public.notifications', 'recipient_id'), ('public.publication_changes', 'client_id'), ('public.publication_comments', 'publication_id')) t(tbl, col) union all select 'trigger', 'realtime.subscription_check_filters', case when position('has_column_privilege' in pg_get_functiondef('realtime.subscription_check_filters'::regproc)) > 0 then 'usa has_column_privilege(claims role)' else 'NO usa has_column_privilege' end, position('invalid column for filter' in pg_get_functiondef('realtime.subscription_check_filters'::regproc)) > 0 order by 1, 2",
         "--db-url",
         url,
       ],
@@ -685,5 +715,5 @@ switch (command) {
     break;
   }
   default:
-    fail('comando desconocido. Usar: check | app-env | list | pg-version | push-dry | push | flag-status | flag-enable-qa-sandbox | notifications-recent | dry-run-comment-reads | dry-run-replies-reactions | dry-run-archive | dry-run-collab-emails | security-checks | schema-status | rehearse-rollback (ver encabezado del archivo).');
+    fail('comando desconocido. Usar: check | app-env | list | pg-version | push-dry | push | flag-status | flag-enable-qa-sandbox | notifications-recent | realtime-subscriptions | realtime-filter-check | dry-run-comment-reads | dry-run-replies-reactions | dry-run-archive | dry-run-collab-emails | security-checks | schema-status | rehearse-rollback (ver encabezado del archivo).');
 }

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { isPermanentChannelError, isPostgresChangesRejection, whileSignedIn } from "@/lib/supabase/realtime-session";
 
 /**
  * Publicaciones en vivo (v1.6): crear, editar (fecha, estado, contenido), archivar, restaurar y eliminar se reflejan
@@ -17,6 +18,8 @@ import { createClient } from "@/lib/supabase/client";
  * - Sin la migración el canal falla en silencio y la pantalla se comporta como antes (sin vivo). Canal PROPIO, separado
  *   de comentarios y notificaciones, que no se ven afectados. Una suscripción por montaje, nombre único, eliminada en
  *   el cleanup.
+ * - Solo con sesión válida del navegador (whileSignedIn): sin sesión, Realtime usaría la anon key y rechazaría el
+ *   filtro client_id. Al perder la sesión se elimina el canal; al recuperarla se crea uno nuevo.
  */
 export function usePublicationsLive({
   clientId,
@@ -40,21 +43,42 @@ export function usePublicationsLive({
   useEffect(() => {
     const supabase = createClient();
     const filter = clientId ? `client_id=eq.${clientId}` : undefined;
-    const channel = supabase
-      .channel(`publication-changes:${clientId ?? "global"}:${crypto.randomUUID()}`)
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "publication_changes", ...(filter ? { filter } : {}) },
-        (payload) => {
-          const row = payload.new as { publication_id?: unknown; kind?: unknown };
-          if (typeof row.publication_id !== "string") return;
-          if (row.kind === "delete") onDeletedRef.current(row.publication_id);
-          else onChangedRef.current(row.publication_id);
-        }
-      )
-      .subscribe();
-    return () => {
-      void supabase.removeChannel(channel);
-    };
+    return whileSignedIn(({ recheck }) => {
+      let closed = false;
+      const channel = supabase
+        .channel(`publication-changes:${clientId ?? "global"}:${crypto.randomUUID()}`)
+        .on(
+          "postgres_changes",
+          { event: "INSERT", schema: "public", table: "publication_changes", ...(filter ? { filter } : {}) },
+          (payload) => {
+            const row = payload.new as { publication_id?: unknown; kind?: unknown };
+            if (typeof row.publication_id !== "string") return;
+            if (row.kind === "delete") onDeletedRef.current(row.publication_id);
+            else onChangedRef.current(row.publication_id);
+          }
+        )
+        .on("system", {}, (payload) => {
+          // Filtro rechazado (p. ej. sin sesión: "invalid column for filter client_id"); el canal sigue SUBSCRIBED.
+          if (closed || !isPostgresChangesRejection(payload)) return;
+          stop();
+          recheck();
+        })
+        .subscribe((status, err) => {
+          if (closed) return;
+          if (status === "CHANNEL_ERROR") {
+            // Sin bucle de reintentos ante un rechazo permanente; si la causa era la sesión, recheck lo detecta.
+            if (isPermanentChannelError(err)) stop();
+            recheck();
+          } else if (status === "TIMED_OUT" || status === "CLOSED") {
+            recheck();
+          }
+        });
+      function stop() {
+        if (closed) return;
+        closed = true;
+        void supabase.removeChannel(channel);
+      }
+      return stop;
+    });
   }, [clientId]);
 }

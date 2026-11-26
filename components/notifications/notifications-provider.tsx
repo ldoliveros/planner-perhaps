@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { isPermanentChannelError, isPostgresChangesRejection, whileSignedIn } from "@/lib/supabase/realtime-session";
 import {
   getNotification,
   listNotifications,
@@ -211,41 +212,84 @@ export function NotificationsProvider({ userId, children }: { userId: string; ch
       });
     }
 
-    // Suscribir antes de cargar: un evento entre la carga y la suscripción no se pierde.
-    const channel = supabase
-      .channel(`notifications:${userId}:${crypto.randomUUID()}`)
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications", filter }, (payload) =>
-        handleSignal((payload.new as { id?: unknown }).id, true)
-      )
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "notifications", filter }, (payload) =>
-        // Leída en otra pestaña / dispositivo: se refleja acá.
-        handleSignal((payload.new as { id?: unknown }).id, false)
-      )
-      .subscribe((status, err) => {
-        if (cancelled) return;
-        if (status === "SUBSCRIBED") {
-          setLiveState("live");
-          if (wasDisconnected) {
-            wasDisconnected = false;
-            void resync();
-          }
-        } else if (status === "CHANNEL_ERROR") {
-          wasDisconnected = true;
-          const notEnabled = /subscribe to changes|does not exist|not found/i.test(err?.message ?? "");
-          setLiveState(notEnabled ? "unavailable" : "reconnecting");
-        } else if (status === "TIMED_OUT" || status === "CLOSED") {
-          wasDisconnected = true;
-          setLiveState("reconnecting");
+    // v1.6 no instalada (lo informa la carga): sin canal.
+    let unavailable = false;
+    let stopChannel: (() => void) | null = null;
+
+    // Canal SOLO con sesión válida del navegador y del mismo usuario del layout (whileSignedIn): sin sesión, Realtime
+    // usaría la anon key y rechazaría el filtro recipient_id. Se crea en cuanto el navegador confirma la sesión
+    // (INITIAL_SESSION, lectura local), en paralelo a la carga inicial; si la sesión se pierde se elimina, y al
+    // recuperarla se crea uno nuevo y se resincroniza la bandeja.
+    const stopSession = whileSignedIn(
+      ({ resumed, recheck }) => {
+        if (unavailable) return () => undefined;
+        if (resumed) wasDisconnected = true;
+        let closed = false;
+        const channel = supabase
+          .channel(`notifications:${userId}:${crypto.randomUUID()}`)
+          .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications", filter }, (payload) =>
+            handleSignal((payload.new as { id?: unknown }).id, true)
+          )
+          .on("postgres_changes", { event: "UPDATE", schema: "public", table: "notifications", filter }, (payload) =>
+            // Leída en otra pestaña / dispositivo: se refleja acá.
+            handleSignal((payload.new as { id?: unknown }).id, false)
+          )
+          .on("system", {}, (payload) => {
+            // Filtro rechazado (p. ej. sin sesión: "invalid column for filter recipient_id"); el canal sigue SUBSCRIBED.
+            if (cancelled || closed || !isPostgresChangesRejection(payload)) return;
+            wasDisconnected = true;
+            setLiveState("unavailable");
+            stop();
+            recheck();
+          })
+          .subscribe((status, err) => {
+            if (cancelled || closed) return;
+            if (status === "SUBSCRIBED") {
+              setLiveState("live");
+              if (wasDisconnected) {
+                wasDisconnected = false;
+                void resync();
+              }
+            } else if (status === "CHANNEL_ERROR") {
+              wasDisconnected = true;
+              if (isPermanentChannelError(err)) {
+                // No se arregla reintentando: se cierra el canal (sin bucle de reintentos). Si la causa era la sesión,
+                // recheck lo detecta y, al volver la sesión, whileSignedIn crea un canal nuevo.
+                setLiveState("unavailable");
+                stop();
+              } else {
+                setLiveState("reconnecting");
+              }
+              recheck();
+            } else if (status === "TIMED_OUT" || status === "CLOSED") {
+              wasDisconnected = true;
+              setLiveState("reconnecting");
+              recheck();
+            }
+          });
+        function stop() {
+          if (closed) return;
+          closed = true;
+          stopChannel = null;
+          void supabase.removeChannel(channel);
         }
-      });
+        stopChannel = stop;
+        return () => {
+          if (!cancelled && !closed) setLiveState("reconnecting");
+          stop();
+        };
+      },
+      { expectedUserId: userId }
+    );
 
     listNotifications({ limit: PAGE_SIZE, unreadOnly: true })
       .then((page) => {
         applyPage(page, "replace-recent");
         if (!cancelled && page.unavailable) {
           // v1.6 no instalada: sin canal abierto.
+          unavailable = true;
           setLiveState("unavailable");
-          void supabase.removeChannel(channel);
+          stopChannel?.();
         }
       }, applyFailure);
 
@@ -260,7 +304,7 @@ export function NotificationsProvider({ userId, children }: { userId: string; ch
       mountedRef.current = false;
       window.removeEventListener("online", handleResync);
       document.removeEventListener("visibilitychange", handleResync);
-      void supabase.removeChannel(channel);
+      stopSession();
     };
   }, [userId, applyPage, applyFailure, resync, showToast]);
 

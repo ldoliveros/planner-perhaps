@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { isPermanentChannelError, isPostgresChangesRejection, whileSignedIn } from "@/lib/supabase/realtime-session";
 import {
   addPublicationComment,
   deletePublicationComment,
@@ -142,58 +143,96 @@ export function usePublicationComments(publicationId: string) {
       if (!cancelled && comment) upsert(comment);
     }
 
-    // Suscribir ANTES de cargar: un comentario que entra entre la carga y la suscripción no se pierde.
-    let channel = supabase.channel(`publication-comments:${publicationId}:${crypto.randomUUID()}`);
-    if (reactionsSupported) {
-      // v1.6 reacciones en el MISMO canal. Solo UPDATE/INSERT (quitar = active false): pasan por la RLS de la tabla.
-      const onReaction = (row: { comment_id?: unknown; user_id?: unknown; emoji?: unknown; active?: unknown }) => {
-        if (cancelled || typeof row.comment_id !== "string" || typeof row.user_id !== "string") return;
-        if (!(COMMENT_REACTION_EMOJIS as readonly unknown[]).includes(row.emoji)) return;
-        const reaction: CommentReaction = { commentId: row.comment_id, userId: row.user_id, emoji: row.emoji as CommentReactionEmoji };
-        setReactionsByKey((prev) => {
-          const next = new Map(prev);
-          if (row.active === true) next.set(reactionKey(reaction), reaction);
-          else next.delete(reactionKey(reaction));
-          return next;
-        });
-      };
+    // v1.6 no instalada (lo informa la carga): sin canal.
+    let unavailable = false;
+    let stopChannel: (() => void) | null = null;
+
+    // Canal SOLO con sesión válida del navegador (whileSignedIn): sin sesión, Realtime usaría la anon key y rechazaría
+    // el filtro publication_id. Se crea en cuanto el navegador confirma la sesión (INITIAL_SESSION, lectura local), en
+    // paralelo a la carga inicial, como antes; al perder la sesión se elimina el canal y al recuperarla se crea uno nuevo
+    // y se recarga.
+    const stopSession = whileSignedIn(({ resumed, recheck }) => {
+      if (unavailable) return () => undefined;
+      if (resumed) wasDisconnected = true;
+      let closed = false;
+      let channel = supabase.channel(`publication-comments:${publicationId}:${crypto.randomUUID()}`);
+      if (reactionsSupported) {
+        // v1.6 reacciones en el MISMO canal. Solo UPDATE/INSERT (quitar = active false): pasan por la RLS de la tabla.
+        const onReaction = (row: { comment_id?: unknown; user_id?: unknown; emoji?: unknown; active?: unknown }) => {
+          if (cancelled || typeof row.comment_id !== "string" || typeof row.user_id !== "string") return;
+          if (!(COMMENT_REACTION_EMOJIS as readonly unknown[]).includes(row.emoji)) return;
+          const reaction: CommentReaction = { commentId: row.comment_id, userId: row.user_id, emoji: row.emoji as CommentReactionEmoji };
+          setReactionsByKey((prev) => {
+            const next = new Map(prev);
+            if (row.active === true) next.set(reactionKey(reaction), reaction);
+            else next.delete(reactionKey(reaction));
+            return next;
+          });
+        };
+        channel = channel
+          .on("postgres_changes", { event: "INSERT", schema: "public", table: "publication_comment_reactions", filter }, (payload) =>
+            onReaction(payload.new as Record<string, unknown>)
+          )
+          .on("postgres_changes", { event: "UPDATE", schema: "public", table: "publication_comment_reactions", filter }, (payload) =>
+            onReaction(payload.new as Record<string, unknown>)
+          );
+      }
       channel = channel
-        .on("postgres_changes", { event: "INSERT", schema: "public", table: "publication_comment_reactions", filter }, (payload) =>
-          onReaction(payload.new as Record<string, unknown>)
-        )
-        .on("postgres_changes", { event: "UPDATE", schema: "public", table: "publication_comment_reactions", filter }, (payload) =>
-          onReaction(payload.new as Record<string, unknown>)
-        );
-    }
-    channel = channel
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "publication_comments", filter }, (payload) => {
-        void refreshOne((payload.new as { id?: unknown }).id);
-      })
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "publication_comments", filter }, (payload) => {
-        void refreshOne((payload.new as { id?: unknown }).id);
-      })
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "publication_status_events", filter }, (payload) => {
-        const toStatusId = (payload.new as { to_status_id?: unknown }).to_status_id;
-        if (!cancelled && typeof toStatusId === "string") setLiveStatusId(toStatusId);
-      })
-      .subscribe((status, err) => {
-        if (cancelled) return;
-        if (status === "SUBSCRIBED") {
-          setLiveState("live");
-          if (wasDisconnected) {
-            wasDisconnected = false;
-            void reload();
+        .on("postgres_changes", { event: "INSERT", schema: "public", table: "publication_comments", filter }, (payload) => {
+          void refreshOne((payload.new as { id?: unknown }).id);
+        })
+        .on("postgres_changes", { event: "UPDATE", schema: "public", table: "publication_comments", filter }, (payload) => {
+          void refreshOne((payload.new as { id?: unknown }).id);
+        })
+        .on("postgres_changes", { event: "INSERT", schema: "public", table: "publication_status_events", filter }, (payload) => {
+          const toStatusId = (payload.new as { to_status_id?: unknown }).to_status_id;
+          if (!cancelled && typeof toStatusId === "string") setLiveStatusId(toStatusId);
+        })
+        .on("system", {}, (payload) => {
+          // Filtro rechazado (p. ej. sin sesión: "invalid column for filter publication_id"); el canal sigue SUBSCRIBED.
+          if (cancelled || closed || !isPostgresChangesRejection(payload)) return;
+          wasDisconnected = true;
+          setLiveState("unavailable");
+          stop();
+          recheck();
+        })
+        .subscribe((status, err) => {
+          if (cancelled || closed) return;
+          if (status === "SUBSCRIBED") {
+            setLiveState("live");
+            if (wasDisconnected) {
+              wasDisconnected = false;
+              void reload();
+            }
+          } else if (status === "CHANNEL_ERROR") {
+            wasDisconnected = true;
+            if (isPermanentChannelError(err)) {
+              // Tablas fuera de supabase_realtime o filtro rechazado: no se arregla reintentando; se cierra el canal.
+              // Si la causa era la sesión, recheck lo detecta y, al volver la sesión, se crea un canal nuevo.
+              setLiveState("unavailable");
+              stop();
+            } else {
+              setLiveState("reconnecting");
+            }
+            recheck();
+          } else if (status === "TIMED_OUT" || status === "CLOSED") {
+            wasDisconnected = true;
+            setLiveState("reconnecting");
+            recheck();
           }
-        } else if (status === "CHANNEL_ERROR") {
-          wasDisconnected = true;
-          // Tablas fuera de la publicación supabase_realtime (Realtime no habilitado todavía para v1.6).
-          const notEnabled = /subscribe to changes|does not exist|not found/i.test(err?.message ?? "");
-          setLiveState(notEnabled ? "unavailable" : "reconnecting");
-        } else if (status === "TIMED_OUT" || status === "CLOSED") {
-          wasDisconnected = true;
-          setLiveState("reconnecting");
-        }
-      });
+        });
+      function stop() {
+        if (closed) return;
+        closed = true;
+        stopChannel = null;
+        void supabase.removeChannel(channel);
+      }
+      stopChannel = stop;
+      return () => {
+        if (!cancelled && !closed) setLiveState("reconnecting");
+        stop();
+      };
+    });
 
     listPublicationComments(publicationId)
       .then(applyLoadResult, applyLoadFailure)
@@ -201,8 +240,9 @@ export function usePublicationComments(publicationId: string) {
         if (!cancelled && outcome === "ready") void loadReactions();
         if (cancelled || outcome !== "unavailable") return;
         // v1.6 no instalada: no tiene sentido mantener el canal abierto.
+        unavailable = true;
         setLiveState("unavailable");
-        void supabase.removeChannel(channel);
+        stopChannel?.();
       });
 
     function handleResync() {
@@ -216,7 +256,7 @@ export function usePublicationComments(publicationId: string) {
       mountedRef.current = false;
       window.removeEventListener("online", handleResync);
       document.removeEventListener("visibilitychange", handleResync);
-      void supabase.removeChannel(channel);
+      stopSession();
     };
     // reactionsSupported: al descubrir la tabla de reacciones se rearma UNA vez el canal con su listener.
   }, [publicationId, reload, upsert, applyLoadResult, applyLoadFailure, loadReactions, reactionsSupported]);
