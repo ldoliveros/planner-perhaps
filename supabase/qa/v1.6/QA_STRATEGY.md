@@ -557,3 +557,26 @@ publicaciones existentes del QA Sandbox; no crear publicaciones ni usuarios. tsc
 2. F1 real con el flag apagado (v1.5.1 sigue en producción; no se acumulan notificaciones). Incluye la migración
    de Trello `20261009000001`, que tiene que estar aplicada antes del deploy de v1.6.
 3. Realtime, worker y cron, y recién después el deploy de v1.6 + flag `enabled = true`.
+
+## D. 2026-11-26 — Comentarios salvo en Publicada y aviso de notificaciones en la agenda
+
+**Comentarios (`20261126000001_v16_comments_before_published`, solo QA).** Abiertos en Borrador, En revisión, Aprobada
+y Descartada; Publicada: historial visible, sin agregar, responder, editar ni eliminar; al dejar de estar Publicada se
+reabren. Reacciones en todos los estados. Aplicada con `push` y, tras abrir Descartada, re-aplicada con
+`qa-db.mjs reapply-migration --version 20261126000001` (un DO atómico; `db push` no re-ejecuta versiones registradas).
+Baterías (revertidas) OK: `comments-status` (CS01–CS10), `core` (T26 actualizada), `replies-reactions` (RX06
+actualizada), `comment-reads`, `collab-emails`, `collab-integration`. Con la regla anterior, `comments-status` falla en
+CS01 (Descartada): la batería detecta el cambio. UI: Borrador → Publicado → Aprobado recorrido en el navegador (editor,
+Editar/Eliminar, reacciones y aviso de solo lectura).
+
+**Agenda diaria (`supabase/functions/daily-agenda/agenda.ts`).** Validada como lógica, NO como Edge Function desplegada:
+- `node supabase/qa/v1.6/agenda/agenda-checks.mjs`: 13 comprobaciones en memoria (recipient_id, acceso vigente, días
+  anteriores, leídas, singular/plural, HTML y texto, envío sin contenidos, bloque omitido, sin tabla, Client User).
+- `node supabase/qa/v1.6/agenda/agenda-qa-dryrun.mjs <email QA>`: el mismo archivo contra la base QA en dryRun (sin
+  Resend ni escrituras), con conteo independiente. Resultados: mención real al Account Manager → "Tenés 1 notificación
+  pendiente de revisión." con contenido del día y, con la publicación en Publicada, agenda enviada solo con el aviso;
+  con 8 notificaciones sin leer de otros destinatarios, Super Admin y Account Manager cuentan 0 (coincide).
+- Desplegada en QA (`qa-db.mjs agenda-deploy`): autenticación validada con `agenda-invoke-qa.mjs auth` (sin
+  credencial, anon, JWT inválido y service_role legacy → 401; solo acepta `sb_secret_…`). Sin secretos de Resend/SITE_URL
+  en QA (decisión del usuario): el `dryRun` del entry point desplegado y el envío real quedan PENDIENTES para producción
+  con su configuración existente (DEPLOY_RUNBOOK §8.4).

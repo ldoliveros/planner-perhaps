@@ -57,7 +57,7 @@ Detalle y registro de avance: `supabase/pending-migrations/v1.6/README.md` (migr
 `supabase/rollback/v1.6/DEPLOY_RUNBOOK.md` (despliegue a producción y decisiones previas D1–D4).
 
 Implementado en la rama (2026-10-09):
-- Colaboración: comentarios con menciones (solo En revisión), aprobación del cliente con versión, historial
+- Colaboración: comentarios con menciones (todos los estados salvo Publicada, que queda en solo lectura), aprobación del cliente con versión, historial
   de estados, notificaciones en tiempo real (campanita, drawer lateral, historial), bloqueo optimista al guardar.
 - Modal de publicación con pestañas: Edición/Comentarios (staff) y Publicación/Comentarios (Client User);
   altura estable, ambos paneles montados (no se pierden cambios sin guardar) y ocultamiento inmediato.
@@ -93,7 +93,7 @@ Reglas vigentes:
   activa v1.6 para TODOS los clientes (solo en el lanzamiento).
 - QA cerrado (2026-10-14): regresión manual R1–R9 aprobada, ensayo real de rollback B11 aprobado en QA y pausa de
   emails validada (EM01–EM10, IT01–IT12). Pendiente solo F5 (worker/cron de emails), fuera de v1.6. Despliegue a
-  producción: `supabase/rollback/v1.6/DEPLOY_RUNBOOK.md` (10 migraciones; backup manual verificado y restaurado).
+  producción: `supabase/rollback/v1.6/DEPLOY_RUNBOOK.md` (11 migraciones; la 11.ª, `20261126000001`, va antes del deploy de la app; backup manual verificado y restaurado).
 
 ## Eficiencia de desarrollo y QA
 

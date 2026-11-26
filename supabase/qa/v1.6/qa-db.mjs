@@ -12,7 +12,14 @@
 //   node supabase/qa/v1.6/qa-db.mjs pg-version                             versión de Postgres (consulta fija, solo lectura)
 //   node supabase/qa/v1.6/qa-db.mjs push-dry [--workdir <repo>]            supabase db push --dry-run
 //   node supabase/qa/v1.6/qa-db.mjs push --workdir <repo> --expect-last <versión> --confirm <ref QA>
+//   node supabase/qa/v1.6/qa-db.mjs reapply-migration --version 20261126000001 --confirm <ref QA>  re-ejecuta una migración
+//        ya registrada cuyo archivo cambió (solo versiones idempotentes de una lista fija; atómico)
+//   node supabase/qa/v1.6/qa-db.mjs agenda-deploy --confirm <ref QA> | agenda-functions | agenda-secrets | agenda-status
+//        Edge Function daily-agenda en QA (ref fijo): desplegar, listar, nombres de secretos, cron/daily_agenda_log
+//   node supabase/qa/v1.6/qa-db.mjs agenda-disable-sends --confirm <ref QA>  quita RESEND_API_KEY de QA (sin envíos)
 //   node supabase/qa/v1.6/qa-db.mjs flag-status | notifications-recent      consultas fijas de solo lectura
+//   node supabase/qa/v1.6/qa-db.mjs realtime-subscriptions | realtime-filter-check  Realtime: suscripciones vivas por rol
+//        y privilegios de columna que valida el trigger de filtros (solo lectura)
 //   node supabase/qa/v1.6/qa-db.mjs flag-enable-qa-sandbox --confirm <ref QA>  v16_notifications solo para QA Sandbox
 //   node supabase/qa/v1.6/qa-db.mjs dry-run-comment-reads --confirm <ref QA>   dry-run transaccional (ROLLBACK) de
 //        migrations/20261013000001 + security_checks_comment_reads.sql (ya aplicada en QA: su guard aborta)
@@ -20,7 +27,7 @@
 //   node supabase/qa/v1.6/qa-db.mjs dry-run-archive --confirm <ref QA>  dry-run (ROLLBACK) de pending 20261017000001/2 + security_checks_archive.sql
 //   node supabase/qa/v1.6/qa-db.mjs dry-run-replies-reactions --confirm <ref QA>  dry-run (ROLLBACK) de pending 20261014000001/2
 //   node supabase/qa/v1.6/qa-db.mjs dry-run-collab-emails --confirm <ref QA>  dry-run (ROLLBACK) de pending 20261018000001 + security_checks_collab_emails.sql
-//   node supabase/qa/v1.6/qa-db.mjs security-checks --suite core|comment-reads|replies-reactions|archive|collab-emails|collab-integration --confirm <ref QA>  pruebas (revertidas)
+//   node supabase/qa/v1.6/qa-db.mjs security-checks --suite core|comment-reads|replies-reactions|archive|collab-emails|collab-integration|comments-status --confirm <ref QA>  pruebas (revertidas)
 //
 // La URL de la base NUNCA va en el repo ni en el chat: se lee de la variable de entorno QA_DB_URL o del archivo
 // `.env.qa.local` en la raíz del repo (gitignoreado por `.env*`; Next no lo carga). Nunca se imprime completa.
@@ -235,6 +242,34 @@ switch (command) {
         "db",
         "query",
         "select n.created_at, n.type, r.email as recipient, r.role as recipient_role, a.email as actor, n.event_key, n.read_at is not null as read, (n.recipient_id = n.actor_id) as own from public.notifications n join public.clients c on c.id = n.client_id and c.slug = 'qa-sandbox' left join public.profiles r on r.id = n.recipient_id left join public.profiles a on a.id = n.actor_id order by n.created_at desc limit 30",
+        "--db-url",
+        url,
+      ],
+      workdir
+    );
+    break;
+  case "realtime-subscriptions":
+    // Consulta FIJA de solo lectura: suscripciones postgres_changes registradas ahora en Realtime (rol del JWT, usuario,
+    // tabla y columnas filtradas) para verificar que ningún canal de la app quede unido como `anon`.
+    runCli(
+      [
+        "db",
+        "query",
+        "select s.claims_role::text as role, coalesce(s.claims ->> 'email', '(sin email)') as email, s.entity::regclass::text as entity, coalesce((select string_agg((f).column_name, ',') from unnest(s.filters) f), '') as filter_columns, count(*) as subscriptions, max(s.created_at) as last_created from realtime.subscription s group by 1, 2, 3, 4 order by 6 desc",
+        "--db-url",
+        url,
+      ],
+      workdir
+    );
+    break;
+  case "realtime-filter-check":
+    // Consulta FIJA de solo lectura: definición del trigger de Realtime que valida filtros y privilegios de columna
+    // por rol para las columnas filtradas por la app.
+    runCli(
+      [
+        "db",
+        "query",
+        "select r.role, t.tbl, t.col, has_column_privilege(r.role, t.tbl, t.col, 'SELECT') as can_select from (values ('anon'), ('authenticated')) r(role) cross join (values ('public.notifications', 'recipient_id'), ('public.publication_changes', 'client_id'), ('public.publication_comments', 'publication_id')) t(tbl, col) union all select 'trigger', 'realtime.subscription_check_filters', case when position('has_column_privilege' in pg_get_functiondef('realtime.subscription_check_filters'::regproc)) > 0 then 'usa has_column_privilege(claims role)' else 'NO usa has_column_privilege' end, position('invalid column for filter' in pg_get_functiondef('realtime.subscription_check_filters'::regproc)) > 0 order by 1, 2",
         "--db-url",
         url,
       ],
@@ -621,6 +656,7 @@ switch (command) {
       "replies-reactions": "security_checks_replies_reactions.sql",
       "collab-emails": "security_checks_collab_emails.sql",
       "collab-integration": "integration_collab_emails_paused.sql",
+      "comments-status": "security_checks_comments_status.sql",
     };
     const suite = arg("--suite");
     if (!suites[suite]) fail(`security-checks exige --suite ${Object.keys(suites).join(" | ")}.`);
@@ -673,6 +709,70 @@ switch (command) {
     );
     break;
   }
+  // ---- Edge Function daily-agenda en QA (ref fijo: nunca producción). Comandos de gestión, no de base. ----
+  case "agenda-deploy": {
+    if (arg("--confirm") !== QA_PROJECT_REF) fail(`agenda-deploy exige --confirm ${QA_PROJECT_REF}.`);
+    // verify_jwt=false sale de supabase/config.toml ([functions.daily-agenda]); la autenticación la hace index.ts.
+    runCli(["functions", "deploy", "daily-agenda", "--project-ref", QA_PROJECT_REF], workdir);
+    break;
+  }
+  case "agenda-functions":
+    runCli(["functions", "list", "--project-ref", QA_PROJECT_REF], workdir);
+    break;
+  case "agenda-secrets":
+    // Solo nombres y digests (el CLI nunca muestra los valores).
+    runCli(["secrets", "list", "--project-ref", QA_PROJECT_REF], workdir);
+    break;
+  case "agenda-disable-sends": {
+    // Apaga los envíos reales de la agenda en QA: sin RESEND_API_KEY, index.ts responde 500 antes de enviar.
+    if (arg("--confirm") !== QA_PROJECT_REF) fail(`agenda-disable-sends exige --confirm ${QA_PROJECT_REF}.`);
+    runCli(["secrets", "unset", "RESEND_API_KEY", "--project-ref", QA_PROJECT_REF, "--yes"], workdir);
+    break;
+  }
+  case "agenda-status":
+    // Solo lectura: cron/pg_net instalados (no deben estarlo) y envíos registrados en daily_agenda_log (últimos 7 días).
+    runCli(
+      [
+        "db",
+        "query",
+        "select (select coalesce(string_agg(extname, ','), '(ninguna)') from pg_extension where extname in ('pg_cron', 'pg_net')) as cron_extensions, " +
+          "(select count(*) from public.daily_agenda_log where agenda_date >= current_date - 7) as log_rows_7d, " +
+          "(select coalesce(string_agg(agenda_date || ' ' || status || ' x' || attempt_count, ' | ' order by agenda_date), '(sin filas)') from public.daily_agenda_log where agenda_date >= current_date - 7) as log_7d",
+        "--db-url",
+        url,
+      ],
+      workdir
+    );
+    break;
+  case "reapply-migration": {
+    // Vuelve a ejecutar en QA una migración YA registrada cuyo archivo cambió antes de llegar a producción (`db push` no
+    // re-ejecuta versiones registradas). Solo versiones de la lista: idempotentes (create or replace / revoke), sin DDL de
+    // tablas ni datos. Corre atómico (un DO) y no toca el historial de migraciones.
+    const REAPPLICABLE = ["20261126000001"];
+    const version = arg("--version");
+    if (!REAPPLICABLE.includes(version)) fail(`reapply-migration solo admite --version ${REAPPLICABLE.join(" | ")}.`);
+    if (arg("--confirm") !== QA_PROJECT_REF) fail(`reapply-migration exige --confirm ${QA_PROJECT_REF}.`);
+    const name = migrations.find((m) => m.startsWith(`${version}_`));
+    if (!name) fail(`no existe supabase/migrations/${version}_*.sql en ${workdir}.`);
+    const body = readFileSync(join(workdir, "supabase", "migrations", name), "utf8");
+    if (/^\s*(begin|commit|rollback|end\s+(transaction|work))\s*;/im.test(body)) fail("la migración contiene control de transacción.");
+    if (body.includes("$mig$") || body.includes("$reapply$")) fail("la migración contiene un delimitador reservado.");
+    // `db query` admite UNA sentencia: un DO que la ejecuta con EXECUTE (atómico: todo o nada).
+    const dir = mkdtempSync(join(tmpdir(), "qa-reapply-"));
+    const file = join(dir, "reapply.sql");
+    writeFileSync(file, `do $reapply$\nbegin\n  execute $mig$${body}$mig$;\nend\n$reapply$;\n`, "utf8");
+    try {
+      console.log(`\n→ re-aplicando ${name} (atómico): supabase db query --file <temporal> --db-url ${redact(url)}\n`);
+      const run = spawnSync(process.execPath, [cliEntry(), "db", "query", "--file", file, "--db-url", url, "--workdir", workdir], {
+        stdio: "inherit",
+        shell: false,
+      });
+      process.exitCode = run.status ?? 1;
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+    break;
+  }
   case "push": {
     const expectLast = arg("--expect-last");
     const confirm = arg("--confirm");
@@ -685,5 +785,5 @@ switch (command) {
     break;
   }
   default:
-    fail('comando desconocido. Usar: check | app-env | list | pg-version | push-dry | push | flag-status | flag-enable-qa-sandbox | notifications-recent | dry-run-comment-reads | dry-run-replies-reactions | dry-run-archive | dry-run-collab-emails | security-checks | schema-status | rehearse-rollback (ver encabezado del archivo).');
+    fail('comando desconocido. Usar: check | app-env | list | pg-version | push-dry | push | reapply-migration | agenda-deploy | agenda-functions | agenda-secrets | agenda-status | agenda-disable-sends | flag-status | flag-enable-qa-sandbox | notifications-recent | realtime-subscriptions | realtime-filter-check | dry-run-comment-reads | dry-run-replies-reactions | dry-run-archive | dry-run-collab-emails | security-checks | schema-status | rehearse-rollback (ver encabezado del archivo).');
 }

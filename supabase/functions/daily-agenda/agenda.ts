@@ -44,8 +44,12 @@ export interface AgendaRecipientResult {
   fullName: string | null;
   role: string;
   totalCount: number;
+  /** Notificaciones sin leer del destinatario (read_at IS NULL), de clientes que hoy puede ver. */
+  unreadNotifications: number;
   clients: AgendaClientGroup[];
   html: string;
+  /** Versión de texto plano del mismo email (Resend la envía junto al HTML). */
+  text: string;
   subject: string;
   result: "sent" | "failed" | "skipped_no_pending" | "skipped_already_sent" | "skipped_in_progress" | "dry_run";
   resendEmailId?: string;
@@ -119,10 +123,41 @@ function renderEmailHtml(params: {
   totalCount: number;
   clients: AgendaClientGroup[];
   ctaUrl: string;
+  unreadNotifications: number;
+  notificationsUrl: string;
 }): string {
-  const { siteUrl, fullName, displayDate, totalCount, clients, ctaUrl } = params;
+  const { siteUrl, fullName, displayDate, totalCount, clients, ctaUrl, unreadNotifications, notificationsUrl } = params;
   const greetingName = fullName ? escapeHtml(fullName.split(" ")[0]) : null;
   const itemWord = totalCount === 1 ? "contenido pendiente" : "contenidos pendientes";
+  const intro =
+    totalCount > 0
+      ? `Tenés <strong>${totalCount} ${itemWord}</strong> para hoy, ${escapeHtml(displayDate)}.`
+      : `No tenés contenidos pendientes para hoy, ${escapeHtml(displayDate)}.`;
+  // Aviso de notificaciones sin leer: solo si hay (si no, se omite el bloque).
+  const notificationsBlock =
+    unreadNotifications > 0
+      ? `
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 8px 0; background-color:#f0f9fe; border-radius:10px;">
+                  <tr>
+                    <td style="padding:16px 20px;" align="left">
+                      <p style="margin:0 0 6px 0; font-family:Arial, Helvetica, sans-serif; font-size:14px; line-height:1.6; color:#111827;">${escapeHtml(notificationsSentence(unreadNotifications))}</p>
+                      <a href="${notificationsUrl}" target="_blank" style="font-family:Arial, Helvetica, sans-serif; font-size:14px; font-weight:700; color:#1d8fc2; text-decoration:underline;">Ver notificaciones en Planner</a>
+                    </td>
+                  </tr>
+                </table>`
+      : "";
+  // Sin contenidos para hoy (solo el aviso de notificaciones) no hay agenda que abrir.
+  const agendaCta =
+    totalCount > 0
+      ? `
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:32px;">
+                  <tr>
+                    <td style="border-radius:10px; background-color:#26a9e0;">
+                      <a href="${ctaUrl}" target="_blank" style="display:inline-block; padding:14px 28px; font-family:Arial, Helvetica, sans-serif; font-size:14px; font-weight:700; color:#ffffff; text-decoration:none; border-radius:10px;">Ver agenda en Planner</a>
+                    </td>
+                  </tr>
+                </table>`
+      : "";
 
   const clientSections = clients
     .map((group) => {
@@ -176,19 +211,12 @@ function renderEmailHtml(params: {
               <td style="padding:8px 40px 0 40px;" align="left">
                 <h1 style="margin:0 0 16px 0; font-family:Arial, Helvetica, sans-serif; font-size:24px; line-height:1.3; color:#111827; font-weight:700;">Tu agenda de hoy</h1>
                 <p style="margin:0 0 4px 0; font-family:Arial, Helvetica, sans-serif; font-size:14px; line-height:1.6; color:#4b5563;">${greetingName ? `Hola ${greetingName},` : "Hola,"}</p>
-                <p style="margin:0 0 28px 0; font-family:Arial, Helvetica, sans-serif; font-size:14px; line-height:1.6; color:#4b5563;">Tenés <strong>${totalCount} ${itemWord}</strong> para hoy, ${escapeHtml(displayDate)}.</p>
-
+                <p style="margin:0 0 ${unreadNotifications > 0 ? "16px" : "28px"} 0; font-family:Arial, Helvetica, sans-serif; font-size:14px; line-height:1.6; color:#4b5563;">${intro}</p>
+${notificationsBlock}
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                   ${clientSections}
                 </table>
-
-                <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:32px;">
-                  <tr>
-                    <td style="border-radius:10px; background-color:#26a9e0;">
-                      <a href="${ctaUrl}" target="_blank" style="display:inline-block; padding:14px 28px; font-family:Arial, Helvetica, sans-serif; font-size:14px; font-weight:700; color:#ffffff; text-decoration:none; border-radius:10px;">Ver agenda en Planner</a>
-                    </td>
-                  </tr>
-                </table>
+${agendaCta}
               </td>
             </tr>
             <tr>
@@ -203,6 +231,68 @@ function renderEmailHtml(params: {
     </table>
   </body>
 </html>`;
+}
+
+/** "Tenés 1 notificación pendiente de revisión." / "Tenés 4 notificaciones pendientes de revisión." */
+export function notificationsSentence(count: number): string {
+  return count === 1
+    ? "Tenés 1 notificación pendiente de revisión."
+    : `Tenés ${count} notificaciones pendientes de revisión.`;
+}
+
+/** Versión de texto plano: mismo contenido que el HTML (agenda por cliente + aviso de notificaciones con su enlace). */
+function renderEmailText(params: {
+  fullName: string | null;
+  displayDate: string;
+  totalCount: number;
+  clients: AgendaClientGroup[];
+  ctaUrl: string;
+  unreadNotifications: number;
+  notificationsUrl: string;
+}): string {
+  const { fullName, displayDate, totalCount, clients, ctaUrl, unreadNotifications, notificationsUrl } = params;
+  const lines: string[] = ["Tu agenda de hoy", "", fullName ? `Hola ${fullName.split(" ")[0]},` : "Hola,"];
+  lines.push(
+    totalCount > 0
+      ? `Tenés ${totalCount} ${totalCount === 1 ? "contenido pendiente" : "contenidos pendientes"} para hoy, ${displayDate}.`
+      : `No tenés contenidos pendientes para hoy, ${displayDate}.`
+  );
+  if (unreadNotifications > 0) {
+    lines.push("", notificationsSentence(unreadNotifications), `Ver notificaciones en Planner: ${notificationsUrl}`);
+  }
+  for (const group of clients) {
+    lines.push("", group.clientName);
+    for (const p of group.publications) lines.push(`- ${formatTime(p.time)} · ${p.title} (${p.statusLabel})`);
+  }
+  if (totalCount > 0) lines.push("", `Ver agenda en Planner: ${ctaUrl}`);
+  lines.push("", "--", "Planner");
+  return lines.join("\n");
+}
+
+/**
+ * Notificaciones sin leer (read_at IS NULL) del destinatario, de cualquier fecha, con el mismo acceso que le da la app
+ * (RLS notifications_select_own: recipient_id = uid y can_view_client): Super Admin, todos los clientes; Account
+ * Manager, solo los clientes que tiene asignados HOY (las de un cliente que se le quitó no cuentan). La función corre
+ * con service_role (sin RLS), por eso el filtro de clientes se aplica acá. Sin la tabla (base sin v1.6, 42P01) → 0.
+ */
+async function countUnreadNotifications(
+  supabase: AgendaOptions["supabase"],
+  profile: { id: string; role: string },
+  clientIds: string[]
+): Promise<number> {
+  if (profile.role !== "super_admin" && clientIds.length === 0) return 0;
+  let query = supabase
+    .from("notifications")
+    .select("id", { count: "exact", head: true })
+    .eq("recipient_id", profile.id)
+    .is("read_at", null);
+  if (profile.role !== "super_admin") query = query.in("client_id", clientIds);
+  const { count, error } = await query;
+  if (error) {
+    if ((error as { code?: string }).code === "42P01") return 0;
+    throw error;
+  }
+  return count ?? 0;
 }
 
 /**
@@ -262,11 +352,18 @@ function isConfirmedActiveAuthUser(user: { email_confirmed_at?: string | null; b
   return Boolean(user.email_confirmed_at);
 }
 
-async function sendViaResend(params: { resendApiKey: string; from: string; to: string; subject: string; html: string }) {
+async function sendViaResend(params: {
+  resendApiKey: string;
+  from: string;
+  to: string;
+  subject: string;
+  html: string;
+  text: string;
+}) {
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${params.resendApiKey}` },
-    body: JSON.stringify({ from: params.from, to: params.to, subject: params.subject, html: params.html }),
+    body: JSON.stringify({ from: params.from, to: params.to, subject: params.subject, html: params.html, text: params.text }),
   });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -283,6 +380,8 @@ export async function runDailyAgenda(options: AgendaOptions): Promise<AgendaRunR
   const today = getTodayInBuenosAires();
   const displayDate = formatDisplayDate(today);
   const ctaUrl = `${siteUrl}/admin/publications?view=list&from=${today}&to=${today}`;
+  // Historial de notificaciones del staff (la agenda nunca va a Client Users).
+  const notificationsUrl = `${siteUrl}/admin/notifications`;
 
   // 1) Candidatos: normalmente Super Admin/Account Manager con daily_agenda_enabled=true; en modo QA
   // (testUserId), un único profile puntual, sin mirar su preferencia (fuerza la corrida para probarlo).
@@ -355,10 +454,8 @@ export async function runDailyAgenda(options: AgendaOptions): Promise<AgendaRunR
 
   for (const profile of candidates) {
     const clientIds = profile.role === "super_admin" ? allClientIds : (clientIdsByUser.get(profile.id) ?? []);
-    if (clientIds.length === 0 || pendingStatusIds.length === 0) {
-      results.push(emptyResult(profile, "skipped_no_pending"));
-      continue;
-    }
+    // Con notificaciones sin leer se envía la agenda aunque no haya contenidos para hoy.
+    const unreadNotifications = await countUnreadNotifications(supabase, profile, clientIds);
 
     // v1.6: las publicaciones ARCHIVADAS no entran en la agenda. Si la columna todavía no existe (migración
     // 20261017000001 sin aplicar, 42703), se consulta como antes: así el orden de deploy función/migración no importa.
@@ -372,11 +469,15 @@ export async function runDailyAgenda(options: AgendaOptions): Promise<AgendaRunR
       if (excludeArchived) query = query.is("archived_at", null);
       return query.order("publication_time", { ascending: true, nullsFirst: true });
     };
-    let { data: pubs, error: pubsErr } = await queryPubs(true);
-    if (pubsErr && (pubsErr as { code?: string }).code === "42703") ({ data: pubs, error: pubsErr } = await queryPubs(false));
-    if (pubsErr) throw pubsErr;
+    let pubs: { id: string; client_id: string; title: string; publication_time: string | null; status_id: string }[] = [];
+    if (clientIds.length > 0 && pendingStatusIds.length > 0) {
+      let { data, error: pubsErr } = await queryPubs(true);
+      if (pubsErr && (pubsErr as { code?: string }).code === "42703") ({ data, error: pubsErr } = await queryPubs(false));
+      if (pubsErr) throw pubsErr;
+      pubs = data ?? [];
+    }
 
-    if (!pubs || pubs.length === 0) {
+    if (pubs.length === 0 && unreadNotifications === 0) {
       results.push(emptyResult(profile, "skipped_no_pending"));
       continue;
     }
@@ -402,14 +503,17 @@ export async function runDailyAgenda(options: AgendaOptions): Promise<AgendaRunR
     const clientGroups = Array.from(groups.values()).sort((a, b) => a.clientName.localeCompare(b.clientName));
 
     const subject = "Tu agenda de hoy · Planner";
-    const html = renderEmailHtml({
-      siteUrl,
+    const emailParams = {
       fullName: profile.full_name,
       displayDate,
       totalCount: pubs.length,
       clients: clientGroups,
       ctaUrl,
-    });
+      unreadNotifications,
+      notificationsUrl,
+    };
+    const html = renderEmailHtml({ siteUrl, ...emailParams });
+    const text = renderEmailText(emailParams);
 
     if (dryRun) {
       results.push({
@@ -419,7 +523,9 @@ export async function runDailyAgenda(options: AgendaOptions): Promise<AgendaRunR
         role: profile.role,
         totalCount: pubs.length,
         clients: clientGroups,
+        unreadNotifications,
         html,
+        text,
         subject,
         result: "dry_run",
       });
@@ -435,7 +541,9 @@ export async function runDailyAgenda(options: AgendaOptions): Promise<AgendaRunR
         role: profile.role,
         totalCount: pubs.length,
         clients: clientGroups,
+        unreadNotifications,
         html,
+        text,
         subject,
         result: (claim.reason as AgendaRecipientResult["result"]) ?? "skipped_in_progress",
       });
@@ -445,7 +553,7 @@ export async function runDailyAgenda(options: AgendaOptions): Promise<AgendaRunR
     try {
       const recipientEmail = overrideEmail ?? profile.email;
       if (!recipientEmail) throw new Error("El profile no tiene email.");
-      const sent = await sendViaResend({ resendApiKey, from: fromAddress, to: recipientEmail, subject, html });
+      const sent = await sendViaResend({ resendApiKey, from: fromAddress, to: recipientEmail, subject, html, text });
       await supabase.from("daily_agenda_log").update({ status: "sent", resend_email_id: sent.id }).eq("id", claim.rowId);
       results.push({
         userId: profile.id,
@@ -454,7 +562,9 @@ export async function runDailyAgenda(options: AgendaOptions): Promise<AgendaRunR
         role: profile.role,
         totalCount: pubs.length,
         clients: clientGroups,
+        unreadNotifications,
         html,
+        text,
         subject,
         result: "sent",
         resendEmailId: sent.id,
@@ -469,7 +579,9 @@ export async function runDailyAgenda(options: AgendaOptions): Promise<AgendaRunR
         role: profile.role,
         totalCount: pubs.length,
         clients: clientGroups,
+        unreadNotifications,
         html,
+        text,
         subject,
         result: "failed",
         error: message,
@@ -490,8 +602,10 @@ function emptyResult(
     fullName: profile.full_name,
     role: profile.role,
     totalCount: 0,
+    unreadNotifications: 0,
     clients: [],
     html: "",
+    text: "",
     subject: "",
     result,
   };

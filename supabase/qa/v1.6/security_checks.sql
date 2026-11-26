@@ -207,17 +207,19 @@ begin
     raise exception 'FAIL T29: la aprobación rechazada modificó el estado';
   end if;
 
-  -- Aprobación del cliente sobre la versión vigente: una vez sí, la segunda no; después no se puede comentar.
+  -- Aprobación del cliente sobre la versión vigente: una vez sí, la segunda no; en Aprobada se sigue pudiendo comentar.
   perform public.approve_publication_as_client(v_pub, (select updated_at from public.publications where id = v_pub));
   begin perform public.approve_publication_as_client(v_pub, (select updated_at from public.publications where id = v_pub));
     raise exception 'FAIL T25: segunda aprobación aceptada';
   exception when raise_exception then
     if sqlerrm like 'FAIL%' then raise; end if;
   end;
-  begin perform public.add_publication_comment(v_pub, 'tarde', '{}', gen_random_uuid());
-    raise exception 'FAIL T26: comentario aceptado fuera de En revisión';
+  -- T26 (20261126000001): en Aprobada se sigue pudiendo comentar. El comentario se revierte en el bloque (T26_OK) para
+  -- no alterar los conteos de las pruebas siguientes.
+  begin perform public.add_publication_comment(v_pub, 'aprobada', '{}', gen_random_uuid());
+    raise exception 'T26_OK';
   exception when raise_exception then
-    if sqlerrm like 'FAIL%' then raise; end if;
+    if sqlerrm <> 'T26_OK' then raise exception 'FAIL T26: comentario rechazado en Aprobada (%)', sqlerrm; end if;
   end;
 
   -- Worker inaccesible

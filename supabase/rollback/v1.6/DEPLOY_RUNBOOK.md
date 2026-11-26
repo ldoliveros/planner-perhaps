@@ -25,12 +25,12 @@ https://planner.perhaps.com.ar. Rollback: `ROLLBACK.md` (mismo directorio). Migr
 - **Excluir del commit:** `.claude/launch.json` (configuraciones locales `dev-v16`/`v151-b11` agregadas para QA;
   restaurar la versión de `main`). Decidir si se versionan `CLAUDE.md` (sección v1.6) y la carpeta `supabase/qa/`
   (herramientas y registro de QA; sin secretos, con los refs de proyecto).
-- **Migraciones de producción (10, en este orden):** `20261008000001_v16_collab_core`,
+- **Migraciones de producción (11, en este orden):** `20261008000001_v16_collab_core`,
   `20261008000002_v16_realtime_publication`, `20261009000001_publications_trello_url`,
   `20261013000001_v16_comment_reads`, `20261014000001_v16_comment_replies`, `20261014000002_v16_comment_reactions`,
   `20261015000001_v16_publications_realtime`, `20261017000001_v16_publication_archive`,
-  `20261017000002_v16_publication_changes`, `20261018000001_v16_pause_collab_emails`. Excluidas (en `pending-migrations/v1.6/`): `20261008000003` (worker),
-  `20261008000004` (cron), `20261016000001` (Notas internas). Ninguna de las 10 depende de las excluidas; las guardas
+  `20261017000002_v16_publication_changes`, `20261018000001_v16_pause_collab_emails`, `20261126000001_v16_comments_before_published` (agregada 2026-11-26, cuando las 10 anteriores ya estaban en producción: aplicarla antes de desplegar la app). Excluidas (en `pending-migrations/v1.6/`): `20261008000003` (worker),
+  `20261008000004` (cron), `20261016000001` (Notas internas). Ninguna de las 11 depende de las excluidas; las guardas
   exigen el orden anterior y que `supabase_realtime` exista sin `FOR ALL TABLES`.
 
 ## 2. Verificaciones previas
@@ -39,7 +39,7 @@ https://planner.perhaps.com.ar. Rollback: `ROLLBACK.md` (mismo directorio). Migr
       restaura; durante A no hay historial de estados; el Realtime de R es el `do $$` concreto (5 tablas, sin
       `publications`); tras R el flag vuelve a su estado previo; en v1.5.1 las archivadas se ven para el staff pero
       no se editan, y el Client User no las ve.
-- [ ] Commit final: `tsc --noEmit`, `eslint .` (solo los 9 problemas preexistentes de `supabase/functions/daily-agenda`),
+- [ ] Commit final: `tsc --noEmit`, `eslint .` (solo los problemas preexistentes de `supabase/functions/daily-agenda`: 9 → 7 desde 2026-11-26),
       `next build`.
 - [ ] 🔒 Producción, solo lectura: `prod_preflight_readonly.sql` en el SQL Editor → valores esperados en el archivo.
 - [ ] 🔒 Producción, solo lectura: `supabase.cmd migration list` (CLI enlazado a producción; pide la contraseña de la
@@ -60,7 +60,7 @@ https://planner.perhaps.com.ar. Rollback: `ROLLBACK.md` (mismo directorio). Migr
 | **1. Backup** 🔒 | Nada en producción (solo lectura). Plan Free: **sin backups automáticos** → backup manual con `C:\Users\ldoli\Documents\planner-backups\backup_prod_v151.ps1` (ver §6). | `integrity.txt`: TOC OK de los dos dumps y ninguna diferencia de filas vivo vs dump; `SHA256SUMS.txt` generado; tamaños no nulos. Restauración de prueba en un cluster local descartable (§6.4). | El script falla, una tabla aparece con diferencias o el TOC es ilegible. |
 | **2. Pre-flight y migraciones** 🔒 | Paso 2a sin cambios: `prod_preflight_readonly.sql` y `db push --dry-run`. Paso 2b: `supabase.cmd db push` aplica las 10 (tablas, funciones, RLS, trigger de historial, Realtime, columnas `trello_url`/`archived_at`, pausa de emails de colaboración con `v16_collab_emails` apagado). | 2a: valores esperados y el dry-run lista exactamente las 10. 2b: `migration list` con 39; v1.5.1 (todavía publicada) crea, edita, cambia estado y mueve en QA Sandbox; flags `v16_notifications` y `v16_collab_emails` con `enabled = false` y `client_ids = {}`; Security Advisor sin warnings nuevos. | El dry-run lista otra cosa; cualquier guarda aborta; v1.5.1 no puede guardar (→ **A3** de inmediato y revisar). |
 | **3. Código y Netlify** 🔒 | Commit de v1.6 en la rama (sin `.claude/launch.json`), PR a `main`, merge → Netlify compila y publica v1.6.0. | Build de Netlify verde; sidebar "v1.6.0"; `/admin` y `/client` cargan; logs sin errores de Server Actions. | Build rojo (v1.5.1 sigue publicada: no hacer nada más); errores 500 o de login (→ Netlify a v1.5.1). |
-| **4. `daily-agenda`** 🔒 | `supabase.cmd functions deploy daily-agenda --project-ref mglbzsysgsdrsbqlovwd` (verify_jwt=false por `supabase/config.toml`). Solo agrega el filtro de archivadas (compatible con o sin la columna). | `functions list` con versión nueva; **no invocarla a mano**; al día siguiente, `daily_agenda_log` con envíos normales y sin archivadas. | El deploy falla (la versión anterior sigue activa: reintentar o dejarla). |
+| **4. `daily-agenda`** 🔒 | `supabase.cmd functions deploy daily-agenda --project-ref mglbzsysgsdrsbqlovwd` (verify_jwt=false por `supabase/config.toml`). Agrega el filtro de archivadas (compatible con o sin la columna) y, desde 2026-11-26, el aviso de notificaciones sin leer ("Tenés N notificaciones pendientes de revisión." + enlace a /admin/notifications, en HTML y texto; se envía aunque no haya contenidos del día; sin la tabla `notifications` cuenta 0). | `functions list` con versión nueva; **no invocarla a mano**; al día siguiente, `daily_agenda_log` con envíos normales y sin archivadas. | El deploy falla (la versión anterior sigue activa: reintentar o dejarla). |
 | **5. Smoke en producción** | Datos de prueba solo en QA Sandbox de producción, con los usuarios QA. | Checklist §4 con el flag apagado. | Cualquier ítem falla → evaluar §5. |
 | **6. Activación controlada** 🔒 | 6a: `update public.planner_feature_flags set client_ids = array[(select id from public.clients where slug = 'qa-sandbox')] where key = 'v16_notifications';` (solo QA Sandbox). 6b, tras validar: `update public.planner_feature_flags set enabled = true where key = 'v16_notifications';` (todos los clientes). | 6a: comentario con mención, enviar a revisión y aprobación del cliente en QA Sandbox generan notificaciones y campanita en vivo; otros clientes, ninguna. 6b: primeras notificaciones reales sin errores; `email_outbox` sin filas nuevas (emails pausados, D1). | Notificaciones duplicadas, a destinatarios equivocados o de otros clientes → **A0** (flag apagado) y revisar. |
 | **7. Rollback** | Ver §5 y `ROLLBACK.md`. | — | — |
@@ -165,3 +165,67 @@ tabla + 4 de columna (`profiles`), idénticos al dump. Fuera de la prueba: el re
 - **Pestañas abiertas con v1.5.1** fallan en acciones hasta recargar tras el deploy (y al revés en un rollback).
 - **Pre-flight transaccional en producción** (`build-dry-run.mjs`, QA_STRATEGY §A) cubre solo el core y no las 9
   migraciones: no se usa; lo reemplazan B11, las guardas de cada migración, el pre-flight de solo lectura y el backup.
+
+## 8. Cierre de los ajustes del 2026-11-26 (rama `feature/v1.6-collaboration`, sin push)
+
+Estado de partida. **Git** confirma que v1.6.0 está mergeada en `main` (merge `6aa64ea`, PR #2), pero **no confirma qué
+versión está efectivamente desplegada**: eso lo dicen Netlify (deploy publicado), Supabase (`migration list`,
+`functions list`) y la base. Según el registro del proyecto (sin re-verificar contra producción): v1.6.0 publicada en
+Netlify desde 2026-10-26, las 10 migraciones de §1 aplicadas, `daily-agenda` v3 con el cron `daily-agenda-08-00-art` y
+`v16_notifications` activo para todos desde 2026-10-28. **Antes del paso 8.1, confirmarlo** en el panel de Netlify
+(deploy publicado = `6aa64ea` o posterior), con `supabase.cmd migration list` (39 aplicadas, la última
+`20261018000001`) y `supabase.cmd functions list --project-ref mglbzsysgsdrsbqlovwd` (versión de `daily-agenda`).
+Los ajustes posteriores (Realtime con sesión, comentarios salvo en Publicada, aviso de notificaciones en la agenda;
+commits sobre `origin/main`) agregan UNA migración y cambian la app y `daily-agenda`. Orden obligatorio, cada paso con
+autorización explícita 🔒:
+
+| Paso | Qué | Verificación | Si falla |
+|---|---|---|---|
+| **8.1 Migración** 🔒 | Backup manual (§6) y `supabase.cmd db push --dry-run` (debe listar SOLO `20261126000001_v16_comments_before_published`); después `supabase.cmd db push`. Solo `create or replace` de 4 funciones + `comments_open_for_status` (sin tablas, RLS ni grants). | `migration list` con 40. Con la v1.6.0 publicada es compatible: su interfaz solo ofrece comentar En revisión, que sigue permitido; la base pasa a aceptar además los demás estados salvo Publicada. | Re-ejecutar las 4 funciones desde 20261014000001 / 20261008000001 / 20261014000002 y `drop function public.comments_open_for_status(text)`. |
+| **8.2 App** 🔒 | Push de la rama, PR a `main` y merge (sin `.claude/launch.json`) → Netlify publica (auto publishing). Va DESPUÉS de 8.1: con la base vieja la interfaz ofrecería comentar fuera de En revisión y la base lo rechazaría. | §4 + comentarios: Borrador/Aprobada/Descartada abiertos, Publicada en solo lectura; sin 401 de `notifications` al cerrar sesión en otra pestaña. | Netlify a la versión anterior (§5). |
+| **8.3 `daily-agenda`** 🔒 | **Antes:** la verificación de credencial del cron (abajo). Después: `supabase.cmd functions deploy daily-agenda --project-ref mglbzsysgsdrsbqlovwd`. Independiente de 8.2, pero después de 8.1 (orden recomendado). | `functions list` con versión nueva; la prueba de 8.4; al día siguiente, la corrida del cron en `daily_agenda_log` (`sent`, sin `failed`). | La versión anterior sigue activa si el deploy falla; si el cron empieza a fallar (401), volver a desplegar `daily-agenda` del commit previo (`7a3f239`) y revisar. |
+| **8.4 Prueba real del email (PENDIENTE)** 🔒 | Con la configuración EXISTENTE de producción (`RESEND_API_KEY`, `SITE_URL` ya cargados; secret key `sb_secret_…` de producción, que no se guarda en el repo). Ver abajo. | Email recibido con el aviso, HTML y texto, enlace a `<SITE_URL>/admin/notifications`. | No reintentar a ciegas: `daily_agenda_log` registra el intento (`failed` con el error). |
+
+**8.3 — verificación previa: credencial del cron vs. autenticación de la función (sin reemplazar ni mostrar secretos).**
+La función nueva autentica igual que la v3 desplegada: `index.ts` no cambia desde `f92f626` (`withSupabase({ auth:
+"secret" })`: solo acepta claves `sb_secret_…` en `apikey`; la `service_role` legacy (JWT) responde 401, comprobado en QA
+con `agenda-invoke-qa.mjs auth`). Riesgo: `npm:@supabase/server@1` no está fijado a una versión exacta, así que un
+redeploy puede resolver otra 1.x. Verificar, solo lectura:
+1. `git diff 7a3f239 HEAD -- supabase/functions/daily-agenda/index.ts` vacío (mismo entry point que la v3).
+2. Definición del job `daily-agenda-08-00-art` (`supabase.cmd db query --linked`; `cron.job` no es visible para el rol
+   del pre-flight): que mande la credencial en el header `apikey` leída de Vault por NOMBRE. Leer solo `jobname`,
+   `schedule` y el texto del comando; NUNCA `vault.decrypted_secrets` ni el valor del secreto.
+3. Formato de la credencial sin mostrarla: `select left(decrypted_secret, 10) = 'sb_secret_' from vault.decrypted_secrets
+   where name = '<nombre del secreto del job>'` → tiene que dar `true` (devuelve solo un booleano).
+4. Últimas corridas: `select status_code, count(*) from net._http_response where created > now() - interval '7 days'
+   group by 1` (solo el código: el cuerpo trae emails y HTML) y `daily_agenda_log` de los últimos días con `sent`.
+Si (3) no da `true` o (4) muestra 401: NO desplegar; la v3 actual depende de esa credencial y hay que revisarla primero.
+
+**8.4 — cómo hacerla (solo cuando se autorice producción).**
+- NUNCA invocar la función sin body ni sin `testUserId`: eso es la corrida general a todos los destinatarios.
+- `testUserId` = el ID de un usuario REAL de producción (Super Admin o Account Manager confirmado), explícito. Nunca un
+  usuario QA: la prueba tiene que reflejar datos y accesos reales.
+- Siempre `POST https://mglbzsysgsdrsbqlovwd.supabase.co/functions/v1/daily-agenda` con header
+  `apikey: <sb_secret_… de producción>` (la clave no se guarda en el repo ni se muestra).
+1. **dryRun primero**, con destinatario explícito: `{"testUserId": "<id del usuario real>", "dryRun": true}` → revisar
+   `unreadNotifications` (debe coincidir con sus notificaciones sin leer de clientes que hoy puede ver), `html`, `text`
+   y el enlace `<SITE_URL>/admin/notifications`. No escribe `daily_agenda_log` ni llama a Resend.
+2. **UN solo envío real**, a la dirección del responsable del proyecto indicada en la autorización (no se escribe en el
+   repo), con el mismo `testUserId` explícito: `{"testUserId": "<id del usuario real>", "overrideEmail": "<esa
+   dirección>"}`. No repetir ni ejecutar la corrida general.
+3. Interacción con el cron (`daily_agenda_log`: una fila por usuario y día). Si el cron YA envió la agenda de ese
+   usuario ese día, el envío de prueba se saltea (`skipped_already_sent`, sin email). Si la prueba va ANTES del cron
+   (08:00 ART), queda `sent` y **ese usuario no recibe la agenda del cron ese día**. Recomendado: hacerla antes de las
+   08:00 ART usando como `testUserId` la cuenta de producción del propio responsable (su agenda de ese día le llega igual,
+   por la prueba, a su dirección); con cualquier otro usuario, avisarle que ese día no recibirá la agenda.
+
+**Efecto en la agenda real al desplegar 8.3:** desde el próximo cron, un Super Admin o Account Manager con notificaciones
+sin leer (de cualquier fecha) recibe la agenda aunque no tenga contenidos ese día (antes no recibía nada). Como
+`v16_notifications` ya está activo, el cambio es inmediato: puede aumentar la cantidad de emails diarios.
+
+**Ya validado en QA (`wxkbkdoaohywqabmyqjk`):** la función desplegada en QA rechaza sin credencial, con anon key
+(apikey y Bearer), con un JWT inválido y con la `service_role` legacy (todas 401:
+`agenda-invoke-qa.mjs auth`). NO validado en QA por falta de secretos (decisión del 2026-11-26): `dryRun` del entry
+point desplegado y el envío real; la lógica de `agenda.ts` está cubierta por `agenda-checks.mjs` (13 comprobaciones) y
+`agenda-qa-dryrun.mjs` (base QA, dryRun local). La función quedó desplegada en QA sin `RESEND_API_KEY` ni `SITE_URL`:
+cualquier invocación autenticada responde 500 antes de enviar, y QA no tiene `pg_cron`/`pg_net`.

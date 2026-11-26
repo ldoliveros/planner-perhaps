@@ -28,6 +28,7 @@ import {
   type PublicationComment,
 } from "@/types";
 import { activeMentionIds, type SelectedMention } from "@/lib/mentions";
+import { commentsOpenForStatus, reactionsOpenForStatus } from "@/lib/comment-rules";
 import { MentionTextarea } from "./mention-textarea";
 
 const MAX_COMMENT_LENGTH = 5000;
@@ -88,8 +89,8 @@ interface PublicationCommentsProps {
 
 /**
  * Comentarios de una publicación (v1.6), dentro de PublicationView para agencia y cliente: editor arriba,
- * historial debajo del más reciente al más antiguo. Se comenta, edita y elimina solo En revisión; en
- * cualquier otro estado el historial queda visible en solo lectura. Editar/Eliminar se ofrecen únicamente
+ * historial debajo del más reciente al más antiguo. Se comenta, edita y elimina en todos los estados salvo Publicada,
+ * donde el historial queda visible en solo lectura. Editar/Eliminar se ofrecen únicamente
  * en comentarios propios — la base lo vuelve a validar en cada RPC (nunca depende solo de esta UI).
  */
 export function PublicationComments({
@@ -215,7 +216,9 @@ export function PublicationComments({
   }, [liveStatusId]);
   const effectiveStatusId = liveOverride ?? statusId;
   const effectiveStatus = statuses.find((s) => s.id === effectiveStatusId);
-  const commentsOpen = effectiveStatus?.key === "in_review";
+  // Todos los estados salvo Publicada (lib/comment-rules.ts; la base aplica la misma regla). Se reevalúa con el estado
+  // vigente: si la publicación deja de estar Publicada, se habilitan de nuevo.
+  const commentsOpen = commentsOpenForStatus(effectiveStatus?.key);
 
   const [members, setMembers] = useState<MentionableMember[] | null>(null);
   // Una sola carga en curso por panel; "Responder" espera la misma promesa que el selector "@".
@@ -318,8 +321,8 @@ export function PublicationComments({
   const knownNames = [...new Set([...(members ?? []).map((m) => m.fullName), ...comments.map((c) => c.authorName)])];
   const commentsById = new Map(comments.map((c) => [c.id, c]));
 
-  // Reacciones (v1.6): En revisión, Aprobada o Publicada — la base aplica la misma regla. Se agrupan por comentario.
-  const reactionsOpen = ["in_review", "approved", "published"].includes(effectiveStatus?.key ?? "");
+  // Reacciones (v1.6): en todos los estados — la base aplica la misma regla. Se agrupan por comentario.
+  const reactionsOpen = reactionsOpenForStatus(effectiveStatus?.key);
   const reactionsByComment = new Map<string, CommentReaction[]>();
   for (const reaction of reactions) {
     const list = reactionsByComment.get(reaction.commentId) ?? [];
@@ -501,8 +504,10 @@ export function PublicationComments({
             </div>
           ) : (
             <p className="rounded-lg bg-muted/50 p-2.5 text-xs text-muted-foreground">
-              Los comentarios se habilitan cuando la publicación está En revisión
-              {effectiveStatus ? ` (ahora: ${effectiveStatus.label})` : ""}. El historial queda visible.
+              {effectiveStatus?.key === "published"
+                ? "La publicación está Publicada: no se pueden agregar comentarios nuevos."
+                : "No se pueden agregar comentarios en este momento."}{" "}
+              El historial queda visible.
             </p>
           ))}
       </div>
@@ -540,7 +545,7 @@ export function PublicationComments({
               const isOwn = Boolean(currentUserId && comment.authorId === currentUserId);
               const isDeleted = comment.deletedAt !== null;
               const canModify = isOwn && !isDeleted && commentsOpen;
-              // Responder: solo donde se puede escribir (la base acepta comentarios únicamente En revisión) y si el
+              // Responder: solo donde se puede escribir (todos los estados salvo Publicada) y si el
               // autor es mencionable (miembro activo del cliente; la lista se carga al abrir la conversación).
               const canReply =
                 !isOwn &&
