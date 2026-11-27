@@ -17,6 +17,8 @@ interface ReviewRequestDialogProps {
   onConfirm: () => void;
   /** Cancelar (botón, Escape o click afuera): el caller no modifica el estado. */
   onCancel: () => void;
+  /** Quién confirma: el staff avisa al cliente; un Cliente Editor, al equipo asignado (ver reglas de notificaciones). */
+  actor?: "staff" | "client_editor";
 }
 
 /**
@@ -25,14 +27,16 @@ interface ReviewRequestDialogProps {
  * posterior (F5): este diálogo no lo ofrece y no encola nada; las notificaciones internas de Planner siguen igual.
  * La infraestructura (`requestReviewEmail` / RPC `request_status_email`) se conserva para retomarlo.
  */
-export function ReviewRequestDialog({ open, onConfirm, onCancel }: ReviewRequestDialogProps) {
+export function ReviewRequestDialog({ open, onConfirm, onCancel, actor = "staff" }: ReviewRequestDialogProps) {
   return (
     <AlertDialog open={open} onOpenChange={(next) => !next && onCancel()}>
       <AlertDialogContent onClick={(e) => e.stopPropagation()}>
         <AlertDialogHeader>
           <AlertDialogTitle>Enviar a revisión</AlertDialogTitle>
           <AlertDialogDescription>
-            La publicación pasa a En revisión: el cliente va a poder verla, comentarla y aprobarla.
+            {actor === "client_editor"
+              ? "La publicación pasará a En revisión y se notificará al equipo asignado."
+              : "La publicación pasará a En revisión y se notificará al cliente para que la revise y apruebe."}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
