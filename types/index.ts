@@ -225,7 +225,28 @@ export interface CommentReaction {
   emoji: CommentReactionEmoji;
 }
 
-export type NotificationType = "comment" | "mention" | "review_requested" | "approved_by_client" | "approved_by_agency";
+export type NotificationType =
+  | "comment"
+  | "mention"
+  | "reply"
+  | "review_requested"
+  | "approved_by_client"
+  | "approved_by_agency"
+  | "published"
+  | "discarded"
+  | "rescheduled"
+  | "approval_invalidated"
+  | "created_by_client";
+
+/** Detalle de un aviso de cambios de la publicación (solo valores nuevos). */
+export interface NotificationDetails {
+  /** Fecha/hora nueva (YYYY-MM-DD, HH:mm) si el guardado reprogramó; date null = se quitó la fecha. */
+  schedule?: { date: string | null; time: string | null };
+  /** approval_invalidated: por cambio de contenido aprobado o por cambio manual de estado. */
+  reason?: "content" | "status";
+  /** approval_invalidated: estado al que volvió. */
+  status?: string;
+}
 
 /** Notificación interna (v1.6) — siempre del usuario actual (RLS recipient_id = auth.uid()). */
 export interface AppNotification {
@@ -238,7 +259,12 @@ export interface AppNotification {
   actorName: string | null;
   actorAvatarUrl: string | null;
   publicationTitle: string | null;
+  details: NotificationDetails;
   readAt: string | null;
+  /** Fuera de pendientes sin haberse leído (publicación archivada). */
+  suppressedAt: string | null;
+  /** La publicación está archivada (o ya no es accesible): sin enlace. Solo lo informa "Todas". */
+  publicationUnavailable: boolean;
   createdAt: string;
 }
 

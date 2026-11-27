@@ -44,7 +44,7 @@ export interface AgendaRecipientResult {
   fullName: string | null;
   role: string;
   totalCount: number;
-  /** Notificaciones sin leer del destinatario (read_at IS NULL), de clientes que hoy puede ver. */
+  /** Notificaciones pendientes del destinatario (no leídas ni suprimidas), de clientes que hoy puede ver. */
   unreadNotifications: number;
   clients: AgendaClientGroup[];
   html: string;
@@ -270,10 +270,12 @@ function renderEmailText(params: {
 }
 
 /**
- * Notificaciones sin leer (read_at IS NULL) del destinatario, de cualquier fecha, con el mismo acceso que le da la app
- * (RLS notifications_select_own: recipient_id = uid y can_view_client): Super Admin, todos los clientes; Account
- * Manager, solo los clientes que tiene asignados HOY (las de un cliente que se le quitó no cuentan). La función corre
- * con service_role (sin RLS), por eso el filtro de clientes se aplica acá. Sin la tabla (base sin v1.6, 42P01) → 0.
+ * Notificaciones PENDIENTES del destinatario (read_at IS NULL y suppressed_at IS NULL — las de publicaciones archivadas
+ * quedan suprimidas sin marcarse leídas), de cualquier fecha, con el mismo acceso que le da la app (RLS
+ * notifications_select_own: recipient_id = uid y can_view_client): Super Admin, todos los clientes; Account Manager,
+ * solo los clientes que tiene asignados HOY (las de un cliente que se le quitó no cuentan). Es el mismo conteo que la
+ * campanita (lib/notifications-api.ts). La función corre con service_role (sin RLS), por eso el filtro de clientes se
+ * aplica acá. Sin la tabla (base sin v1.6, 42P01) → 0; sin la columna suppressed_at (42703, base anterior) → solo read_at.
  */
 async function countUnreadNotifications(
   supabase: AgendaOptions["supabase"],
@@ -281,13 +283,18 @@ async function countUnreadNotifications(
   clientIds: string[]
 ): Promise<number> {
   if (profile.role !== "super_admin" && clientIds.length === 0) return 0;
-  let query = supabase
-    .from("notifications")
-    .select("id", { count: "exact", head: true })
-    .eq("recipient_id", profile.id)
-    .is("read_at", null);
-  if (profile.role !== "super_admin") query = query.in("client_id", clientIds);
-  const { count, error } = await query;
+  const runCount = (withSuppressed: boolean) => {
+    let query = supabase
+      .from("notifications")
+      .select("id", { count: "exact", head: true })
+      .eq("recipient_id", profile.id)
+      .is("read_at", null);
+    if (withSuppressed) query = query.is("suppressed_at", null);
+    if (profile.role !== "super_admin") query = query.in("client_id", clientIds);
+    return query;
+  };
+  let { count, error } = await runCount(true);
+  if (error && (error as { code?: string }).code === "42703") ({ count, error } = await runCount(false));
   if (error) {
     if ((error as { code?: string }).code === "42P01") return 0;
     throw error;

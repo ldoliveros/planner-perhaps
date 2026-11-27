@@ -15,12 +15,18 @@ import { claimNotificationToast } from "@/lib/notification-toast-dedupe";
 import {
   appendOlderNotifications,
   describeNotification,
+  isConversationNotification,
   mergeNotificationsPage,
   notificationHref,
   upsertNotification,
 } from "@/lib/notification-text";
 import { toast } from "@/lib/toast";
-import type { AppNotification } from "@/types";
+import type { AppNotification, NotificationType } from "@/types";
+
+/** Señal para vistas que muestran otras listas (historial "Todas"): una notificación releída o una publicación borrada. */
+export type NotificationSignal =
+  | { kind: "notification"; id: string; notification: AppNotification | null }
+  | { kind: "publication-deleted"; publicationId: string };
 
 const PAGE_SIZE = 20;
 
@@ -58,7 +64,10 @@ interface NotificationsContextValue {
   resync: () => Promise<void>;
   markRead: (ids: string[]) => Promise<void>;
   markAllRead: () => Promise<void>;
-  markPublicationRead: (publicationId: string) => Promise<void>;
+  /** Marca leídas las de la publicación de esos tipos creadas hasta `upTo` (nunca un aviso posterior a lo visto). */
+  markPublicationRead: (publicationId: string, types: readonly NotificationType[], upTo: string) => Promise<void>;
+  /** Escucha señales en vivo (historial "Todas"); devuelve la función para dejar de escuchar. */
+  subscribeSignals: (listener: (signal: NotificationSignal) => void) => () => void;
   /** Marca como leída y navega a la publicación (/p/<id>) — o, si hay una Vista de Publicación abierta, le
    * delega la decisión (ver OpenPublicationHandle). */
   open: (notification: AppNotification) => void;
@@ -117,6 +126,10 @@ export function NotificationsProvider({ userId, children }: { userId: string; ch
   // `open` se define más abajo; el toast lo usa vía ref para no depender del orden de los callbacks.
   const openRef = useRef<(notification: AppNotification) => void>(() => undefined);
   const markReadRef = useRef<(ids: string[]) => Promise<void>>(async () => undefined);
+  const signalListeners = useRef<Set<(signal: NotificationSignal) => void>>(new Set());
+  const emitSignal = useCallback((signal: NotificationSignal) => {
+    for (const listener of signalListeners.current) listener(signal);
+  }, []);
 
   const applyPage = useCallback((page: NotificationsPage, mode: "replace-recent" | "append"): void => {
     if (!mountedRef.current) return;
@@ -174,27 +187,41 @@ export function NotificationsProvider({ userId, children }: { userId: string; ch
     const supabase = createClient();
     const filter = `recipient_id=eq.${userId}`;
 
+    // Publicación eliminada: sus notificaciones se borraron en cascada (Realtime no avisa ese borrado). El aviso
+    // persistente de publication_changes (RLS can_view_client) las quita de esta pestaña y del contador.
+    function handlePublicationDeleted(publicationId: unknown) {
+      if (typeof publicationId !== "string") return;
+      setItems((prev) => prev.filter((n) => n.publicationId !== publicationId));
+      emitSignal({ kind: "publication-deleted", publicationId });
+      void resync();
+    }
+
     function handleSignal(id: unknown, isInsert: boolean) {
       if (typeof id !== "string") return;
       getNotification(id).then(({ notification, unreadCount: count }) => {
         if (cancelled || !mountedRef.current) return;
         if (count !== null) setUnreadCount(count);
+        emitSignal({ kind: "notification", id, notification });
         if (!notification) {
           // Ya no visible (p. ej. sin acceso al cliente): fuera de la bandeja.
           setItems((prev) => prev.filter((n) => n.id !== id));
           return;
         }
-        // Bandeja de pendientes: una notificación leída (aquí o en otra pestaña) sale de la lista.
-        setItems((prev) =>
-          notification.readAt ? prev.filter((n) => n.id !== notification.id) : upsertNotification(prev, notification)
-        );
+        // Bandeja de pendientes: una notificación leída (aquí o en otra pestaña) o suprimida (publicación archivada)
+        // sale de la lista.
+        const pending = !notification.readAt && !notification.suppressedAt;
+        setItems((prev) => (pending ? upsertNotification(prev, notification) : prev.filter((n) => n.id !== notification.id)));
+        if (!pending) return;
         const openView = openViewRef.current;
-        if (isInsert && openView && notification.publicationId && openView.publicationId === notification.publicationId) {
-          // El usuario está en esa publicación. Cambio de estado: se marca leída y se avisa a la vista, sin toast.
-          // Comentario/mención (v1.6): solo se da por leído si la conversación está a la vista; si está en
-          // Edición/Publicación queda sin leer (campanita y contador de la pestaña) y sigue al toast de siempre.
-          const isComment = notification.type === "comment" || notification.type === "mention";
-          const seen = !isComment || openView.isShowingComments?.() === true;
+        // Un guardado agrupado puede ACTUALIZAR su aviso (p. ej. la fecha y después la invalidación): también cuenta.
+        if (openView && notification.publicationId && openView.publicationId === notification.publicationId) {
+          // El usuario está en esa publicación. Cambio de la publicación: se da por leído solo con la pestaña del
+          // navegador visible (si no, queda pendiente y lo marca la vista al volver). Comentario/mención/respuesta:
+          // solo si la conversación está a la vista; si no, queda sin leer y sigue al toast de siempre.
+          const isComment = isConversationNotification(notification.type);
+          const seen = isComment
+            ? openView.isShowingComments?.() === true
+            : typeof document !== "undefined" && document.visibilityState === "visible";
           openView.onRelatedNotification(notification);
           if (seen) {
             if (!notification.readAt) void markReadRef.current([notification.id]);
@@ -233,6 +260,11 @@ export function NotificationsProvider({ userId, children }: { userId: string; ch
           .on("postgres_changes", { event: "UPDATE", schema: "public", table: "notifications", filter }, (payload) =>
             // Leída en otra pestaña / dispositivo: se refleja acá.
             handleSignal((payload.new as { id?: unknown }).id, false)
+          )
+          .on(
+            "postgres_changes",
+            { event: "INSERT", schema: "public", table: "publication_changes", filter: "kind=eq.delete" },
+            (payload) => handlePublicationDeleted((payload.new as { publication_id?: unknown }).publication_id)
           )
           .on("system", {}, (payload) => {
             // Filtro rechazado (p. ej. sin sesión: "invalid column for filter recipient_id"); el canal sigue SUBSCRIBED.
@@ -306,7 +338,7 @@ export function NotificationsProvider({ userId, children }: { userId: string; ch
       mountedRef.current = false;
       stopSession();
     };
-  }, [userId, applyPage, applyFailure, resync, showToast]);
+  }, [userId, applyPage, applyFailure, resync, showToast, emitSignal]);
 
   const loadMore = useCallback(async () => {
     const oldest = items[items.length - 1];
@@ -364,10 +396,21 @@ export function NotificationsProvider({ userId, children }: { userId: string; ch
     return runMark(() => true, () => markNotificationsRead(null));
   }, [runMark]);
   const markPublicationRead = useCallback(
-    (publicationId: string) =>
-      runMark((n) => n.publicationId === publicationId, () => markPublicationNotificationsRead(publicationId)),
+    (publicationId: string, types: readonly NotificationType[], upTo: string) => {
+      const upToMs = Date.parse(upTo);
+      return runMark(
+        (n) => n.publicationId === publicationId && types.includes(n.type) && Date.parse(n.createdAt) <= upToMs,
+        () => markPublicationNotificationsRead(publicationId, types, upTo)
+      );
+    },
     [runMark]
   );
+  const subscribeSignals = useCallback((listener: (signal: NotificationSignal) => void) => {
+    signalListeners.current.add(listener);
+    return () => {
+      signalListeners.current.delete(listener);
+    };
+  }, []);
 
   useEffect(() => {
     markReadRef.current = markRead;
@@ -422,6 +465,7 @@ export function NotificationsProvider({ userId, children }: { userId: string; ch
       markRead,
       markAllRead,
       markPublicationRead,
+      subscribeSignals,
       open,
       navigateTo,
       registerOpenPublication,
@@ -439,6 +483,7 @@ export function NotificationsProvider({ userId, children }: { userId: string; ch
       markRead,
       markAllRead,
       markPublicationRead,
+      subscribeSignals,
       open,
       navigateTo,
       registerOpenPublication,

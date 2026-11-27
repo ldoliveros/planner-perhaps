@@ -81,6 +81,15 @@ Implementado en la rama (2026-10-09):
   que el `•••` (`use-status-change-flow.tsx`). Client User: solo lectura. Última funcionalidad de v1.6: desde acá solo
   correcciones de bugs, seguridad y compatibilidad.
 
+Posterior a v1.6.0 (en producción, 2026-11-26):
+- Permiso Lector/Editor por usuario cliente (`client_publication_editors`, 20261126000002) y "Comentarios y actividad"
+  (`publication_activity`, 20261126000003). Rollback: `supabase/rollback/client-editors-activity/`.
+- Reglas de notificaciones (20261126000004, `supabase/rollback/notification-rules/README.md`): destinatarios
+  calculados en la base (usuarios cliente / equipo asignado = AM y SA asignados; nunca el actor), un aviso por
+  destinatario y guardado (header `x-planner-save-id`), aprobación del cliente solo por `approve_publication_as_client`
+  (con versión), contenido aprobado modificado → En revisión en la misma operación, avisos de archivadas suprimidos
+  (`suppressed_at`) sin marcarse leídos, historial "No leídas / Todas". Suite QA: `--suite notification-rules`.
+
 Reglas vigentes:
 - Antes del deploy de v1.6, aplicar en producción las migraciones de `supabase/migrations/` de v1.6, incluida
   `20261009000001` (Trello): sin esa columna cada guardado de publicación falla.

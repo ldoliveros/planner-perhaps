@@ -17,6 +17,7 @@
 //   node supabase/qa/v1.6/qa-db.mjs agenda-deploy --confirm <ref QA> | agenda-functions | agenda-secrets | agenda-status
 //        Edge Function daily-agenda en QA (ref fijo): desplegar, listar, nombres de secretos, cron/daily_agenda_log
 //   node supabase/qa/v1.6/qa-db.mjs agenda-disable-sends --confirm <ref QA>  quita RESEND_API_KEY de QA (sin envíos)
+//   node supabase/qa/v1.6/qa-db.mjs revert-notification-rules --confirm <ref QA>  rollback real de 20261126000004 (QA)
 //   node supabase/qa/v1.6/qa-db.mjs select --file <consulta.sql>          un SELECT/WITH de solo lectura (inspección)
 //   node supabase/qa/v1.6/qa-db.mjs flag-status | notifications-recent      consultas fijas de solo lectura
 //   node supabase/qa/v1.6/qa-db.mjs realtime-subscriptions | realtime-filter-check  Realtime: suscripciones vivas por rol
@@ -28,7 +29,7 @@
 //   node supabase/qa/v1.6/qa-db.mjs dry-run-archive --confirm <ref QA>  dry-run (ROLLBACK) de pending 20261017000001/2 + security_checks_archive.sql
 //   node supabase/qa/v1.6/qa-db.mjs dry-run-replies-reactions --confirm <ref QA>  dry-run (ROLLBACK) de pending 20261014000001/2
 //   node supabase/qa/v1.6/qa-db.mjs dry-run-collab-emails --confirm <ref QA>  dry-run (ROLLBACK) de pending 20261018000001 + security_checks_collab_emails.sql
-//   node supabase/qa/v1.6/qa-db.mjs security-checks --suite core|comment-reads|replies-reactions|archive|collab-emails|collab-integration|comments-status|client-editors --confirm <ref QA>  pruebas (revertidas)
+//   node supabase/qa/v1.6/qa-db.mjs security-checks --suite core|comment-reads|replies-reactions|archive|collab-emails|collab-integration|comments-status|client-editors|notification-rules --confirm <ref QA>  pruebas (revertidas)
 //
 // La URL de la base NUNCA va en el repo ni en el chat: se lee de la variable de entorno QA_DB_URL o del archivo
 // `.env.qa.local` en la raíz del repo (gitignoreado por `.env*`; Next no lo carga). Nunca se imprime completa.
@@ -659,6 +660,7 @@ switch (command) {
       "collab-integration": "integration_collab_emails_paused.sql",
       "comments-status": "security_checks_comments_status.sql",
       "client-editors": "security_checks_client_editors.sql",
+      "notification-rules": "security_checks_notification_rules.sql",
     };
     const suite = arg("--suite");
     if (!suites[suite]) fail(`security-checks exige --suite ${Object.keys(suites).join(" | ")}.`);
@@ -773,6 +775,37 @@ switch (command) {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+    break;
+  }
+  case "revert-notification-rules": {
+    // Ensayo REAL en QA de supabase/rollback/notification-rules/rollback.sql (archivo fijo, transaccional) y baja de
+    // 20261126000004 del historial (migration repair --status reverted), para volver a aplicarla con `push`.
+    if (arg("--confirm") !== QA_PROJECT_REF) fail(`revert-notification-rules exige --confirm ${QA_PROJECT_REF}.`);
+    const rollbackFile = join(workdir, "supabase", "rollback", "notification-rules", "rollback.sql");
+    if (!existsSync(rollbackFile)) fail(`no existe ${rollbackFile}.`);
+    // `db query` admite UNA sentencia: el archivo (sin su begin/commit) va dentro de un DO atómico.
+    const rbBody = readFileSync(rollbackFile, "utf8")
+      .replace(/^begin;\s*$/m, "-- (begin omitido: transacción del DO)")
+      .replace(/^commit;\s*$/m, "-- (commit omitido: lo hace el DO)");
+    if (rbBody.includes("$rb$") || rbBody.includes("$rbdo$")) fail("el rollback contiene un delimitador reservado.");
+    const rbDir = mkdtempSync(join(tmpdir(), "qa-revert-"));
+    const rbFile = join(rbDir, "revert.sql");
+    writeFileSync(rbFile, `do $rbdo$\nbegin\n  execute $rb$${rbBody}$rb$;\nend\n$rbdo$;\n`, "utf8");
+    console.log(`\n→ rollback notification-rules (atómico): supabase db query --file <temporal> --db-url ${redact(url)}\n`);
+    const run = spawnSync(process.execPath, [cliEntry(), "db", "query", "--file", rbFile, "--db-url", url, "--workdir", workdir], {
+      encoding: "utf8",
+      shell: false,
+    });
+    rmSync(rbDir, { recursive: true, force: true });
+    process.stdout.write(run.stdout ?? "");
+    process.stderr.write(run.stderr ?? "");
+    if (run.status !== 0 || /"_tag":"Error"/.test(run.stdout ?? "")) {
+      console.error("✖ rollback con fallas: no se tocó el historial de migraciones.");
+      process.exitCode = 1;
+      process.exitCode = run.status ?? 1;
+      break;
+    }
+    runCli(["migration", "repair", "20261126000004", "--status", "reverted", "--db-url", url], workdir);
     break;
   }
   case "select": {

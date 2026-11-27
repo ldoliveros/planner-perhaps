@@ -49,6 +49,15 @@ export interface PublicationFormState {
   partial?: boolean;
   /** Con `partial` en un Crear/Duplicar: id de la publicación que quedó creada. */
   createdPublicationId?: string;
+  /** El guardado cambió contenido de una publicación Aprobada: volvió a En revisión en la misma operación. */
+  approvalInvalidated?: boolean;
+}
+
+interface ClientApprovalRpc {
+  rpc(
+    fn: "approve_publication_as_client",
+    args: { p_publication_id: string; p_expected_updated_at: string }
+  ): { setHeader(name: string, value: string): PromiseLike<{ error: { message: string; hint?: string | null } | null }> };
 }
 
 interface DestinationInput {
@@ -134,6 +143,25 @@ export async function savePublication(
 
   const supabase = await createClient();
   const saveId = crypto.randomUUID();
+
+  // Cliente Editor eligiendo Aprobada: se aprueba con la MISMA validación de versión del botón "Aprobar publicación"
+  // (approve_publication_as_client), nunca con un UPDATE directo (la base lo rechaza igual). Primero se guarda el resto
+  // con el estado guardado (En revisión) y después se aprueba la versión resultante.
+  let payloadStatusId = statusId;
+  let clientApproval = false;
+  const actor = await getCurrentProfile();
+  if (actor?.role === "client") {
+    const keys = await statusKeys(supabase, [statusId, originalStatusId]);
+    if (keys.get(statusId) === "approved" && (!originalStatusId || keys.get(originalStatusId) !== "approved")) {
+      if (!id) return { error: "Una publicación nueva no puede crearse Aprobada: enviala a revisión.", savedAt: null };
+      if (!originalStatusId || !originalUpdatedAt || keys.get(originalStatusId) !== "in_review") {
+        return { error: "Solo podés aprobar una publicación que está En revisión.", savedAt: null };
+      }
+      payloadStatusId = originalStatusId;
+      clientApproval = true;
+    }
+  }
+
   const publicationPayload = {
     calendar_id: calendarId,
     title,
@@ -142,7 +170,7 @@ export async function savePublication(
     publication_date: publicationDate,
     publication_time: publicationTime,
     copy,
-    status_id: statusId,
+    status_id: payloadStatusId,
     drive_folder_url: driveFolderUrl,
     ...(trelloUrl !== undefined ? { trello_url: trelloUrl } : {}),
   };
@@ -397,21 +425,67 @@ export async function savePublication(
     }
   }
 
+  // Versión final: destinos y archivos también mueven publications.updated_at (una aprobación nunca se basa en una
+  // versión anterior), así que la base del próximo guardado es la de ahora, no la del primer UPDATE.
+  const { data: finalRow } = await supabase
+    .from("publications")
+    .select("updated_at, status_id")
+    .eq("id", publicationId)
+    .maybeSingle();
+  if (finalRow) savedUpdatedAt = finalRow.updated_at;
+
+  let approvalError: string | null = null;
+  if (clientApproval && savedUpdatedAt) {
+    const { error: approveError } = await (supabase as unknown as ClientApprovalRpc)
+      .rpc("approve_publication_as_client", { p_publication_id: publicationId, p_expected_updated_at: savedUpdatedAt })
+      .setHeader(SAVE_ID_HEADER, saveId);
+    if (approveError) approvalError = approveError.message;
+  }
+
   revalidatePath(`/admin/clients/${clientId}/planner`);
   revalidatePath(`/admin/clients/${clientId}`);
   revalidatePath("/admin/calendars");
   revalidatePath("/admin/publications");
   revalidatePath("/client/planner");
+  if (approvalError) {
+    const fresh = await getPublicationById(publicationId);
+    return {
+      error: `Los cambios se guardaron, pero no se pudo aprobar: ${approvalError}`,
+      savedAt: null,
+      partial: true,
+      updatedAt: fresh?.updatedAt ?? savedUpdatedAt,
+    };
+  }
   // Reutiliza getPublicationById tal cual (misma query que ya usa /p/[id], ya scopeada por RLS y con
   // thumbnails firmados) — evita reconstruir a mano el Publication completo (destinos + assets) acá.
   const publication = await getPublicationById(publicationId);
+  const keysAfter = isCreate || !originalStatusId ? null : await statusKeys(supabase, [originalStatusId, payloadStatusId, finalRow?.status_id ?? null]);
+  const approvalInvalidated = Boolean(
+    keysAfter &&
+      originalStatusId &&
+      keysAfter.get(originalStatusId) === "approved" &&
+      keysAfter.get(payloadStatusId) === "approved" &&
+      finalRow &&
+      keysAfter.get(finalRow.status_id) === "in_review"
+  );
   return {
     error: null,
     savedAt: Date.now(),
     assets: responseAssets,
     publication: publication ?? undefined,
-    updatedAt: savedUpdatedAt,
+    updatedAt: publication?.updatedAt ?? savedUpdatedAt,
+    approvalInvalidated,
   };
+}
+
+async function statusKeys(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  ids: (string | null)[]
+): Promise<Map<string, string>> {
+  const wanted = [...new Set(ids.filter((id): id is string => Boolean(id)))];
+  if (wanted.length === 0) return new Map();
+  const { data } = await supabase.from("statuses").select("id, key").in("id", wanted);
+  return new Map((data ?? []).map((row) => [row.id, row.key]));
 }
 
 async function currentStatusLabel(

@@ -35,7 +35,7 @@ import { deletePublication, savePublication, type PublicationFormState } from "@
 import { fetchPublicationForView } from "@/lib/actions/editorial-flow";
 import { PublicationComments } from "@/components/publication/comments/publication-comments";
 import { useOptionalNotifications } from "@/components/notifications/notifications-provider";
-import { describeNotification } from "@/lib/notification-text";
+import { CONVERSATION_NOTIFICATION_TYPES, describeNotification, isConversationNotification } from "@/lib/notification-text";
 import { isValidTrelloUrl, TRELLO_URL_ERROR } from "@/lib/trello-url";
 import { canClientApprove, requiresReviewConfirmation } from "@/lib/editorial-transitions";
 import { formatFullDate, formatTime } from "@/lib/date-utils";
@@ -356,10 +356,10 @@ export function PublicationView({
   }, [state]);
 
   // v1.6 — Lectura de notificaciones al abrir una publicación:
-  //  * Cambios de estado (revisión/aprobación): se dan por leídos al abrirla, como antes.
-  //  * Comentarios y menciones: recién cuando la pestaña Comentarios está a la vista (y la ventana visible); ahí se
-  //    marcan todas las de la publicación en la base (RPC). Mientras tanto siguen sin leer en la campanita y en el
-  //    contador de la pestaña.
+  //  * Cambios de la publicación (estado, fecha, invalidación…): se dan por leídos al abrirla, con la ventana visible.
+  //  * Comentarios, menciones y respuestas: recién cuando la pestaña Comentarios está a la vista (y la ventana
+  //    visible); ahí se marcan en la base las de la publicación creadas hasta la más reciente que se vio (nunca un
+  //    aviso posterior). Mientras tanto siguen sin leer en la campanita y en el contador de la pestaña.
   const publicationIdForNotifications = publication?.id ?? null;
   const unreadForPublication = useMemo(
     () =>
@@ -368,14 +368,24 @@ export function PublicationView({
       ),
     [notifications?.items, publicationIdForNotifications]
   );
-  const unreadCommentCount = unreadForPublication.filter((n) => n.type === "comment" || n.type === "mention").length;
+  const unreadComments = unreadForPublication.filter((n) => isConversationNotification(n.type));
+  const unreadCommentCount = unreadComments.length;
+  const latestUnreadCommentAt = unreadComments.reduce<string | null>(
+    (latest, n) => (latest === null || Date.parse(n.createdAt) > Date.parse(latest) ? n.createdAt : latest),
+    null
+  );
   const unreadStatusIds = unreadForPublication
-    .filter((n) => n.type !== "comment" && n.type !== "mention")
+    .filter((n) => !isConversationNotification(n.type))
     .map((n) => n.id)
     .join(",");
   useEffect(() => {
     if (!notifications || notifications.loadState !== "ready" || !unreadStatusIds) return;
-    void notifications.markRead(unreadStatusIds.split(","));
+    const markIfVisible = () => {
+      if (document.visibilityState === "visible") void notifications.markRead(unreadStatusIds.split(","));
+    };
+    markIfVisible();
+    document.addEventListener("visibilitychange", markIfVisible);
+    return () => document.removeEventListener("visibilitychange", markIfVisible);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unreadStatusIds, notifications?.loadState]);
 
@@ -387,15 +397,15 @@ export function PublicationView({
   useEffect(() => {
     if (!showingComments || !notifications || notifications.loadState !== "ready" || !publicationIdForNotifications) return;
     const markIfVisible = () => {
-      if (document.visibilityState === "visible" && unreadCommentCount > 0) {
-        void notifications.markPublicationRead(publicationIdForNotifications);
+      if (document.visibilityState === "visible" && unreadCommentCount > 0 && latestUnreadCommentAt) {
+        void notifications.markPublicationRead(publicationIdForNotifications, CONVERSATION_NOTIFICATION_TYPES, latestUnreadCommentAt);
       }
     };
     markIfVisible();
     document.addEventListener("visibilitychange", markIfVisible);
     return () => document.removeEventListener("visibilitychange", markIfVisible);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showingComments, unreadCommentCount, notifications?.loadState, publicationIdForNotifications]);
+  }, [showingComments, unreadCommentCount, latestUnreadCommentAt, notifications?.loadState, publicationIdForNotifications]);
 
   // v1.6 — la vista se registra en el provider de notificaciones mientras está abierta:
   //  * Notificación nueva de ESTA publicación (ya marcada leída por el provider): un cambio de estado recarga la
@@ -417,7 +427,7 @@ export function PublicationView({
       publicationId: publicationIdForNotifications,
       isShowingComments: () => showingCommentsRef.current && document.visibilityState === "visible",
       onRelatedNotification: (notification) => {
-        const isStatusChange = notification.type !== "comment" && notification.type !== "mention";
+        const isStatusChange = !isConversationNotification(notification.type);
         if (!isStatusChange) return;
         if (viewDirtyRef.current) {
           setRemoteStatusNotice(notification);
@@ -526,10 +536,19 @@ export function PublicationView({
     if (!publication) return;
     if (!state.savedAt || state.savedAt === lastSavedAt.current) return;
     lastSavedAt.current = state.savedAt;
-    setOriginal(current);
+    // El estado guardado puede diferir del elegido (contenido aprobado modificado -> En revisión): el form toma el real.
+    const savedStatusId = state.publication?.statusId ?? current.statusId;
+    // Sincroniza el select con el resultado del guardado (un evento externo, una sola vez por guardado).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (savedStatusId !== current.statusId) setStatusId(savedStatusId);
+    setOriginal({ ...current, statusId: savedStatusId });
     setThumbnailFile(null);
     router.refresh();
-    toast.success("Publicación guardada");
+    if (state.approvalInvalidated) {
+      toast.info("Publicación guardada", "Cambió contenido aprobado: volvió a En revisión y necesita una nueva aprobación.");
+    } else {
+      toast.success("Publicación guardada");
+    }
     if (state.publication) onSaved?.(state.publication);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.savedAt]);
@@ -787,6 +806,13 @@ export function PublicationView({
   }
 
   const selectableCalendars = calendars.filter((c) => c.status !== "archived" || c.id === calendarId);
+  // Cliente Editor: Aprobada solo sobre lo guardado En revisión (se aprueba con la validación de versión, ver
+  // savePublication) o si ya está Aprobada. Una publicación nueva no nace Aprobada.
+  const selectableStatuses = clientEditor
+    ? statuses.filter(
+        (s) => s.key !== "approved" || (publication && (s.id === original.statusId || getStatus(original.statusId)?.key === "in_review"))
+      )
+    : statuses;
   const selectableAccounts = clientAccounts.filter((a) => a.active || selectedAccountIds.has(a.id));
   const accountsByPlatform = new Map<string, ClientAccount[]>();
   for (const account of selectableAccounts) {
@@ -1174,7 +1200,7 @@ export function PublicationView({
                   name="statusId"
                   value={statusId}
                   onValueChange={(v) => setStatusId(v as string)}
-                  items={Object.fromEntries(statuses.map((s) => [s.id, s.label]))}
+                  items={Object.fromEntries(selectableStatuses.map((s) => [s.id, s.label]))}
                 >
                   <SelectTrigger id="pv-statusId" className="w-full">
                     <SelectValue placeholder="Elegí un estado">
@@ -1185,7 +1211,7 @@ export function PublicationView({
                     </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
-                    {statuses.map((s) => (
+                    {selectableStatuses.map((s) => (
                       <SelectItem key={s.id} value={s.id}>
                         <StatusPill status={s} />
                       </SelectItem>

@@ -1,25 +1,73 @@
-import type { AppNotification, NotificationType } from "@/types";
+import type { AppNotification, NotificationDetails, NotificationType } from "@/types";
+
+/** Avisos de la conversación (se dan por leídos al VER los comentarios); el resto, al abrir la publicación. */
+export const CONVERSATION_NOTIFICATION_TYPES: readonly NotificationType[] = ["comment", "mention", "reply"];
+
+export function isConversationNotification(type: NotificationType): boolean {
+  return CONVERSATION_NOTIFICATION_TYPES.includes(type);
+}
+
+/** "30/11 a las 18:00" / "30/11" (fecha y hora de pared del Planner, sin conversión de huso). */
+export function formatScheduleShort(schedule: NonNullable<NotificationDetails["schedule"]>): string | null {
+  const match = schedule.date ? /^(\d{4})-(\d{2})-(\d{2})/.exec(schedule.date) : null;
+  if (!match) return null;
+  const day = `${match[3]}/${match[2]}`;
+  const time = schedule.time && /^\d{2}:\d{2}/.test(schedule.time) ? schedule.time.slice(0, 5) : null;
+  return time ? `${day} a las ${time}` : day;
+}
 
 /** Texto de una notificación interna (v1.6) — puro, sin React, testeable. */
-export function describeNotification(n: Pick<AppNotification, "type" | "actorName" | "publicationTitle">): string {
+export function describeNotification(
+  n: Pick<AppNotification, "type" | "actorName" | "publicationTitle"> & { details?: NotificationDetails | null }
+): string {
   const actor = n.actorName?.trim() || "Alguien";
   const title = n.publicationTitle?.trim() ? `«${n.publicationTitle.trim()}»` : "una publicación";
-  const templates: Record<NotificationType, string> = {
-    comment: `${actor} comentó en ${title}`,
-    mention: `${actor} te mencionó en ${title}`,
-    review_requested: `${actor} envió ${title} a revisión`,
-    approved_by_client: `${actor} aprobó ${title}`,
-    approved_by_agency: `${actor} aprobó ${title}`,
-  };
-  return templates[n.type] ?? `Novedades en ${title}`;
+  const schedule = n.details?.schedule;
+  const when = schedule ? formatScheduleShort(schedule) : null;
+  const rescheduled = schedule ? (when ? `para el ${when}` : null) : undefined;
+  // Fecha nueva agregada a otro aviso del mismo guardado.
+  const scheduleSuffix = schedule === undefined ? "" : when ? `. Nueva fecha: ${when}` : ". Se quitó la fecha de publicación";
+
+  switch (n.type) {
+    case "comment":
+      return `${actor} comentó en ${title}`;
+    case "mention":
+      return `${actor} te mencionó en ${title}`;
+    case "reply":
+      return `${actor} te respondió en ${title}`;
+    case "review_requested":
+      return `${actor} envió ${title} a revisión${scheduleSuffix}`;
+    case "approved_by_client":
+    case "approved_by_agency":
+      return `${actor} aprobó ${title}${scheduleSuffix}`;
+    case "published":
+      return `${actor} marcó ${title} como publicada${scheduleSuffix}`;
+    case "discarded":
+      return `${actor} marcó ${title} como descartada${scheduleSuffix}`;
+    case "created_by_client":
+      return `${actor} creó ${title}${scheduleSuffix}`;
+    case "approval_invalidated": {
+      const base =
+        n.details?.reason === "status"
+          ? n.details.status === "draft"
+            ? `${actor} volvió ${title} a Borrador: la aprobación anterior quedó sin efecto`
+            : `${actor} volvió ${title} a En revisión: necesita una nueva revisión`
+          : `${actor} actualizó ${title}: necesita una nueva revisión`;
+      return `${base}${scheduleSuffix}`;
+    }
+    case "rescheduled":
+      return rescheduled ? `${actor} reprogramó ${title} ${rescheduled}` : `${actor} quitó la fecha de publicación de ${title}`;
+    default:
+      return `Novedades en ${title}`;
+  }
 }
 
 /**
  * Ruta universal de la publicación de una notificación (resuelve el Planner según el rol, ver app/p/[id]).
  * Desde una notificación la Vista de Publicación abre en la pestaña Comentarios.
  */
-export function notificationHref(n: Pick<AppNotification, "publicationId">): string | null {
-  return n.publicationId ? `/p/${n.publicationId}?tab=comments` : null;
+export function notificationHref(n: Pick<AppNotification, "publicationId"> & { publicationUnavailable?: boolean }): string | null {
+  return n.publicationId && !n.publicationUnavailable ? `/p/${n.publicationId}?tab=comments` : null;
 }
 
 /** "hace 5 min" / "hace 3 h" / fecha corta. `now` inyectable para tests. */

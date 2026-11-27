@@ -139,8 +139,12 @@ end $$;
 -- Vuelve a un estado anterior (como postgres): se habilitan de nuevo.
 -- ------------------------------------------------------------
 reset role;
+-- Sin claims de usuario (como service_role): desde 20261126000004 un Client User no puede aprobar con un UPDATE.
+select set_config('cs.saved_claims', current_setting('request.jwt.claims', true), true);
+select set_config('request.jwt.claims', '', true);
 update public.publications set status_id = (select id from public.statuses where key = 'approved')
 where id = current_setting('cs.pub_published')::uuid;
+select set_config('request.jwt.claims', current_setting('cs.saved_claims'), true);
 
 set local role authenticated;
 do $$
