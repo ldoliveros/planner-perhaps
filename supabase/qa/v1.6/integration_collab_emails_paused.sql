@@ -141,7 +141,8 @@ begin
   if not exists (select 1 from public.notifications where recipient_id = v_cu and publication_id = v_pub and type = 'review_requested') then
     raise exception 'FAIL IT06: falta la notificación de revisión al Client User';
   end if;
-  if not exists (select 1 from public.notifications where recipient_id = v_am and publication_id = v_pub and type = 'comment'
+  -- 20261126000004: una respuesta al autor del comentario original es 'reply' (antes 'comment').
+  if not exists (select 1 from public.notifications where recipient_id = v_am and publication_id = v_pub and type = 'reply'
                    and comment_id = current_setting('it.c2')::uuid) then
     raise exception 'FAIL IT06: falta la notificación de respuesta al Account Manager';
   end if;
@@ -172,10 +173,11 @@ declare
   v_unread_comments uuid[];
   v_marked integer;
 begin
-  -- Campanita: +2 (revisión + mención) respecto del inicio; solo ve las propias.
+  -- Campanita: +3 (revisión + comentario del staff + mención; desde 20261126000004 un comentario del staff avisa a
+  -- todos los usuarios cliente) respecto del inicio; solo ve las propias.
   select count(*) into v_unread_notif from public.notifications where read_at is null;
-  if v_unread_notif <> current_setting('it.cu_unread')::bigint + 2 then
-    raise exception 'FAIL IT09: contador de la campanita del Client User = %, esperado %', v_unread_notif, current_setting('it.cu_unread')::bigint + 2;
+  if v_unread_notif <> current_setting('it.cu_unread')::bigint + 3 then
+    raise exception 'FAIL IT09: contador de la campanita del Client User = %, esperado %', v_unread_notif, current_setting('it.cu_unread')::bigint + 3;
   end if;
   -- Comentarios no leídos: los dos de la agencia (no la respuesta propia).
   select array_agg(comment_id order by comment_id) into v_unread_comments from public.list_unread_publication_comments(v_pub);
