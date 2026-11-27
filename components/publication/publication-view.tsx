@@ -1505,6 +1505,7 @@ export function PublicationView({
 
       <ReviewRequestDialog
         open={reviewDialogOpen}
+        actor={clientEditor ? "client_editor" : "staff"}
         onCancel={() => {
           // Cancelar no guarda nada y vuelve el selector al estado guardado (Crear: al estado inicial).
           setReviewDialogOpen(false);
