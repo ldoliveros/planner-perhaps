@@ -1,6 +1,18 @@
 "use client";
 
-import { AtSign, Check, CheckCircle2, MessageSquare, Send } from "lucide-react";
+import {
+  AlertTriangle,
+  Archive,
+  AtSign,
+  CalendarClock,
+  Check,
+  CheckCircle2,
+  CirclePlus,
+  CornerDownRight,
+  MessageSquare,
+  Send,
+  XCircle,
+} from "lucide-react";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { describeNotification, formatNotificationAge } from "@/lib/notification-text";
 import { cn } from "cn";
@@ -9,9 +21,15 @@ import type { AppNotification, NotificationType } from "@/types";
 const TYPE_ICON: Record<NotificationType, typeof MessageSquare> = {
   comment: MessageSquare,
   mention: AtSign,
+  reply: CornerDownRight,
   review_requested: Send,
   approved_by_client: CheckCircle2,
   approved_by_agency: CheckCircle2,
+  published: CheckCircle2,
+  discarded: XCircle,
+  rescheduled: CalendarClock,
+  approval_invalidated: AlertTriangle,
+  created_by_client: CirclePlus,
 };
 
 interface NotificationItemProps {
@@ -26,7 +44,9 @@ interface NotificationItemProps {
 
 /** Fila de notificación (campanita e historial). Abrir = marcar leída + ir a /p/<id> (lo resuelve el provider). */
 export function NotificationItem({ notification, onOpen, onMarkRead, compact, context }: NotificationItemProps) {
-  const unread = !notification.readAt;
+  // Pendiente = sin leer y no suprimida (las de publicaciones archivadas salen de pendientes sin marcarse leídas).
+  const unread = !notification.readAt && !notification.suppressedAt;
+  const unavailable = notification.publicationUnavailable;
   const Icon = TYPE_ICON[notification.type] ?? MessageSquare;
   const text = describeNotification(notification);
 
@@ -41,7 +61,7 @@ export function NotificationItem({ notification, onOpen, onMarkRead, compact, co
       <button
         type="button"
         onClick={onOpen}
-        disabled={!notification.publicationId}
+        disabled={!notification.publicationId || unavailable}
         className="flex min-w-0 flex-1 items-start gap-2.5 text-left disabled:cursor-default"
       >
         <span className="relative shrink-0">
@@ -55,6 +75,12 @@ export function NotificationItem({ notification, onOpen, onMarkRead, compact, co
             {text}
           </span>
           {context && <span className="truncate text-xs text-muted-foreground">{context}</span>}
+          {unavailable && (
+            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+              <Archive className="size-3" />
+              Publicación archivada o no disponible
+            </span>
+          )}
           <span className="text-[11px] text-muted-foreground">{formatNotificationAge(notification.createdAt)}</span>
         </span>
       </button>

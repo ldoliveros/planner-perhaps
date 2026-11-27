@@ -90,11 +90,19 @@ function makeDb({ notifications, missingNotifications = false }) {
   };
 }
 
-const n = (recipient_id, client_id, read_at = null, created_at = "2026-11-01T10:00:00Z") => ({ recipient_id, client_id, read_at, created_at });
+const n = (recipient_id, client_id, read_at = null, created_at = "2026-11-01T10:00:00Z", suppressed_at = null) => ({
+  recipient_id,
+  client_id,
+  read_at,
+  created_at,
+  suppressed_at,
+});
 const notifications = [
   // AM: 4 sin leer de su cliente A (2 de días anteriores), 1 leída y 2 sin leer de B (no asignado hoy: no cuentan).
   n(AM, A), n(AM, A), n(AM, A, null, "2026-10-01T10:00:00Z"), n(AM, A, null, "2026-09-15T10:00:00Z"),
   n(AM, A, "2026-11-20T00:00:00Z"), n(AM, B), n(AM, B),
+  // AM: 1 sin leer pero SUPRIMIDA (publicación archivada): fuera de pendientes, como en la campanita.
+  n(AM, A, null, "2026-11-01T10:00:00Z", "2026-11-02T00:00:00Z"),
   // Otros destinatarios en el MISMO cliente A: nunca cuentan para AM ni para SA (recipient_id).
   n(AM2, A), n(AM2, A), n(CLIENT_USER, A), n(CLIENT_USER, A), n(CLIENT_USER, B),
   // SA: 1 sin leer (cliente B; Super Admin ve todos los clientes).
@@ -108,7 +116,7 @@ const checks = [];
 const check = (name, ok, detail = "") => checks.push({ name, ok, detail });
 
 const am = await run(makeDb({ notifications }), AM);
-check("AM: 4 sin leer (solo recipient_id = AM; excluye cliente no asignado y leídas; incluye días anteriores)", am.unreadNotifications === 4, am.unreadNotifications);
+check("AM: 4 pendientes (solo recipient_id = AM; excluye cliente no asignado, leídas y suprimidas por archivado; incluye días anteriores)", am.unreadNotifications === 4, am.unreadNotifications);
 check("AM: sin contenidos de hoy (la de hoy es de B) pero se envía", am.result === "dry_run" && am.totalCount === 0, am.result);
 check("AM: plural en HTML", am.html.includes("Tenés 4 notificaciones pendientes de revisión."));
 check("AM: plural en texto", am.text.includes("Tenés 4 notificaciones pendientes de revisión."));

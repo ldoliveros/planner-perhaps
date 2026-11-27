@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/client";
 import { isMissingV16Object, V16_PENDING_MESSAGE } from "@/lib/editorial-transitions";
 import { notificationCursorFilter, type NotificationCursor } from "@/lib/notification-text";
-import type { AppNotification, NotificationType } from "@/types";
+import type { AppNotification, NotificationDetails, NotificationType } from "@/types";
 
 /**
  * Bandeja interna de v1.6 (Fase 4) — acceso desde el NAVEGADOR (cliente Supabase del usuario, mismas RLS/RPCs).
@@ -37,8 +37,12 @@ interface NotificationRow {
   actor_name: string | null;
   actor_avatar_url: string | null;
   publication_title: string | null;
+  details: NotificationDetails | null;
   read_at: string | null;
+  suppressed_at: string | null;
   created_at: string;
+  /** Embed bajo RLS: null si la publicación está archivada para un Client User (o ya no es accesible). */
+  publication: { archived_at: string | null } | null;
 }
 
 interface UntypedQuery<T> extends PromiseLike<{ data: T | null; error: PostgrestLikeError | null; count?: number | null }> {
@@ -57,11 +61,12 @@ interface V16Client {
   rpc(fn: "mark_notifications_read", args: { p_ids: string[] | null }): Promise<{ data: number | null; error: PostgrestLikeError | null }>;
   rpc(
     fn: "mark_publication_notifications_read",
-    args: { p_publication_id: string }
+    args: { p_publication_id: string; p_types: string[] | null; p_up_to: string }
   ): Promise<{ data: number | null; error: PostgrestLikeError | null }>;
 }
 
-const COLUMNS = "id, type, client_id, publication_id, comment_id, actor_name, actor_avatar_url, publication_title, read_at, created_at";
+const COLUMNS =
+  "id, type, client_id, publication_id, comment_id, actor_name, actor_avatar_url, publication_title, details, read_at, suppressed_at, created_at, publication:publications(archived_at)";
 const MAX_PAGE = 50;
 
 async function db(): Promise<V16Client> {
@@ -78,7 +83,11 @@ function mapRow(row: NotificationRow): AppNotification {
     actorName: row.actor_name,
     actorAvatarUrl: row.actor_avatar_url,
     publicationTitle: row.publication_title,
+    details: row.details ?? {},
     readAt: row.read_at,
+    suppressedAt: row.suppressed_at,
+    // Las notificaciones de una publicación eliminada se borran en cascada: sin embed = archivada o sin acceso.
+    publicationUnavailable: Boolean(row.publication_id) && (!row.publication || row.publication.archived_at !== null),
     createdAt: row.created_at,
   };
 }
@@ -115,7 +124,8 @@ export async function listNotifications(
     .order("created_at", { ascending: false })
     .order("id", { ascending: false })
     .limit(limit + 1);
-  if (options.unreadOnly) query = query.is("read_at", null);
+  // Pendientes: no leídas y no suprimidas (publicación archivada). "Todas" incluye ambas.
+  if (options.unreadOnly) query = query.is("read_at", null).is("suppressed_at", null);
   if (options.before) {
     const cursorFilter = notificationCursorFilter(options.before);
     if (!cursorFilter) return { items: [], unreadCount: 0, hasMore: false, error: "Cursor de paginación inválido.", unavailable: false };
@@ -137,7 +147,11 @@ export async function listNotifications(
 }
 
 async function countUnread(client: V16Client): Promise<{ count: number; error: PostgrestLikeError | null }> {
-  const { count, error } = await client.from("notifications").select("id", { count: "exact", head: true }).is("read_at", null);
+  const { count, error } = await client
+    .from("notifications")
+    .select("id", { count: "exact", head: true })
+    .is("read_at", null)
+    .is("suppressed_at", null);
   return { count: count ?? 0, error };
 }
 
@@ -173,10 +187,21 @@ export async function markNotificationsRead(ids: string[] | null): Promise<MarkR
   return { error: null, unavailable: false, unreadCount: unread.error ? null : unread.count };
 }
 
-/** Al abrir una publicación: marca como leídas las notificaciones propias asociadas a ella. */
-export async function markPublicationNotificationsRead(publicationId: string): Promise<MarkReadResult> {
+/**
+ * Al ver una publicación: marca como leídas las propias de ESA publicación, de esos tipos y creadas hasta `upTo` (la
+ * más reciente que el usuario llegó a ver, con hora de la base): nunca un aviso posterior.
+ */
+export async function markPublicationNotificationsRead(
+  publicationId: string,
+  types: readonly NotificationType[],
+  upTo: string
+): Promise<MarkReadResult> {
   const client = await db();
-  const { data, error } = await client.rpc("mark_publication_notifications_read", { p_publication_id: publicationId });
+  const { data, error } = await client.rpc("mark_publication_notifications_read", {
+    p_publication_id: publicationId,
+    p_types: [...types],
+    p_up_to: upTo,
+  });
   if (error) return { unreadCount: null, ...failure(error) };
   if (!data) return { error: null, unavailable: false, unreadCount: null };
   const unread = await countUnread(client);
